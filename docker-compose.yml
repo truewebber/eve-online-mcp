@@ -1,0 +1,24 @@
+services:
+  eve-mcp:
+    build: .
+    image: eve-mcp:latest
+    container_name: eve-mcp
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Keep the callback in sync with what you registered on the dev portal.
+      EVE_CALLBACK_URL: http://localhost:8765/auth/callback
+    ports:
+      # Bound to loopback: the token store behind this port is your EVE account.
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - eve-data:/data
+
+volumes:
+  eve-data:
+    # Pinned so the token store does not follow the directory name. Compose
+    # otherwise prefixes volumes with the project (directory) name, and moving
+    # this file would orphan the SSO refresh tokens.
+    name: eve-mcp-data

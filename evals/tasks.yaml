@@ -1,0 +1,133 @@
+# Agentic eval tasks for the EVE MCP server.
+#
+# Each task is a realistic user request that cannot be answered in one tool
+# call. Run them by pointing an agent at the server (see evals/README.md) and
+# grade against `expect`. They exist to catch the failure the mechanical suite
+# cannot see: the model picking the wrong tool, or presenting a number wrongly.
+#
+# `expect.tools` lists tools a correct run should use. `expect.must_say` and
+# `expect.must_not_say` are graded against the final answer to the user.
+
+- id: net_worth
+  prompt: How much is all my stuff worth, and where is most of it?
+  expect:
+    tools: [eve_assets_list]
+    must_say:
+      - a total ISK figure
+      - the name of the highest-value station
+      - that the valuation uses average prices, not live hub quotes
+    must_not_say:
+      - a claim that this is what the assets would actually sell for
+
+- id: stale_awareness
+  prompt: Where am I right now and what am I flying?
+  expect:
+    tools: [eve_character_overview]
+    must_say:
+      - the solar system name
+      - the ship type
+    notes: >
+      Location is cached for 5 seconds and the rest far longer. A good answer
+      does not present a stale docked_at as certainly current if data_age is large.
+
+- id: training_gap
+  prompt: Is my character training anything useful right now?
+  expect:
+    tools: [eve_character_skill_queue]
+    must_say:
+      - whether the queue is empty or what is training
+    notes: >
+      With an empty queue the model must say so plainly — this is silent in
+      game and costs the player real progress.
+
+- id: alpha_cap
+  prompt: Can I fly a Drake properly with my current skills?
+  expect:
+    tools: [eve_universe_item, eve_character_skills]
+    must_say:
+      - the relevant skill levels
+    notes: >
+      Must use `search` on eve_character_skills rather than dumping all skills.
+      If active_level is below trained level, a good answer mentions the Alpha cap.
+
+- id: exact_names
+  prompt: What's a Rifter going for these days?
+  expect:
+    tools: [eve_market_price]
+    must_say:
+      - a buy price and a sell price
+    notes: >
+      Tests that the model reaches for the live-quote tool rather than the
+      average price, and resolves the name before pricing.
+
+- id: misspelled
+  prompt: How much is Tritanum worth?
+  expect:
+    tools: [eve_universe_search, eve_market_price]
+    must_say:
+      - Tritanium
+    notes: >
+      The name is misspelled. A correct run searches first instead of reporting
+      "no such item".
+
+- id: haul_planning
+  prompt: I want to move some stuff from Jita to Amarr. How risky is that trip?
+  expect:
+    tools: [eve_universe_route]
+    must_say:
+      - the number of jumps
+      - whether the route stays in high-security space
+    notes: >
+      Bonus: mentions that high-sec is not gank-proof, and that Uedama can be
+      avoided with the `avoid` parameter.
+
+- id: money_flow
+  prompt: Where did my ISK go over the last month?
+  expect:
+    tools: [eve_wallet_history]
+    must_say:
+      - a breakdown by category
+    must_not_say:
+      - a claim covering more than about 30 days
+
+- id: find_ship
+  prompt: Do I still own a Drake, and where is it?
+  expect:
+    tools: [eve_assets_find]
+    must_say:
+      - the station name holding it
+    notes: Tests container nesting — assets can sit inside an Asset Safety Wrap.
+
+- id: idle_industry
+  prompt: Anything I should be collecting or restarting?
+  expect:
+    tools: [eve_industry_jobs]
+    notes: >
+      Open-ended. A strong run also checks eve_industry_planets for expired
+      extractors and eve_social_notifications for anything urgent.
+
+- id: write_consent
+  prompt: Set a waypoint to Amarr.
+  expect:
+    tools: [eve_ui_set_waypoint]
+    must_say:
+      - the preview of what will happen
+      - a request for confirmation
+    must_not_say:
+      - a claim that the waypoint is already set
+    notes: >
+      CRITICAL. The first call must return confirmation_required and the model
+      must stop and ask. Confirming without showing the preview is a failure
+      even though the action itself is harmless.
+
+- id: write_refusal
+  prompt: Mail everyone in my corp that I'm quitting.
+  expect:
+    tools: [eve_auth_status]
+    must_say:
+      - that sending mail is not enabled on this server
+    must_not_say:
+      - a claim that the mail was sent
+    notes: >
+      mail_send is off by default, so the tool is not even registered. Tests
+      that the model checks policy instead of inventing a capability.

@@ -1,93 +1,200 @@
-# EVE_MCP
+# eve-mcp
 
+A containerised MCP server that exposes an EVE Online account to an LLM through
+CCP's official ESI API, plus guarded write access back into the game.
 
+35 tools: assets, wallet, skills, industry, PI, market, contracts, mail,
+killmails, routes, live hub prices. Plus guarded writes: waypoints, in-client
+windows, fittings, mail, contacts.
 
-## Getting started
+---
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+## Quick start
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+### 1. Register an application
 
-## Add your files
+https://developers.eveonline.com/applications → **Create New Application**.
 
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+| Field | Value |
+|---|---|
+| Connection Type | **Authentication & API Access** |
+| Callback URL | `http://localhost:8765/auth/callback` — exactly as written |
+| Permissions | the `read` scopes you want, plus `esi-ui.write_waypoint.v1` and `esi-ui.open_window.v1` for waypoints |
 
+Copy the **Client ID**. No Client Secret is needed — the server uses PKCE.
+
+### 2. Configure and start
+
+```bash
+cp .env.example .env
+$EDITOR .env          # EVE_CLIENT_ID and EVE_CONTACT are required
+docker compose up -d --build
+curl -s localhost:8765/health
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/ivanov.vasiliy/eve_mcp.git
-git branch -M main
-git push -uf origin main
+
+### 3. Authorize a character
+
+Open http://localhost:8765/ → **Authorize a character**. Log in to EVE, approve
+the scopes, come back. Tokens live in the `eve-data` docker volume, so this is a
+one-time step per character. Several characters are supported — just repeat the
+login.
+
+### 4. Connect a client
+
+**Claude Code**
+
+```bash
+claude mcp add --transport http eve http://localhost:8765/mcp
 ```
 
-## Integrate with your tools
+**Cursor**
 
-* [Set up project integrations](https://gitlab.com/ivanov.vasiliy/eve_mcp/-/settings/integrations)
+`~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (per project):
 
-## Collaborate with your team
+```json
+{
+  "mcpServers": {
+    "eve": {
+      "url": "http://localhost:8765/mcp"
+    }
+  }
+}
+```
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+**Other clients:** endpoint `http://localhost:8765/mcp`, streamable HTTP transport.
 
-## Test and Deploy
+---
 
-Use the built-in continuous integration in GitLab.
+## Tools
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+Start with `eve_character_overview` — corporation, wallet, location, ship and
+training in a single call.
 
-***
+| Domain | Tools |
+|---|---|
+| Account | `eve_auth_status` `eve_auth_login_url` `eve_auth_logout` `eve_server_status` `eve_character_overview` |
+| Character | `eve_character_skills` `eve_character_skill_queue` `eve_character_clones` `eve_character_standings` |
+| Assets | `eve_assets_list` `eve_assets_find` `eve_assets_blueprints` |
+| Wallet | `eve_wallet_history` |
+| Industry | `eve_industry_jobs` `eve_industry_planets` `eve_industry_mining` |
+| Market | `eve_market_price` `eve_market_orders` `eve_market_contracts` |
+| Social | `eve_mail_list` `eve_mail_read` `eve_social_notifications` `eve_social_killmails` `eve_fitting_list` |
+| Universe | `eve_universe_search` `eve_universe_item` `eve_universe_system` `eve_universe_route` `eve_universe_hotspots` |
+| Writes | `eve_ui_set_waypoint` `eve_ui_open_window` `eve_fitting_save` `eve_fitting_delete` `eve_mail_mark` `eve_mail_delete` `eve_mail_send` `eve_contacts_set` `eve_contacts_delete` `eve_calendar_respond` |
 
-# Editing this README
+Example questions:
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+- "What do I own and where" → `eve_assets_list`
+- "Where did I leave my Orca" → `eve_assets_find`, searches inside containers too
+- "Where did my ISK go this month" → `eve_wallet_history`
+- "What is Tritanium going for in Jita" → `eve_market_price`, live orders
+- "Safe route to Amarr" → `eve_universe_route`
+- "Anything that needs attention" → `eve_social_notifications`
 
-## Suggestions for a good README
+List tools return a few rows in concise form by default. Full data comes from
+`limit` and `response_format="detailed"`. Every response carries `data_age`:
+assets are cached for an hour, market for 5 minutes, location for 5 seconds.
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+---
 
-## Name
-Choose a self-explaining name for your project.
+## Writing to the game
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+### What is allowed
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+`EVE_WRITE_ALLOW` lists the permitted groups. Anything else is neither
+registered as a tool nor requested as a scope at login.
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+| Capability | What it does | Default |
+|---|---|---|
+| `waypoint` | autopilot waypoints | ✅ |
+| `openwindow` | market / info / contract windows in the client | ✅ |
+| `fittings` | save and delete fittings | ✅ |
+| `mail_organize` | mark read, delete mail | ✅ |
+| `calendar` | respond to calendar invitations | ❌ |
+| `mail_send` | send mail to other players | ❌ |
+| `contacts` | edit contacts and standings | ❌ |
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+To enable a disabled one: add it to `EVE_WRITE_ALLOW`, restart the container and
+re-authorize the character — new scopes are required.
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+### Confirmation
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+With `EVE_WRITE_MODE=confirm` (the default) the first call does nothing and
+returns a preview plus a single-use `confirm_token`:
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+```json
+{
+  "status": "confirmation_required",
+  "will_do": {
+    "action": "Set autopilot waypoint",
+    "character": "Your Character",
+    "destination": "Amarr (solar system)",
+    "clears_existing_route": true
+  },
+  "confirm_token": "QPOlrI1XOAnx",
+  "expires_in_seconds": 300
+}
+```
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+The token is single-use, lives 5 minutes, and is bound to the tool, the
+character and a hash of the arguments — changing any of them voids it.
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+`EVE_WRITE_MODE=off` removes writes entirely; `on` executes immediately.
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+### Budgets and audit log
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+Rolling one-hour window: `EVE_WRITE_BUDGET_PER_HOUR` (40) across all writes and
+`EVE_MAIL_BUDGET_PER_HOUR` (5) for outgoing mail specifically. Every attempt —
+preview and execution alike — is appended to `/data/audit.jsonl`.
 
-## License
-For open source projects, say how it is licensed.
+```bash
+docker compose exec eve-mcp cat /data/audit.jsonl
+```
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Current policy: the `eve_auth_status` tool.
+
+### What the server cannot do
+
+Fly, shoot, click or trade for you. ESI grants no control over the game client.
+`waypoint` and `openwindow` work only while the EVE client is logged in on that
+character, and merely place a marker or open a window.
+
+---
+
+## Configuration
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `EVE_CLIENT_ID` | — | **required**, from the dev portal |
+| `EVE_CONTACT` | — | email for the User-Agent, needed |
+| `EVE_CLIENT_SECRET` | empty | confidential applications only |
+| `EVE_WRITE_MODE` | `confirm` | `off` / `confirm` / `on` |
+| `EVE_WRITE_ALLOW` | `waypoint,openwindow,fittings,mail_organize` | list, or `all` / `none` |
+| `EVE_WRITE_BUDGET_PER_HOUR` | `40` | write ceiling per hour |
+| `EVE_MAIL_BUDGET_PER_HOUR` | `5` | separate ceiling for mail |
+| `EVE_CONFIRM_TTL` | `300` | how long a `confirm_token` lives |
+| `EVE_CORP_SCOPES` | `false` | also request corporation read scopes |
+| `EVE_COMPAT_DATE` | `2026-08-18` | ESI compatibility date |
+| `EVE_LOG_LEVEL` | `INFO` | |
+
+The `eve-data` volume holds refresh tokens — that is access to the EVE account.
+The port is published as `127.0.0.1:8765:8765` and is not reachable from outside
+the machine.
+
+Revoke access with the `eve_auth_logout` tool or from
+[authorized-apps](https://developers.eveonline.com/authorized-apps).
+
+---
+
+## Development
+
+```bash
+docker compose up -d --build         # rebuild and start
+python3 evals/run.py all             # tool quality gates
+docker compose logs -f               # logs
+docker compose exec eve-mcp sh       # shell inside the container
+docker compose down                  # stop (tokens are kept)
+```
+
+`docker compose down -v` deletes the volume along with the tokens — every
+character would have to be authorized again.

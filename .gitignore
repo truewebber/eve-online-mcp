@@ -1,0 +1,32 @@
+# Secrets and account data — never commit
+.env
+.env.local
+data/
+tokens.json
+audit.jsonl
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+
+# MCP client configs may carry credentials
+.mcp.json
+.cursor/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log

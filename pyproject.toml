@@ -1,0 +1,27 @@
+[project]
+name = "eve-mcp"
+version = "0.1.0"
+description = "MCP server exposing EVE Online ESI to an LLM assistant"
+requires-python = ">=3.11"
+# Pinned exactly, and the container installs the full transitive set from
+# requirements.txt. This holds EVE SSO refresh tokens, so a rebuild resolving a
+# different dependency tree is not something to discover in production.
+# Refresh both files together, deliberately — pins do not receive security
+# updates on their own.
+dependencies = [
+    "mcp==2.1.1",
+    "httpx==0.28.1",
+    "starlette==1.6.0",
+    "uvicorn[standard]==0.52.4",
+    "pyjwt[crypto]==2.13.0",
+    # Imported directly in eve_mcp/schema.py and every tool module; it only
+    # arrived transitively via mcp before.
+    "pydantic==2.13.4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["eve_mcp"]
