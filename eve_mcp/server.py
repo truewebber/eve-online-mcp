@@ -15,7 +15,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from .auth import AuthError
 from .config import Settings
 from .context import AppContext
-from .tools import account, assets, character, industry, market, social, universe, wallet, writes
+from .tools import account, assets, character, corp, industry, market, social, universe, wallet, writes
 
 log = logging.getLogger("eve_mcp.server")
 
@@ -70,6 +70,18 @@ Making changes
     only affect a client that is currently logged in on that character.
 """
 
+CORP_INSTRUCTIONS = """
+Corporation data
+  * `eve_corp_overview` first. It says whether this is a player corp, which
+    roles the character holds, and which eve_corp_* tools those roles unlock.
+    NPC school/militia corps have no hangars on ESI.
+  * Only roles granted everywhere count. A role at HQ or a base does not
+    unlock corporation endpoints. Director satisfies every role check.
+  * A 403 is a missing in-game role, not an empty hangar. Personal assets,
+    wallet and jobs stay on the eve_assets_* / eve_wallet_* / eve_industry_*
+    tools; these ones are the shared hangar.
+"""
+
 
 
 
@@ -108,7 +120,7 @@ def build_mcp(ctx: AppContext) -> MCPServer:
     mcp = MCPServer(
         name="eve-online",
         title="EVE Online",
-        instructions=INSTRUCTIONS,
+        instructions=INSTRUCTIONS + (CORP_INSTRUCTIONS if ctx.settings.corp_scopes else ""),
         version="0.1.0",
     )
 
@@ -120,6 +132,8 @@ def build_mcp(ctx: AppContext) -> MCPServer:
     market.register(mcp, ctx)
     social.register(mcp, ctx)
     universe.register(mcp, ctx)
+    if ctx.settings.corp_scopes:
+        corp.register(mcp, ctx)
     writes.register(mcp, ctx)
 
     _register_web_routes(mcp, ctx)

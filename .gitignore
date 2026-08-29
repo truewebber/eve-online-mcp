@@ -8,8 +8,7 @@ audit.jsonl
 *.sqlite3-shm
 *.sqlite3-wal
 
-# MCP client configs may carry credentials
-.mcp.json
+# MCP client configs that may carry credentials
 .cursor/
 
 # Python
@@ -30,3 +29,7 @@ dist/
 
 # Logs
 *.log
+
+# Go binary
+/eve-mcp
+/eve-mcp.exe

@@ -1,0 +1,19 @@
+# Copy to the OS user config dir, or let the first run create it.
+#   macOS: ~/Library/Application Support/eve-mcp/config.toml
+#   Linux: ~/.config/eve-mcp/config.toml
+
+client_id = ""
+contact = "you@example.com"
+# client_secret = ""          # only for a confidential EVE application
+
+listen = "127.0.0.1:8765"
+# public_url = "https://eve.example.com"
+# mcp_token = ""              # auto-generated when listen is not loopback
+
+write_mode = "confirm"
+write_allow = ["waypoint", "openwindow", "fittings", "mail_organize"]
+write_budget_per_hour = 40
+mail_budget_per_hour = 5
+confirm_ttl_seconds = 300
+corp_scopes = true
+compat_date = "2026-08-18"

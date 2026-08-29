@@ -45,6 +45,44 @@ def isk(value: float | int | None) -> str:
     return f"{amount:,.2f}"
 
 
+def root_locations(items: list[dict[str, Any]]) -> dict[int, int]:
+    """Map every item to the station or structure it ultimately sits in.
+
+    Assets nest arbitrarily — an item in a container in a ship in a station —
+    and ESI expresses that by making `location_id` point at another item.
+    """
+    by_id = {i["item_id"]: i for i in items}
+    roots: dict[int, int] = {}
+
+    for item in items:
+        chain: list[int] = []
+        current = item
+        while True:
+            item_id = current["item_id"]
+            if item_id in roots:
+                resolved = roots[item_id]
+                break
+            parent_id = current.get("location_id")
+            parent = by_id.get(parent_id)
+            if parent is None:
+                resolved = parent_id
+                break
+            if item_id in chain:  # defensive: never loop on malformed data
+                resolved = parent_id
+                break
+            chain.append(item_id)
+            current = parent
+        for node in chain:
+            roots[node] = resolved
+        roots[item["item_id"]] = resolved
+    return roots
+
+
+def line_value(prices: dict[int, dict[str, float]], kv: tuple[int, int]) -> float:
+    type_id, qty = kv
+    return unit_price(prices, type_id) * qty
+
+
 def unit_price(prices: dict[int, dict[str, float]], type_id: int | None) -> float:
     """CCP's reference price for one unit of a type.
 

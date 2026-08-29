@@ -1,11 +1,15 @@
 # eve-mcp
 
-A containerised MCP server that exposes an EVE Online account to an LLM through
-CCP's official ESI API, plus guarded write access back into the game.
+A single Go binary that exposes one player's EVE Online account to an LLM
+through CCP's official ESI API, plus guarded write access back into the game.
+
+Clients (Cursor, Claude Code, Claude Desktop) connect to one URL. There is no
+`.env` on the client, no Docker, and no local rebuild.
 
 35 tools: assets, wallet, skills, industry, PI, market, contracts, mail,
 killmails, routes, live hub prices. Plus guarded writes: waypoints, in-client
-windows, fittings, mail, contacts.
+windows, fittings, mail, contacts. Corporation hangars, wallets and jobs
+appear when `corp_scopes` is on.
 
 ---
 
@@ -23,45 +27,79 @@ https://developers.eveonline.com/applications → **Create New Application**.
 
 Copy the **Client ID**. No Client Secret is needed — the server uses PKCE.
 
-### 2. Configure and start
+### 2. Build and install
 
 ```bash
-cp .env.example .env
-$EDITOR .env          # EVE_CLIENT_ID and EVE_CONTACT are required
-docker compose up -d --build
-curl -s localhost:8765/health
+go build -o eve-mcp ./cmd/eve-mcp
+./eve-mcp install
 ```
+
+That copies the binary to `~/.local/bin/eve-mcp` and starts a user service
+(launchd on macOS, systemd --user on Linux). It keeps running across reboots.
+
+First run writes `config.toml` into the OS user config directory:
+
+- macOS: `~/Library/Application Support/eve-mcp/config.toml`
+- Linux: `~/.config/eve-mcp/config.toml`
+
+If a repo-local `.env` with `EVE_CLIENT_ID` is present, it is imported once
+and then ignored. After that, clients never see credentials.
+
+Open http://127.0.0.1:8765/ — if `client_id` is still empty, fill the setup
+form, restart (`eve-mcp uninstall && eve-mcp install`, or just kill the
+process; KeepAlive restarts it after you save).
 
 ### 3. Authorize a character
 
-Open http://localhost:8765/ → **Authorize a character**. Log in to EVE, approve
-the scopes, come back. Tokens live in the `eve-data` docker volume, so this is a
-one-time step per character. Several characters are supported — just repeat the
-login.
+http://127.0.0.1:8765/ → **Authorize a character**. Log in to EVE, approve
+the scopes, come back. Tokens live next to `config.toml`. Several characters
+are supported — just repeat the login.
 
 ### 4. Connect a client
 
-**Claude Code**
+The only thing a client needs is the URL. There is no `client_id` in the
+client config. The first connection returns `401` and Cursor / Claude show
+**Authentication required**. That opens a page where the player pastes
+**their** EVE application Client ID and logs in through EVE SSO.
 
-```bash
-claude mcp add --transport http eve http://localhost:8765/mcp
-```
-
-**Cursor**
-
-`~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (per project):
+**Cursor** — `~/.cursor/mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "eve": {
-      "url": "http://localhost:8765/mcp"
+      "url": "http://127.0.0.1:8765/mcp"
     }
   }
 }
 ```
 
-**Other clients:** endpoint `http://localhost:8765/mcp`, streamable HTTP transport.
+**Claude Code**
+
+```bash
+claude mcp add --transport http eve http://127.0.0.1:8765/mcp
+```
+
+On a public host, use `https://your.example/mcp` and set `public_url` /
+`-public-url` so the OAuth metadata and the EVE callback match.
+
+---
+
+## On the network
+
+Same binary, same client config — only the URL changes:
+
+```bash
+eve-mcp -listen 127.0.0.1:8765 -public-url https://eve.example.com
+```
+
+Each player registers their own CCP application with callback
+`https://eve.example.com/auth/callback`. Cursor/Claude run MCP OAuth
+against this server; EVE SSO runs with that player's Client ID.
+
+If ESI returns `420` / error-limit headers, tools answer
+`kind: EsiRateLimited` with `retry_at` and `retry_after_seconds`. Wait
+until then. The bucket is per public IP.
 
 ---
 
@@ -80,16 +118,8 @@ training in a single call.
 | Market | `eve_market_price` `eve_market_orders` `eve_market_contracts` |
 | Social | `eve_mail_list` `eve_mail_read` `eve_social_notifications` `eve_social_killmails` `eve_fitting_list` |
 | Universe | `eve_universe_search` `eve_universe_item` `eve_universe_system` `eve_universe_route` `eve_universe_hotspots` |
+| Corporation | `eve_corp_overview` `eve_corp_assets_list` `eve_corp_assets_find` `eve_corp_blueprints` `eve_corp_wallet` `eve_corp_industry_jobs` `eve_corp_mining` `eve_corp_orders` `eve_corp_contracts` `eve_corp_killmails` `eve_corp_structures` `eve_corp_members` — registered only when `corp_scopes` is on |
 | Writes | `eve_ui_set_waypoint` `eve_ui_open_window` `eve_fitting_save` `eve_fitting_delete` `eve_mail_mark` `eve_mail_delete` `eve_mail_send` `eve_contacts_set` `eve_contacts_delete` `eve_calendar_respond` |
-
-Example questions:
-
-- "What do I own and where" → `eve_assets_list`
-- "Where did I leave my Orca" → `eve_assets_find`, searches inside containers too
-- "Where did my ISK go this month" → `eve_wallet_history`
-- "What is Tritanium going for in Jita" → `eve_market_price`, live orders
-- "Safe route to Amarr" → `eve_universe_route`
-- "Anything that needs attention" → `eve_social_notifications`
 
 List tools return a few rows in concise form by default. Full data comes from
 `limit` and `response_format="detailed"`. Every response carries `data_age`:
@@ -99,89 +129,63 @@ assets are cached for an hour, market for 5 minutes, location for 5 seconds.
 
 ## Writing to the game
 
-### What is allowed
-
-`EVE_WRITE_ALLOW` lists the permitted groups. Anything else is neither
-registered as a tool nor requested as a scope at login.
+`write_allow` in `config.toml` lists the permitted groups. Anything else is
+neither registered as a tool nor requested as a scope at login.
 
 | Capability | What it does | Default |
 |---|---|---|
-| `waypoint` | autopilot waypoints | ✅ |
-| `openwindow` | market / info / contract windows in the client | ✅ |
-| `fittings` | save and delete fittings | ✅ |
-| `mail_organize` | mark read, delete mail | ✅ |
-| `calendar` | respond to calendar invitations | ❌ |
-| `mail_send` | send mail to other players | ❌ |
-| `contacts` | edit contacts and standings | ❌ |
+| `waypoint` | autopilot waypoints | yes |
+| `openwindow` | market / info / contract windows in the client | yes |
+| `fittings` | save and delete fittings | yes |
+| `mail_organize` | mark read, delete mail | yes |
+| `calendar` | respond to calendar invitations | no |
+| `mail_send` | send mail to other players | no |
+| `contacts` | edit contacts and standings | no |
 
-To enable a disabled one: add it to `EVE_WRITE_ALLOW`, restart the container and
-re-authorize the character — new scopes are required.
+To enable a disabled one: add it to `write_allow`, restart, and re-authorize
+the character — new scopes are required.
 
-### Confirmation
+With `write_mode = "confirm"` (the default) the first call does nothing and
+returns a preview plus a single-use `confirm_token`. Show `will_do` to the
+user, get an explicit yes, then call again with the same arguments plus the
+token.
 
-With `EVE_WRITE_MODE=confirm` (the default) the first call does nothing and
-returns a preview plus a single-use `confirm_token`:
+`write_mode = "off"` removes writes entirely; `"on"` executes immediately.
 
-```json
-{
-  "status": "confirmation_required",
-  "will_do": {
-    "action": "Set autopilot waypoint",
-    "character": "Your Character",
-    "destination": "Amarr (solar system)",
-    "clears_existing_route": true
-  },
-  "confirm_token": "QPOlrI1XOAnx",
-  "expires_in_seconds": 300
-}
-```
+Rolling one-hour window: `write_budget_per_hour` (40) across all writes and
+`mail_budget_per_hour` (5) for outgoing mail. Every attempt is appended to
+`audit.jsonl` next to the config.
 
-The token is single-use, lives 5 minutes, and is bound to the tool, the
-character and a hash of the arguments — changing any of them voids it.
-
-`EVE_WRITE_MODE=off` removes writes entirely; `on` executes immediately.
-
-### Budgets and audit log
-
-Rolling one-hour window: `EVE_WRITE_BUDGET_PER_HOUR` (40) across all writes and
-`EVE_MAIL_BUDGET_PER_HOUR` (5) for outgoing mail specifically. Every attempt —
-preview and execution alike — is appended to `/data/audit.jsonl`.
-
-```bash
-docker compose exec eve-mcp cat /data/audit.jsonl
-```
-
-Current policy: the `eve_auth_status` tool.
-
-### What the server cannot do
-
-Fly, shoot, click or trade for you. ESI grants no control over the game client.
-`waypoint` and `openwindow` work only while the EVE client is logged in on that
-character, and merely place a marker or open a window.
+The server cannot fly, shoot, click or trade. ESI grants no control over the
+game client. `waypoint` and `openwindow` work only while the EVE client is
+logged in on that character.
 
 ---
 
 ## Configuration
 
-| Variable | Default | Meaning |
+All of this lives in `config.toml`. Environment variables with the same names
+prefixed `EVE_` still override a field if you want them, but they are not
+required.
+
+| Key | Default | Meaning |
 |---|---|---|
-| `EVE_CLIENT_ID` | — | **required**, from the dev portal |
-| `EVE_CONTACT` | — | email for the User-Agent, needed |
-| `EVE_CLIENT_SECRET` | empty | confidential applications only |
-| `EVE_WRITE_MODE` | `confirm` | `off` / `confirm` / `on` |
-| `EVE_WRITE_ALLOW` | `waypoint,openwindow,fittings,mail_organize` | list, or `all` / `none` |
-| `EVE_WRITE_BUDGET_PER_HOUR` | `40` | write ceiling per hour |
-| `EVE_MAIL_BUDGET_PER_HOUR` | `5` | separate ceiling for mail |
-| `EVE_CONFIRM_TTL` | `300` | how long a `confirm_token` lives |
-| `EVE_CORP_SCOPES` | `false` | also request corporation read scopes |
-| `EVE_COMPAT_DATE` | `2026-08-18` | ESI compatibility date |
-| `EVE_LOG_LEVEL` | `INFO` | |
+| `client_id` | — | **required**, from the dev portal |
+| `contact` | — | email for the User-Agent |
+| `client_secret` | empty | confidential applications only |
+| `listen` | `127.0.0.1:8765` | bind address |
+| `public_url` | empty | public base URL (sets the SSO callback) |
+| `mcp_token` | empty | bearer token for `/mcp` when not on loopback |
+| `write_mode` | `confirm` | `off` / `confirm` / `on` |
+| `write_allow` | waypoint, openwindow, fittings, mail_organize | list, or `all` / `none` |
+| `write_budget_per_hour` | `40` | write ceiling per hour |
+| `mail_budget_per_hour` | `5` | separate ceiling for mail |
+| `confirm_ttl_seconds` | `300` | how long a `confirm_token` lives |
+| `corp_scopes` | `true` | request corporation read scopes and register `eve_corp_*` |
+| `compat_date` | `2026-08-18` | ESI compatibility date |
 
-The `eve-data` volume holds refresh tokens — that is access to the EVE account.
-The port is published as `127.0.0.1:8765:8765` and is not reachable from outside
-the machine.
-
-Revoke access with the `eve_auth_logout` tool or from
+Refresh tokens are access to the EVE account. Default listen is loopback.
+Revoke access with `eve_auth_logout` or from
 [authorized-apps](https://developers.eveonline.com/authorized-apps).
 
 ---
@@ -189,12 +193,10 @@ Revoke access with the `eve_auth_logout` tool or from
 ## Development
 
 ```bash
-docker compose up -d --build         # rebuild and start
-python3 evals/run.py all             # tool quality gates
-docker compose logs -f               # logs
-docker compose exec eve-mcp sh       # shell inside the container
-docker compose down                  # stop (tokens are kept)
+go build -o eve-mcp ./cmd/eve-mcp
+./eve-mcp                         # foreground, imports .env on first run
+python3 evals/run.py all          # lint + smoke against the running server
 ```
 
-`docker compose down -v` deletes the volume along with the tokens — every
-character would have to be authorized again.
+The Python tree under `eve_mcp/` is the previous implementation, kept as a
+reference. The running server is this Go binary.

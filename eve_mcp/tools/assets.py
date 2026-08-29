@@ -9,7 +9,7 @@ from pydantic import Field
 
 from ..context import AppContext
 from ..schema import CharacterArg, DetailArg, limit_arg
-from ._common import handled, isk, page, project, unit_price
+from ._common import handled, isk, line_value, page, project, root_locations, unit_price
 
 _LocationsLimit = limit_arg("locations", 200)
 _MatchingStacksLimit = limit_arg("matching stacks", 200)
@@ -92,7 +92,7 @@ def register(mcp: MCPServer, ctx: AppContext) -> None:
                 "note": "This character holds no personal assets (corp hangars are separate).",
             }
 
-        roots = _root_locations(assets)
+        roots = root_locations(assets)
         prices = await ctx.resolver.reference_prices()
         type_names = await ctx.resolver.names({i["type_id"] for i in assets})
         place_names = await ctx.resolver.names(set(roots.values()), character_id=cid)
@@ -118,7 +118,7 @@ def register(mcp: MCPServer, ctx: AppContext) -> None:
                 continue
             if bucket["value"] < min_value:
                 continue
-            top = sorted(bucket["types"].items(), key=lambda kv: -_line_value(prices, kv))[:items]
+            top = sorted(bucket["types"].items(), key=lambda kv: -line_value(prices, kv))[:items]
             rows.append(
                 {
                     "location": place,
@@ -175,8 +175,8 @@ def register(mcp: MCPServer, ctx: AppContext) -> None:
         container an item sits in, so it finds things that a location summary
         hides.
 
-        Searches personal assets only — corporation hangars need corp scopes and
-        different endpoints.
+        Searches personal assets only. Corporation hangars are eve_corp_assets_find
+        (needs EVE_CORP_SCOPES and the Director role).
 
         Returns: total_units, total_stacks, matches[]. In 'detailed' mode each
         match also carries the containing item, slot flag, packaged state and
@@ -200,11 +200,12 @@ def register(mcp: MCPServer, ctx: AppContext) -> None:
                 "matches": [],
                 "note": (
                     "Nothing matching in personal assets. Check the spelling with "
-                    "eve_universe_search, or the item may be in a corp hangar."
+                    "eve_universe_search, or the item may be in a corp hangar "
+                    "(eve_corp_assets_find)."
                 ),
             }
 
-        roots = _root_locations(items)
+        roots = root_locations(items)
         by_id = {i["item_id"]: i for i in items}
         place_names = await ctx.resolver.names(
             {roots[i["item_id"]] for i in matches if i["item_id"] in roots}, character_id=cid
@@ -304,40 +305,3 @@ def register(mcp: MCPServer, ctx: AppContext) -> None:
             ),
         }
 
-
-def _root_locations(items: list[dict[str, Any]]) -> dict[int, int]:
-    """Map every item to the station or structure it ultimately sits in.
-
-    Assets nest arbitrarily — an item in a container in a ship in a station —
-    and ESI expresses that by making `location_id` point at another item.
-    """
-    by_id = {i["item_id"]: i for i in items}
-    roots: dict[int, int] = {}
-
-    for item in items:
-        chain: list[int] = []
-        current = item
-        while True:
-            item_id = current["item_id"]
-            if item_id in roots:
-                resolved = roots[item_id]
-                break
-            parent_id = current.get("location_id")
-            parent = by_id.get(parent_id)
-            if parent is None:
-                resolved = parent_id
-                break
-            if item_id in chain:  # defensive: never loop on malformed data
-                resolved = parent_id
-                break
-            chain.append(item_id)
-            current = parent
-        for node in chain:
-            roots[node] = resolved
-        roots[item["item_id"]] = resolved
-    return roots
-
-
-def _line_value(prices: dict[int, dict[str, float]], kv: tuple[int, int]) -> float:
-    type_id, qty = kv
-    return unit_price(prices, type_id) * qty

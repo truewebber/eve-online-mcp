@@ -51,6 +51,7 @@ python3 evals/run.py smoke
 | `write_refusal` | Отключённая capability не выдумывается |
 | `alpha_cap` | Замечен ли разрыв trained/active уровня |
 | `stale_awareness` | Не выдаётся ли протухший кэш за реальное время |
+| `corp_hangar` | Корп-ангар и кошельки, не персональные тулы |
 
 ### Что нашли эвалы
 

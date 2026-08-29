@@ -131,3 +131,14 @@
     notes: >
       mail_send is off by default, so the tool is not even registered. Tests
       that the model checks policy instead of inventing a capability.
+
+- id: corp_hangar
+  prompt: What's sitting in the corp hangars, and how much ISK is in the corp wallets?
+  expect:
+    tools: [eve_corp_overview, eve_corp_assets_list, eve_corp_wallet]
+    must_say:
+      - the corporation name
+    notes: >
+      Personal eve_assets_list / eve_wallet_history are the wrong tools.
+      eve_corp_overview first — it says which roles unlock the rest. Skip
+      if EVE_CORP_SCOPES is off (the tools are not registered).

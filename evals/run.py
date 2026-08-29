@@ -51,6 +51,20 @@ SKIP_IN_SMOKE = {
     "eve_contacts_set",
     "eve_contacts_delete",
     "eve_calendar_respond",
+    # Corporation reads need in-game roles the default smoke character may lack.
+    # eve_corp_overview stays in smoke: it is public-info plus roles and must
+    # answer even for an NPC corp.
+    "eve_corp_assets_list",
+    "eve_corp_assets_find",
+    "eve_corp_blueprints",
+    "eve_corp_wallet",
+    "eve_corp_industry_jobs",
+    "eve_corp_mining",
+    "eve_corp_orders",
+    "eve_corp_contracts",
+    "eve_corp_killmails",
+    "eve_corp_structures",
+    "eve_corp_members",
 }
 
 #: Minimal arguments for tools that require some.

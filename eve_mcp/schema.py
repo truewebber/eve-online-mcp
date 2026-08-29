@@ -36,6 +36,19 @@ DetailArg = Annotated[
     ),
 ]
 
+DivisionArg = Annotated[
+    int,
+    Field(
+        description=(
+            "Corporation wallet division, 1 through 7. Division 1 is the master "
+            "wallet. Named divisions (if this character is a Director) come back "
+            "from eve_corp_overview."
+        ),
+        ge=1,
+        le=7,
+    ),
+]
+
 ConfirmTokenArg = Annotated[
     str,
     Field(

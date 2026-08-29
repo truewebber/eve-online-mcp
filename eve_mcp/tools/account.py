@@ -6,7 +6,7 @@ from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
-from ..config import WRITE_CAPABILITIES
+from ..config import CORP_READ_SCOPES, WRITE_CAPABILITIES
 from ..context import AppContext
 from ..esi import EsiError
 from ..schema import CharacterArg
@@ -42,7 +42,8 @@ def register(mcp: MCPServer, ctx: AppContext) -> None:
         budget is left.
 
         Returns: characters[], default_character, write_mode, enabled_capabilities,
-        disabled_capabilities, capability_reference, budgets, audit_log.
+        disabled_capabilities, capability_reference, corporation_scopes_requested,
+        budgets, audit_log.
         """
         tokens = ctx.sso.store.all()
         policy = ctx.guard.status()
@@ -62,6 +63,7 @@ def register(mcp: MCPServer, ctx: AppContext) -> None:
                     "Nobody is authorized. Call eve_auth_login_url and give the user "
                     "the link to open in a browser."
                 ),
+                "corporation_scopes_requested": ctx.settings.corp_scopes,
                 **policy,
             }
         return {
@@ -74,10 +76,12 @@ def register(mcp: MCPServer, ctx: AppContext) -> None:
                     # old filter silently missed esi-mail.organize_mail.v1 and
                     # esi-calendar.respond_calendar_events.v1.
                     "write_scopes": sorted(set(t.scopes) & _ALL_WRITE_SCOPES),
+                    "corporation_scopes": sorted(set(t.scopes) & set(CORP_READ_SCOPES)),
                 }
                 for t in tokens
             ],
             "default_character": tokens[0].character_name if len(tokens) == 1 else None,
+            "corporation_scopes_requested": ctx.settings.corp_scopes,
             **policy,
         }
 
@@ -91,7 +95,8 @@ def register(mcp: MCPServer, ctx: AppContext) -> None:
         the resulting token. One-time per character; several characters can be
         authorized by repeating it.
 
-        Returns: login_url, scope_count, write_capabilities_requested, instructions.
+        Returns: login_url, scope_count, write_capabilities_requested,
+        corporation_scopes_requested, instructions.
         """
         url, state = ctx.sso.build_login()
         scopes = ctx.settings.requested_scopes()
@@ -102,6 +107,7 @@ def register(mcp: MCPServer, ctx: AppContext) -> None:
             "write_capabilities_requested": sorted(ctx.settings.write_allow)
             if ctx.settings.write_mode != "off"
             else [],
+            "corporation_scopes_requested": ctx.settings.corp_scopes,
             "instructions": (
                 "Open login_url in a browser, pick the character, approve. "
                 "The link is valid for 15 minutes and works once."
