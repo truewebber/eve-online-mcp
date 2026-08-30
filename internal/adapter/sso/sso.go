@@ -332,8 +332,7 @@ func (c *Client) tokenFromPayload(payload map[string]any, fallback *CharacterTok
 	}
 	expiresIn := 1200.0
 	if v, ok := payload["expires_in"]; ok {
-		switch t := v.(type) {
-		case float64:
+		if t, ok := v.(float64); ok {
 			expiresIn = t
 		}
 	}

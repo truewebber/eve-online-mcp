@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/truewebber/eve-online-mcp/internal/domain/j"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
@@ -238,10 +237,5 @@ func summarizeTransactions(a *session.Session, cid int, data any, stale string, 
 }
 
 func formatInt(n int) string {
-	s := strconv.Itoa(n)
-	if n >= 1000 {
-		return strings.ReplaceAll(strconv.Itoa(n), "", "")
-	}
-
-	return s
+	return strconv.Itoa(n)
 }
