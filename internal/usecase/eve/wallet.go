@@ -85,7 +85,7 @@ func summarizeJournal(data any, stale string, truncated bool, pageCap int, refTy
 	for _, e := range entries {
 		codes[j.Str(e["ref_type"])] = struct{}{}
 	}
-	var available []string
+	available := make([]string, 0, len(codes))
 	for c := range codes {
 		if c == "" {
 			c = "unknown"

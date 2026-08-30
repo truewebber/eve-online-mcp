@@ -1062,7 +1062,7 @@ func corpMiningLedger(a *session.Session, corp *character.Corporation, limit int
 		if len(list) > 5 {
 			list = list[:5]
 		}
-		var out []map[string]any
+		out := make([]map[string]any, 0, len(list))
 		for _, x := range list {
 			out = append(out, map[string]any{label: nameOr(names, x.id), "units": x.q})
 		}
