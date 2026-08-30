@@ -8,11 +8,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func Instructions(corpScopes bool) string {
-	if corpScopes {
-		return eve.Instructions + eve.CorpInstructions
-	}
-	return eve.Instructions
+func Instructions() string {
+	return eve.Instructions + eve.CorpInstructions
 }
 
 func Register(s *mcp.Server, runtime *session.Session) {

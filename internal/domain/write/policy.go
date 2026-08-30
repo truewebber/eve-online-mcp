@@ -1,5 +1,17 @@
-// Package write is the mutating-capability catalog and the confirm/budget guard.
+// Package write is the mutating-capability catalog and the confirm/mail guard.
 package write
+
+import (
+	"sort"
+	"time"
+)
+
+const (
+	// MailCap is the per-user outgoing-mail ceiling in a rolling hour.
+	MailCap = 5
+	// ConfirmTTL is how long a preview token stays valid.
+	ConfirmTTL = 300 * time.Second
+)
 
 type Capability struct {
 	Name          string
@@ -31,15 +43,13 @@ var Capabilities = map[string]Capability{
 	},
 	"mail_send": {
 		Name: "mail_send", Scopes: []string{"esi-mail.send_mail.v1"},
-		Summary: "Send in-game EVE mail to other players. Off by default.", OutwardFacing: true,
+		Summary: "Send in-game EVE mail to other players.", OutwardFacing: true,
 	},
 	"contacts": {
 		Name: "contacts", Scopes: []string{"esi-characters.write_contacts.v1"},
-		Summary: "Add, edit and delete character contacts and standings. Off by default.", OutwardFacing: true,
+		Summary: "Add, edit and delete character contacts and standings.", OutwardFacing: true,
 	},
 }
-
-var DefaultAllow = []string{"waypoint", "openwindow", "fittings", "mail_organize"}
 
 var ReadScopes = []string{
 	"esi-assets.read_assets.v1",
@@ -109,37 +119,18 @@ func CorpScopeSet() map[string]struct{} {
 	return out
 }
 
-// Options is the host write policy. Built at the composition root.
-type Options struct {
-	Mode               string
-	Allow              map[string]struct{}
-	WriteBudgetPerHour int
-	MailBudgetPerHour  int
-	ConfirmTTLSeconds  int
-	AuditFile          string
-}
-
-func (o Options) Enabled() bool {
-	return o.Mode != "off" && len(o.Allow) > 0
-}
-
-func (o Options) CapabilityEnabled(name string) bool {
-	if o.Mode == "off" {
-		return false
-	}
-	_, ok := o.Allow[name]
-	return ok
-}
-
-func (o Options) AllowedNames() []string {
-	out := make([]string, 0, len(o.Allow))
-	for name := range o.Allow {
+// CapabilityNames returns every mutating capability, sorted.
+func CapabilityNames() []string {
+	out := make([]string, 0, len(Capabilities))
+	for name := range Capabilities {
 		out = append(out, name)
 	}
+	sort.Strings(out)
 	return out
 }
 
-func (o Options) RequestedScopes(corpScopes bool) []string {
+// RequestedScopes is the full EVE SSO scope set: reads, corp reads, and every write.
+func RequestedScopes() []string {
 	seen := map[string]struct{}{}
 	var out []string
 	add := func(scopes []string) {
@@ -152,15 +143,9 @@ func (o Options) RequestedScopes(corpScopes bool) []string {
 		}
 	}
 	add(ReadScopes)
-	if corpScopes {
-		add(CorpReadScopes)
-	}
-	if o.Mode != "off" {
-		for name := range o.Allow {
-			if cap, ok := Capabilities[name]; ok {
-				add(cap.Scopes)
-			}
-		}
+	add(CorpReadScopes)
+	for _, name := range CapabilityNames() {
+		add(Capabilities[name].Scopes)
 	}
 	return out
 }

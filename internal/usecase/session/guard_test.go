@@ -33,10 +33,6 @@ func TestGuardMailCapUsesStore(t *testing.T) {
 	}
 	runtime, err := Open(Options{
 		Store: db,
-		Write: write.Options{
-			Mode: "on", Allow: map[string]struct{}{"mail_send": {}},
-			WriteBudgetPerHour: 40, MailBudgetPerHour: 5, ConfirmTTLSeconds: 300,
-		},
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -42,38 +42,24 @@ func main() {
 		log.Fatal(err)
 	}
 
-	allow, err := writeAllow(cfg)
-	if err != nil {
-		log.Fatal(err)
-	}
-	writeOpts := write.Options{
-		Mode:               cfg.WriteMode,
-		Allow:              allow,
-		WriteBudgetPerHour: cfg.WriteBudgetHour,
-		MailBudgetPerHour:  cfg.MailBudgetHour,
-		ConfirmTTLSeconds:  cfg.ConfirmTTL,
-	}
 	db, err := store.Open(context.Background(), cfg.DatabaseURL)
 	if err != nil {
 		log.Fatal(err)
 	}
 	runtime, err := session.Open(session.Options{
-		UserAgent:  cfg.UserAgent,
-		CorpScopes: cfg.CorpScopes,
-		WriteMode:  cfg.WriteMode,
-		Store:      db,
+		UserAgent: cfg.UserAgent,
+		Store:     db,
 		ESI: esi.Options{
 			UserAgent:  cfg.UserAgent,
-			CompatDate: cfg.CompatDate,
+			CompatDate: defaultCompatDate,
 		},
 		SSO: sso.Options{
 			ClientID:     cfg.ClientID,
 			ClientSecret: cfg.ClientSecret,
 			CallbackURL:  cfg.CallbackURL,
 			UserAgent:    cfg.UserAgent,
-			Scopes:       writeOpts.RequestedScopes(cfg.CorpScopes),
+			Scopes:       write.RequestedScopes(),
 		},
-		Write: writeOpts,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -85,7 +71,6 @@ func main() {
 		PublicURL:   cfg.PublicURL,
 		MCPPath:     "/mcp",
 		CallbackURL: cfg.CallbackURL,
-		WriteMode:   cfg.WriteMode,
 	}
 	oauthServer, err := oauth.Open(host, runtime, db)
 	if err != nil {
@@ -98,33 +83,10 @@ func main() {
 		InternalListen: cfg.InternalListen,
 		MCPPath:        host.MCPPath,
 		Version:        version,
-		CorpScopes:     cfg.CorpScopes,
 	}); err != nil {
 		log.Println(err)
 		os.Exit(1)
 	}
-}
-
-func writeAllow(cfg config) (map[string]struct{}, error) {
-	list := cfg.WriteAllowList
-	if len(list) == 1 && list[0] == "all" {
-		out := map[string]struct{}{}
-		for name := range write.Capabilities {
-			out[name] = struct{}{}
-		}
-		return out, nil
-	}
-	out := map[string]struct{}{}
-	if len(list) == 1 && (list[0] == "none" || list[0] == "") {
-		return out, nil
-	}
-	for _, name := range list {
-		if _, ok := write.Capabilities[name]; !ok {
-			return nil, fmt.Errorf("unknown WRITE_ALLOW entry %q", name)
-		}
-		out[name] = struct{}{}
-	}
-	return out, nil
 }
 
 const usage = `eve-mcp — MCP server that exposes EVE Online accounts to LLM clients

@@ -45,7 +45,6 @@ type Host struct {
 	PublicURL   string
 	MCPPath     string
 	CallbackURL string
-	WriteMode   string
 }
 
 func (h Host) BaseURL() string {

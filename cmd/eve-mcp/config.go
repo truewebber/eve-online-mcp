@@ -18,9 +18,8 @@ const (
 )
 
 var (
-	errWriteMode = errors.New("WRITE_MODE must be off, confirm or on")
-	errListen    = errors.New("LISTEN must be host:port")
-	errDatabase  = errors.New("DATABASE_URL is required (Postgres DSN; run make postgres)")
+	errListen   = errors.New("LISTEN must be host:port")
+	errDatabase = errors.New("DATABASE_URL is required (Postgres DSN; run make postgres)")
 )
 
 // config is the process config for cmd/eve-mcp only.
@@ -37,32 +36,16 @@ type config struct {
 	PublicURL      string `env:"PUBLIC_URL"`
 	DatabaseURL    string `env:"DATABASE_URL"`
 
-	WriteMode       string `env:"WRITE_MODE"`
-	WriteAllow      string `env:"WRITE_ALLOW"`
-	WriteBudgetHour int    `env:"WRITE_BUDGET_PER_HOUR"`
-	MailBudgetHour  int    `env:"MAIL_BUDGET_PER_HOUR"`
-	ConfirmTTL      int    `env:"CONFIRM_TTL"`
-	CorpScopes      bool   `env:"CORP_SCOPES"`
-	CompatDate      string `env:"COMPAT_DATE"`
-
 	// Derived, not env.
-	CallbackURL    string
-	UserAgent      string
-	WriteAllowList []string
+	CallbackURL string
+	UserAgent   string
 }
 
 // loadConfig reads ./.env if present (else the OS environment), then validates.
 func loadConfig() (config, error) {
 	c := config{
-		Listen:          "127.0.0.1:8765",
-		InternalListen:  "127.0.0.1:8766",
-		WriteMode:       "confirm",
-		WriteAllow:      "waypoint,openwindow,fittings,mail_organize",
-		WriteBudgetHour: 40,
-		MailBudgetHour:  5,
-		ConfirmTTL:      300,
-		CorpScopes:      true,
-		CompatDate:      defaultCompatDate,
+		Listen:         "127.0.0.1:8765",
+		InternalListen: "127.0.0.1:8766",
 	}
 
 	if _, err := os.Stat(dotEnvFile); err == nil {
@@ -89,9 +72,6 @@ func (c *config) validate() error {
 	if c.DatabaseURL == "" {
 		return errDatabase
 	}
-	if c.WriteMode != "off" && c.WriteMode != "confirm" && c.WriteMode != "on" {
-		return errWriteMode
-	}
 	_, port, err := net.SplitHostPort(c.Listen)
 	if err != nil {
 		return fmt.Errorf("%w: %v", errListen, err)
@@ -111,18 +91,5 @@ func (c *config) validate() error {
 	if c.Contact != "" {
 		c.UserAgent += " " + c.Contact
 	}
-
-	c.WriteAllowList = splitCSV(c.WriteAllow)
 	return nil
-}
-
-func splitCSV(raw string) []string {
-	var out []string
-	for _, part := range strings.Split(raw, ",") {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			out = append(out, part)
-		}
-	}
-	return out
 }

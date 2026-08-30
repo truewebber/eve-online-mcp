@@ -8,22 +8,16 @@ import (
 	"time"
 )
 
-func testGuard(t *testing.T, mode string) (*Guard, *memPersist) {
+func testGuard(t *testing.T) (*Guard, *memPersist) {
 	t.Helper()
 	mem := newMemPersist()
-	g := NewGuard(Options{
-		Mode:               mode,
-		Allow:              map[string]struct{}{"waypoint": {}, "mail_send": {}},
-		WriteBudgetPerHour: 40,
-		MailBudgetPerHour:  5,
-		ConfirmTTLSeconds:  300,
-	}, mem, "user-1")
+	g := NewGuard(mem, "user-1")
 	return g, mem
 }
 
 func TestAuthorizePreviewAndConfirm(t *testing.T) {
 	ctx := context.Background()
-	g, _ := testGuard(t, "confirm")
+	g, _ := testGuard(t)
 	args := map[string]any{"destination": "Jita"}
 	preview := map[string]any{"will_set": "Jita"}
 	scopes := Capabilities["waypoint"].Scopes
@@ -50,7 +44,7 @@ func TestAuthorizePreviewAndConfirm(t *testing.T) {
 
 func TestConfirmToolMismatchKeepsToken(t *testing.T) {
 	ctx := context.Background()
-	g, _ := testGuard(t, "confirm")
+	g, _ := testGuard(t)
 	args := map[string]any{"destination": "Jita"}
 	scopes := append([]string{}, Capabilities["waypoint"].Scopes...)
 	scopes = append(scopes, Capabilities["mail_send"].Scopes...)
@@ -72,7 +66,7 @@ func TestConfirmToolMismatchKeepsToken(t *testing.T) {
 
 func TestConfirmDigestMismatchDiscards(t *testing.T) {
 	ctx := context.Background()
-	g, _ := testGuard(t, "confirm")
+	g, _ := testGuard(t)
 	scopes := Capabilities["waypoint"].Scopes
 	out, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", map[string]any{"d": "Jita"}, nil, "", scopes)
 	if err != nil {
@@ -92,7 +86,7 @@ func TestConfirmDigestMismatchDiscards(t *testing.T) {
 
 func TestConfirmExpiry(t *testing.T) {
 	ctx := context.Background()
-	g, mem := testGuard(t, "confirm")
+	g, mem := testGuard(t)
 	args := map[string]any{"d": "Jita"}
 	if err := mem.PutConfirm(ctx, Confirm{
 		Token: "stale", UserID: "user-1", Tool: "eve_ui_set_waypoint",
@@ -109,12 +103,9 @@ func TestConfirmExpiry(t *testing.T) {
 
 func TestSixthMailIsBlocked(t *testing.T) {
 	ctx := context.Background()
-	g, _ := testGuard(t, "on")
+	g, _ := testGuard(t)
 	scopes := Capabilities["mail_send"].Scopes
 	for i := 0; i < 5; i++ {
-		if _, err := g.Authorize(ctx, "eve_mail_send", "mail_send", nil, nil, "", scopes); err != nil {
-			t.Fatal(err)
-		}
 		g.Record(ctx, "eve_mail_send", "mail_send", nil, "ok")
 	}
 	_, err := g.Authorize(ctx, "eve_mail_send", "mail_send", nil, nil, "", scopes)
@@ -124,5 +115,59 @@ func TestSixthMailIsBlocked(t *testing.T) {
 	}
 	if !strings.Contains(blocked.Msg, "rolling hour") {
 		t.Fatalf("want actionable message, got %q", blocked.Msg)
+	}
+}
+
+func TestCheckCapabilityUnknownOnly(t *testing.T) {
+	g, _ := testGuard(t)
+	if err := g.CheckCapability("waypoint"); err != nil {
+		t.Fatalf("known capability: %v", err)
+	}
+	err := g.CheckCapability("teleport")
+	var blocked Blocked
+	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "Unknown") {
+		t.Fatalf("unknown %v", err)
+	}
+}
+
+func TestStatusHasNoAuditOrBudget(t *testing.T) {
+	ctx := context.Background()
+	g, _ := testGuard(t)
+	st := g.Status(ctx)
+	for _, key := range []string{"write_mode", "disabled_capabilities", "write_budget_per_hour", "writes_last_hour"} {
+		if _, ok := st[key]; ok {
+			t.Fatalf("status still has %s: %+v", key, st)
+		}
+	}
+	if st["mail_cap_per_hour"] != MailCap {
+		t.Fatalf("mail cap %+v", st["mail_cap_per_hour"])
+	}
+	caps, _ := st["capabilities"].([]string)
+	if len(caps) != len(Capabilities) {
+		t.Fatalf("capabilities %v", caps)
+	}
+}
+
+func TestRequestedScopesIncludesCorpAndWrites(t *testing.T) {
+	scopes := RequestedScopes()
+	want := map[string]struct{}{}
+	for _, s := range ReadScopes {
+		want[s] = struct{}{}
+	}
+	for _, s := range CorpReadScopes {
+		want[s] = struct{}{}
+	}
+	for _, cap := range Capabilities {
+		for _, s := range cap.Scopes {
+			want[s] = struct{}{}
+		}
+	}
+	if len(scopes) != len(want) {
+		t.Fatalf("got %d scopes, want %d", len(scopes), len(want))
+	}
+	for _, s := range scopes {
+		if _, ok := want[s]; !ok {
+			t.Fatalf("unexpected scope %s", s)
+		}
 	}
 }

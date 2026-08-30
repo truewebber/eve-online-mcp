@@ -16,7 +16,6 @@ type ListenOptions struct {
 	InternalListen string
 	MCPPath        string
 	Version        string
-	CorpScopes     bool
 }
 
 // ListenAndServe runs two HTTP servers: the public one (MCP + OAuth + pages)
@@ -32,7 +31,7 @@ func ListenAndServe(h *API, runtime *session.Session, opts ListenOptions) error 
 
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name: "eve-online", Title: "EVE Online", Version: opts.Version,
-	}, &mcp.ServerOptions{Instructions: svcmcp.Instructions(opts.CorpScopes)})
+	}, &mcp.ServerOptions{Instructions: svcmcp.Instructions()})
 	svcmcp.Register(mcpServer, runtime)
 	stream := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return mcpServer
@@ -54,7 +53,7 @@ func ListenAndServe(h *API, runtime *session.Session, opts ListenOptions) error 
 	go func() { errs <- http.ListenAndServe(opts.InternalListen, internalMux()) }()
 
 	base := h.Host.BaseURL()
-	log.Printf("write mode: %s", h.Host.WriteMode)
+	log.Printf("writes: confirm, mail cap 5/hour")
 	log.Printf("MCP endpoint: %s%s (OAuth — clients show Authentication required)", base, path)
 	log.Printf("EVE callback must be exactly: %s", h.Host.CallbackURL)
 	log.Printf("internal endpoint (healthz): http://%s", opts.InternalListen)

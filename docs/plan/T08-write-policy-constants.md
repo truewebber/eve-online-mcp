@@ -1,6 +1,6 @@
 # T08 — Always-on writes; drop budget + audit
 
-- Status: `todo`
+- Status: `done`
 - Size: M
 - Depends on: T07
 - SPEC: §2 (constants), §4, §12.1, §12.2
@@ -73,13 +73,13 @@ only (already there). Mail cap `5`, confirm TTL `300` as constants in
 
 ## Acceptance
 
-- [ ] Those env names are gone from `config.go` and `.env.example`
-- [ ] All mutating tools register even if someone has an old `.env`
+- [x] Those env names are gone from `config.go` and `.env.example`
+- [x] All mutating tools register even if someone has an old `.env`
       with `WRITE_ALLOW`
-- [ ] `eve_auth_status` description in TOOLS.md matches the new Returns
-- [ ] No `audit_log` in tool results
-- [ ] Confirm-without-token still previews; mail cap still 5
-- [ ] `go test ./...` and `go run ./evals lint` (with token) pass
+- [x] `eve_auth_status` description in TOOLS.md matches the new Returns
+- [x] No `audit_log` in tool results
+- [x] Confirm-without-token still previews; mail cap still 5
+- [x] `go test ./...` and `go run ./evals lint` (with token) pass
 
 ## Verify
 

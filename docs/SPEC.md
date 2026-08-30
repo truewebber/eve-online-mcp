@@ -429,21 +429,13 @@ content is ignored; players re-authenticate once.
 
 ## 12. Deltas vs current code (implementation checklist)
 
-0. **PostgreSQL storage** (§8): new `adapter/store` (pgx + embedded
-   migrations) replacing SQLite and all file-based state (`tokens.json`,
-   `user.toml`, `oauth/hmac.key`, `oauth/clients.json`); handshake state,
-   auth codes and confirm tokens move from pod memory to Postgres;
-   per-character `FOR UPDATE` around EVE token refresh; drop
-   `modernc.org/sqlite` and `pelletier/go-toml`, add `jackc/pgx/v5`;
-   `DATABASE_URL` env replaces `DATA_DIR`.
-1. Remove envs `WRITE_MODE`, `WRITE_ALLOW`, `WRITE_BUDGET_PER_HOUR`,
-   `MAIL_BUDGET_PER_HOUR`, `CONFIRM_TTL`, `CORP_SCOPES`, `COMPAT_DATE`
-   → constants per §2; always register all tools (incl. corp + all
-   writes); always request the full scope set at EVE login.
-2. Drop the general write budget **and the audit log** from
-   `domain/write.Guard` (no `audit.jsonl`, no `audit_log` in tool
-   output); keep the mail cap (5/h, constant) and the confirm cycle
-   (300 s, constant).
+0. **PostgreSQL storage** (§8): **done (T03–T07).** `adapter/store` is the
+   only durable store; `DATABASE_URL` is required at boot.
+1. **Host write policy** (§2): **done (T08).** Write/corp tools always
+   registered; login always requests the full scope set; confirm 300 s
+   and mail cap 5/h are constants, not env.
+2. **Write budget and audit log:** **done (T08).** Guard is confirm +
+   mail cap only.
 3. Implement the per-user ESI token bucket (§5.3) in `adapter/esi`,
    fed by user identity via the per-user client; new error kind
    `UserRateLimited` + mapping in `usecase/eve` and a line in the server

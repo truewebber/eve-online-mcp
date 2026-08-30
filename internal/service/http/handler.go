@@ -29,10 +29,9 @@ func (h *API) GetIndex(w http.ResponseWriter, r *http.Request) {
 			<p>Add this URL in Cursor or Claude Code. The client will show <b>Authentication required</b> and send you to the EVE login.</p>
 			<p>MCP endpoint: <code>%s</code></p>
 			<p class=dim>EVE callback must be exactly <code>%s</code>.</p>
-			<p class=dim>Writes: <code>%s</code></p>`,
+			<p class=dim>Writes: confirm (mail cap 5/hour)</p>`,
 		html.EscapeString(h.OAuth.ResourceURL()),
-		html.EscapeString(h.Host.CallbackURL),
-		html.EscapeString(h.Host.WriteMode))
+		html.EscapeString(h.Host.CallbackURL))
 	page(w, "EVE MCP", body)
 }
 

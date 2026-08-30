@@ -31,7 +31,7 @@ func registerAccount(s *mcp.Server, a *session.Session) {
 
 	addTool(s, &mcp.Tool{
 		Name:        "eve_auth_status",
-		Description: "Who is authorized here, and which in-game changes this server permits.\n\nCall this before anything else when you do not know the setup, and always before promising the user an in-game change. It answers three questions at once: which characters you can query, which mutating capabilities the operator enabled, and how much of the hourly write budget is left.\n\nReturns: characters[], default_character, write_mode, enabled_capabilities, disabled_capabilities, capability_reference, corporation_scopes_requested, budgets, audit_log.",
+		Description: "Who is authorized here, and which in-game changes the tools can make.\n\nCall this before anything else when you do not know the setup, and always before promising the user an in-game change. It lists authorized characters, every mutating capability (all of them are registered), remaining mail sends this hour, and how confirmation works.\n\nReturns: characters[], default_character, capabilities, capability_reference, outward_facing_capabilities, mails_last_hour, mails_remaining_this_hour, mail_cap_per_hour, pending_confirmations, confirm_ttl_seconds, confirm.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
 		return Call(ctx, func(a *session.Session) (any, error) {
 			tokens := a.SSO.Store.All()
@@ -44,19 +44,12 @@ func registerAccount(s *mcp.Server, a *session.Session) {
 			}
 			sort.Strings(outward)
 			policy["outward_facing_capabilities"] = outward
-			meanings := map[string]string{
-				"off":     "no writes at all; write scopes are never even requested at login",
-				"confirm": "each write returns a preview plus a one-time token; a second call executes it",
-				"on":      "writes execute immediately (still budgeted and audited)",
-			}
-			policy["write_mode_meaning"] = meanings[a.Opts.WriteMode]
 			writes := write.AllWriteScopeSet()
 			corps := write.CorpScopeSet()
 			if len(tokens) == 0 {
 				return merge(map[string]any{
-					"characters":                   []any{},
-					"next_step":                    "Nobody is authorized. Call eve_auth_login_url and give the user the link to open in a browser.",
-					"corporation_scopes_requested": a.Opts.CorpScopes,
+					"characters": []any{},
+					"next_step":  "Nobody is authorized. Call eve_auth_login_url and give the user the link to open in a browser.",
 				}, policy), nil
 			}
 			var chars []map[string]any
@@ -74,30 +67,24 @@ func registerAccount(s *mcp.Server, a *session.Session) {
 			}
 			return merge(map[string]any{
 				"characters": chars, "default_character": def,
-				"corporation_scopes_requested": a.Opts.CorpScopes,
 			}, policy), nil
 		})
 	})
 
 	addTool(s, &mcp.Tool{
 		Name:        "eve_auth_login_url",
-		Description: "Generate an EVE SSO link the user must open to authorize a character.\n\nYou cannot complete this yourself — hand the URL to the user. They log in with their EVE account, approve the scope list, and the server stores the resulting token. One-time per character; several characters can be authorized by repeating it.\n\nReturns: login_url, scope_count, write_capabilities_requested, corporation_scopes_requested, instructions.",
+		Description: "Generate an EVE SSO link the user must open to authorize a character.\n\nYou cannot complete this yourself — hand the URL to the user. They log in with their EVE account, approve the scope list, and the server stores the resulting token. One-time per character; several characters can be authorized by repeating it. The link always requests the full read, corporation, and write scope set.\n\nReturns: login_url, scope_count, write_capabilities_requested, instructions.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
 		return Call(ctx, func(a *session.Session) (any, error) {
 			url, state, err := a.StartAltLogin(ctx)
 			if err != nil {
 				return nil, err
 			}
-			scopes := a.Opts.Write.RequestedScopes(a.Opts.CorpScopes)
-			var writes []string
-			if a.Opts.WriteMode != "off" {
-				writes = a.Opts.Write.AllowedNames()
-				sort.Strings(writes)
-			}
+			scopes := write.RequestedScopes()
+			writes := write.CapabilityNames()
 			return map[string]any{
 				"login_url": url, "state": state, "scope_count": len(scopes),
 				"write_capabilities_requested": writes,
-				"corporation_scopes_requested": a.Opts.CorpScopes,
 				"instructions":                 "Open login_url in a browser, pick the character, approve. The link is valid for 15 minutes and works once.",
 			}, nil
 		})

@@ -59,7 +59,7 @@ Key tasks:
 |---|---|
 | `misspelled` | A typo in a name — the model searches instead of giving up |
 | `write_consent` | Preview shown and confirmation asked **before** the action |
-| `write_refusal` | A disabled capability is not invented |
+| `write_mail_confirm` | Outward mail still goes through the confirm cycle |
 | `alpha_cap` | The trained/active level gap is noticed |
 | `stale_awareness` | Stale cache is not presented as real time |
 | `corp_hangar` | Corp hangar and wallets, not the personal tools |

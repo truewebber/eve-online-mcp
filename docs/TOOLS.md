@@ -2,23 +2,15 @@
 
 **This document is normative.** The implementation must match it: tool
 names, descriptions and parameter schemas below are the contract the
-model sees. `evals/run.py lint` checks a running server against the
-tool rules in SPEC §4; changing a tool means changing this file in the
-same commit. ESI endpoints behind each tool are documented in
+model sees. `go run ./evals lint` checks a running server against the
+tool rules in SPEC §4; changing a tool means changing this file in
+the same commit. ESI endpoints behind each tool are documented in
 [ESI.md](ESI.md).
 
 Conventions (SPEC §4): every response carries `data_age`; list tools
 default to `response_format="concise"` and a small `limit`; mutations
 follow the confirm cycle (preview + `confirm_token`); errors are
 actionable sentences with a `kind` field.
-
-> **Pending SPEC §12 alignment:** a few descriptions below still mention
-> operator-enabled capabilities, the hourly write budget and `audit_log`
-> (notably `eve_auth_status`). Those concepts are removed by SPEC §12
-> (all capabilities always on, no general write budget, no audit log —
-> only the per-user mail cap and request allowance remain). The §12
-> implementation must update the affected descriptions here in the same
-> commit.
 
 51 tools.
 
@@ -41,11 +33,11 @@ _No parameters._
 
 *Source: `internal/usecase/eve/account.go`*
 
-Who is authorized here, and which in-game changes this server permits.
+Who is authorized here, and which in-game changes the tools can make.
 
-Call this before anything else when you do not know the setup, and always before promising the user an in-game change. It answers three questions at once: which characters you can query, which mutating capabilities the operator enabled, and how much of the hourly write budget is left.
+Call this before anything else when you do not know the setup, and always before promising the user an in-game change. It lists authorized characters, every mutating capability (all of them are registered), remaining mail sends this hour, and how confirmation works.
 
-Returns: characters[], default_character, write_mode, enabled_capabilities, disabled_capabilities, capability_reference, corporation_scopes_requested, budgets, audit_log.
+Returns: characters[], default_character, capabilities, capability_reference, outward_facing_capabilities, mails_last_hour, mails_remaining_this_hour, mail_cap_per_hour, pending_confirmations, confirm_ttl_seconds, confirm.
 
 _No parameters._
 
@@ -55,9 +47,9 @@ _No parameters._
 
 Generate an EVE SSO link the user must open to authorize a character.
 
-You cannot complete this yourself — hand the URL to the user. They log in with their EVE account, approve the scope list, and the server stores the resulting token. One-time per character; several characters can be authorized by repeating it.
+You cannot complete this yourself — hand the URL to the user. They log in with their EVE account, approve the scope list, and the server stores the resulting token. One-time per character; several characters can be authorized by repeating it. The link always requests the full read, corporation, and write scope set.
 
-Returns: login_url, scope_count, write_capabilities_requested, corporation_scopes_requested, instructions.
+Returns: login_url, scope_count, write_capabilities_requested, instructions.
 
 _No parameters._
 
@@ -764,7 +756,9 @@ A negative standing colours that player red in the overview. Treat it as a visib
 
 *Source: `internal/usecase/eve/writes.go`*
 
-Remove contacts from the character's contact list. Removing a contact drops any standing set on them.
+Remove contacts from this character's contact list.
+
+Deleting a contact also clears any standing set on them. That is a visible social change, so confirm the names before the second call. It does not block or report anyone.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -776,7 +770,9 @@ Remove contacts from the character's contact list. Removing a contact drops any 
 
 *Source: `internal/usecase/eve/writes.go`*
 
-Respond to a calendar event invitation. The organiser and other invitees see the answer.
+Respond to a calendar event invitation on this character.
+
+The organiser and other invitees see accepted, declined or tentative in-game. This only RSVPs; it does not create, edit or delete events. Confirm before sending an answer the player will have to live with.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|

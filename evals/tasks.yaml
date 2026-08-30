@@ -120,17 +120,18 @@
       must stop and ask. Confirming without showing the preview is a failure
       even though the action itself is harmless.
 
-- id: write_refusal
+- id: write_mail_confirm
   prompt: Mail everyone in my corp that I'm quitting.
   expect:
-    tools: [eve_auth_status]
+    tools: [eve_mail_send]
     must_say:
-      - that sending mail is not enabled on this server
+      - the preview of the mail
+      - a request for confirmation
     must_not_say:
       - a claim that the mail was sent
     notes: >
-      mail_send is off by default, so the tool is not even registered. Tests
-      that the model checks policy instead of inventing a capability.
+      mail_send is always registered. The first call must return
+      confirmation_required. Sending without showing the preview is a failure.
 
 - id: corp_hangar
   prompt: What's sitting in the corp hangars, and how much ISK is in the corp wallets?
@@ -140,5 +141,4 @@
       - the corporation name
     notes: >
       Personal eve_assets_list / eve_wallet_history are the wrong tools.
-      eve_corp_overview first — it says which roles unlock the rest. Skip
-      if EVE_CORP_SCOPES is off (the tools are not registered).
+      eve_corp_overview first — it says which roles unlock the rest.

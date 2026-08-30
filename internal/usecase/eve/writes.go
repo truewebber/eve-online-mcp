@@ -21,27 +21,13 @@ var recipientKeys = map[string]string{
 }
 
 func registerWrites(s *mcp.Server, a *session.Session) {
-	if a.Opts.Write.CapabilityEnabled("waypoint") {
-		registerWaypoint(s, a)
-	}
-	if a.Opts.Write.CapabilityEnabled("openwindow") {
-		registerOpenWindow(s, a)
-	}
-	if a.Opts.Write.CapabilityEnabled("fittings") {
-		registerWriteFittings(s, a)
-	}
-	if a.Opts.Write.CapabilityEnabled("mail_organize") {
-		registerMailOrganize(s, a)
-	}
-	if a.Opts.Write.CapabilityEnabled("mail_send") {
-		registerMailSend(s, a)
-	}
-	if a.Opts.Write.CapabilityEnabled("contacts") {
-		registerContacts(s, a)
-	}
-	if a.Opts.Write.CapabilityEnabled("calendar") {
-		registerCalendar(s, a)
-	}
+	registerWaypoint(s, a)
+	registerOpenWindow(s, a)
+	registerWriteFittings(s, a)
+	registerMailOrganize(s, a)
+	registerMailSend(s, a)
+	registerContacts(s, a)
+	registerCalendar(s, a)
 }
 
 func registerWaypoint(s *mcp.Server, a *session.Session) {
@@ -625,7 +611,6 @@ func registerContacts(s *mcp.Server, a *session.Session) {
 					if e, ok := err.(esi.Error); ok {
 						status = e.Status
 					}
-					a.Guard.Audit(map[string]any{"event": "partial_write", "tool": "eve_contacts_set", "capability": "contacts", "completed": map[string]any{"updated": appliedU, "added": appliedA}, "error": err.Error()})
 					return map[string]any{
 						"error": fmt.Sprintf("Partially applied. Standing %v reached %d existing and %d new contact(s) before this failed: %v. Call eve_contacts_set again with the same arguments.", in.Standing, len(appliedU), len(appliedA), err),
 						"kind":  "EsiError", "status": status,
@@ -643,7 +628,7 @@ func registerContacts(s *mcp.Server, a *session.Session) {
 	}
 	addTool(s, &mcp.Tool{
 		Name:        "eve_contacts_delete",
-		Description: "Remove contacts from the character's contact list. Removing a contact drops any standing set on them.",
+		Description: "Remove contacts from this character's contact list.\n\nDeleting a contact also clears any standing set on them. That is a visible social change, so confirm the names before the second call. It does not block or report anyone.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in delIn) (*mcp.CallToolResult, any, error) {
 		return Call(ctx, func(a *session.Session) (any, error) {
 			token, err := a.ResolveCharacter(in.Character)
@@ -690,7 +675,7 @@ func registerCalendar(s *mcp.Server, a *session.Session) {
 	}
 	addTool(s, &mcp.Tool{
 		Name:        "eve_calendar_respond",
-		Description: "Respond to a calendar event invitation. The organiser and other invitees see the answer.",
+		Description: "Respond to a calendar event invitation on this character.\n\nThe organiser and other invitees see accepted, declined or tentative in-game. This only RSVPs; it does not create, edit or delete events. Confirm before sending an answer the player will have to live with.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in in) (*mcp.CallToolResult, any, error) {
 		return Call(ctx, func(a *session.Session) (any, error) {
 			token, err := a.ResolveCharacter(in.Character)

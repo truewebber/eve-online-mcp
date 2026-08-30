@@ -24,11 +24,8 @@ type Options struct {
 	UserAgent         string
 	RequestTimeoutSec float64
 	MaxConcurrency    int
-	CorpScopes        bool
-	WriteMode         string
 	ESI               esi.Options
 	SSO               sso.Options
-	Write             write.Options
 	Store             *store.Store
 }
 
@@ -73,7 +70,7 @@ func Open(opts Options) (*Session, error) {
 		SSO:      ssoClient,
 		ESI:      esiClient,
 		Resolver: names.New(esiClient, opts.Store),
-		Guard:    write.NewGuard(opts.Write, persist, ""),
+		Guard:    write.NewGuard(persist, ""),
 	}, nil
 }
 
@@ -112,7 +109,7 @@ func (s *Session) ForUser(userID string) *Session {
 		SSO:      ssoClient,
 		ESI:      esiClient,
 		Resolver: names.New(esiClient, s.Store),
-		Guard:    write.NewGuard(opts.Write, guardPersist{db: s.Store}, userID),
+		Guard:    write.NewGuard(guardPersist{db: s.Store}, userID),
 	}
 }
 
@@ -194,7 +191,7 @@ func (s *Session) RequireGranted(characterName string, scopes []string, scope, w
 	extra := ""
 	for _, sc := range write.CorpReadScopes {
 		if sc == scope {
-			extra = " That is a corporation scope: set corp_scopes=true in the config, add the matching permissions on the EVE developer application, restart, and re-authorize this character with eve_auth_login_url."
+			extra = " That is a corporation scope: add the matching permissions on the EVE developer application and re-authorize this character with eve_auth_login_url."
 			break
 		}
 	}
