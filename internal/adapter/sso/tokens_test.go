@@ -5,7 +5,8 @@ import "testing"
 func TestMemoryTokenStore(t *testing.T) {
 	ts := newTokenStore(nil, "")
 	tok := &CharacterToken{CharacterID: 1, CharacterName: "A", RefreshToken: "rt"}
-	if err := ts.Upsert(tok); err != nil {
+	err := ts.Upsert(tok)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if ts.Get(1) == nil || ts.Get(1).RefreshToken != "rt" {

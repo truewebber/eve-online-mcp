@@ -39,7 +39,7 @@ func TestGuardMailCapUsesStore(t *testing.T) {
 	}
 	sess := runtime.ForUser("nobody")
 	scopes := write.Capabilities["mail_send"].Scopes
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		if _, err := sess.Guard.Authorize(ctx, "eve_mail_send", "mail_send", nil, nil, "", scopes); err != nil {
 			t.Fatal(err)
 		}

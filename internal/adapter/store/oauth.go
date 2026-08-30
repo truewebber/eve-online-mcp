@@ -21,6 +21,7 @@ func (s *Store) PutClient(ctx context.Context, c Client) error {
 		VALUES ($1, $2, $3)
 		ON CONFLICT (client_id) DO UPDATE SET redirect_uris = EXCLUDED.redirect_uris`,
 		c.ID, c.RedirectURIs, c.CreatedAt)
+
 	return err
 }
 
@@ -35,6 +36,7 @@ func (s *Store) GetClient(ctx context.Context, clientID string) (*Client, bool, 
 	if err != nil {
 		return nil, false, err
 	}
+
 	return &c, true, nil
 }
 
@@ -66,6 +68,7 @@ func (s *Store) PutLoginState(ctx context.Context, st LoginState) error {
 			created_at = EXCLUDED.created_at`,
 		st.State, st.PKCEVerifier, st.Scopes, string(st.Kind), userID,
 		st.MCPClientID, st.RedirectURI, st.MCPState, st.CodeChallenge, st.CreatedAt)
+
 	return err
 }
 
@@ -82,13 +85,16 @@ func (s *Store) GetLoginState(ctx context.Context, state string) (*LoginState, b
 	}
 	if time.Since(st.CreatedAt) > LoginStateTTL {
 		_, _ = s.pool.Exec(ctx, `DELETE FROM login_states WHERE state = $1`, state)
+
 		return nil, false, nil
 	}
+
 	return st, true, nil
 }
 
 func (s *Store) DeleteLoginState(ctx context.Context, state string) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM login_states WHERE state = $1`, state)
+
 	return err
 }
 
@@ -108,6 +114,7 @@ func (s *Store) TakeLoginState(ctx context.Context, state string) (*LoginState, 
 	if time.Since(st.CreatedAt) > LoginStateTTL {
 		return nil, false, nil
 	}
+
 	return st, true, nil
 }
 
@@ -116,6 +123,7 @@ func (s *Store) PutAuthCode(ctx context.Context, c AuthCode) error {
 		INSERT INTO auth_codes (code, user_id, mcp_client_id, redirect_uri, code_challenge, expires_at)
 		VALUES ($1, $2, $3, $4, $5, $6)`,
 		c.Code, c.UserID, c.MCPClientID, c.RedirectURI, c.CodeChallenge, c.ExpiresAt)
+
 	return err
 }
 
@@ -134,6 +142,7 @@ func (s *Store) TakeAuthCode(ctx context.Context, code string) (*AuthCode, bool,
 	if time.Now().After(c.ExpiresAt) {
 		return nil, false, nil
 	}
+
 	return &c, true, nil
 }
 
@@ -150,6 +159,7 @@ func (s *Store) GetOrCreateSecret(ctx context.Context, name string) ([]byte, err
 	}
 	var out []byte
 	err = s.pool.QueryRow(ctx, `SELECT value FROM app_secrets WHERE name = $1`, name).Scan(&out)
+
 	return out, err
 }
 
@@ -171,5 +181,6 @@ func scanLogin(row characterScanner) (*LoginState, error) {
 	if st.Scopes == nil {
 		st.Scopes = []string{}
 	}
+
 	return &st, nil
 }

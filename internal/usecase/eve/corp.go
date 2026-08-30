@@ -76,6 +76,7 @@ func registerCorp(s *mcp.Server, a *session.Session) {
 			if corp.IsNPC() {
 				out["note"] = "NPC corporations have no hangars, wallets or jobs on ESI. The other eve_corp_* tools will refuse this character."
 				out["available_tools"] = []string{}
+
 				return keepEmpty(out, "roles", "available_tools"), nil
 			}
 			divs := corpDivisions(a, corp)
@@ -123,16 +124,17 @@ func registerCorp(s *mcp.Server, a *session.Session) {
 			} else if len(j.Slice(out["available_tools"])) <= 1 {
 				out["next_step"] = "This character has no corp roles that ESI honours. Someone with Director / Accountant / Factory_Manager / Station_Manager granted everywhere has to authorize instead."
 			}
+
 			return keepEmpty(out, "roles", "available_tools"), nil
 		})
 	})
 
 	type assetsIn struct {
-		Character      string  `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Location       string  `json:"location,omitempty" jsonschema:"Case-insensitive substring of a station or structure name."`
-		MinValue       float64 `json:"min_value,omitempty" jsonschema:"Hide locations holding less than this many ISK.,minimum=0"`
-		Limit          int     `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
-		Items          int     `json:"items,omitempty" jsonschema:"Maximum items per location in detailed mode.,minimum=1,maximum=200"`
+		Character      string  `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Location       string  `json:"location,omitempty"        jsonschema:"Case-insensitive substring of a station or structure name."`
+		MinValue       float64 `json:"min_value,omitempty"       jsonschema:"Hide locations holding less than this many ISK.,minimum=0"`
+		Limit          int     `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Items          int     `json:"items,omitempty"           jsonschema:"Maximum items per location in detailed mode.,minimum=1,maximum=200"`
 		ResponseFormat string  `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
@@ -235,14 +237,15 @@ func registerCorp(s *mcp.Server, a *session.Session) {
 			if len(divs["hangar"]) > 0 {
 				out["hangar_names"] = divs["hangar"]
 			}
+
 			return out, nil
 		})
 	})
 
 	type findIn struct {
-		Name           string `json:"name" jsonschema:"Case-insensitive substring of the item type name."`
-		Character      string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Limit          int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Name           string `json:"name"                      jsonschema:"Case-insensitive substring of the item type name."`
+		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 		ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
@@ -322,13 +325,14 @@ func registerCorp(s *mcp.Server, a *session.Session) {
 			if result.Truncated {
 				out["totals_caveat"] = fmt.Sprintf("Search covered the first %d stacks only (80-page cap).", len(items))
 			}
+
 			return out, nil
 		})
 	})
 
 	type bpIn struct {
-		Character      string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Limit          int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 		ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
@@ -379,9 +383,11 @@ func registerCorp(s *mcp.Server, a *session.Session) {
 				if j.Str(rows[i]["kind"]) != j.Str(rows[k]["kind"]) {
 					return j.Str(rows[i]["kind"]) == "original"
 				}
+
 				return j.Int(rows[i]["material_efficiency"]) > j.Int(rows[k]["material_efficiency"])
 			})
 			visible, meta := page(rows, limitOr(in.Limit, 25), "")
+
 			return merge(who(corp), merge(map[string]any{
 				"originals": orig, "copies": copies, "data_age": result.StaleNote(),
 				"blueprints": project(visible, []string{"blueprint", "kind", "material_efficiency", "time_efficiency", "runs_left", "hangar"}, concise(in.ResponseFormat)),
@@ -390,11 +396,11 @@ func registerCorp(s *mcp.Server, a *session.Session) {
 	})
 
 	type walletIn struct {
-		Character      string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Kind           string `json:"kind,omitempty" jsonschema:"balances (default), journal, transactions, or both."`
-		Division       int    `json:"division,omitempty" jsonschema:"Corporation wallet division, 1 through 7. Division 1 is the master wallet. Named divisions (if this character is a Director) come back from eve_corp_overview."`
-		RefType        string `json:"ref_type,omitempty" jsonschema:"Journal only: keep just one reason code."`
-		Limit          int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Kind           string `json:"kind,omitempty"            jsonschema:"balances (default), journal, transactions, or both."`
+		Division       int    `json:"division,omitempty"        jsonschema:"Corporation wallet division, 1 through 7. Division 1 is the master wallet. Named divisions (if this character is a Director) come back from eve_corp_overview."`
+		RefType        string `json:"ref_type,omitempty"        jsonschema:"Journal only: keep just one reason code."`
+		Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 		ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
@@ -429,6 +435,7 @@ func registerCorp(s *mcp.Server, a *session.Session) {
 					})
 					total += j.Float(w["balance"])
 				}
+
 				return merge(who(corp), map[string]any{
 					"wallet_total": isk(total), "data_age": wallets.StaleNote(), "wallets": rows,
 					"note": "Pass kind='journal' or kind='transactions' with a division (1-7) to see movements. ESI retains about 30 days.",
@@ -459,22 +466,25 @@ func registerCorp(s *mcp.Server, a *session.Session) {
 			if kind == "journal" {
 				sec := j.Map(out["journal_section"])
 				delete(out, "journal_section")
+
 				return merge(out, sec), nil
 			}
 			if kind == "transactions" {
 				sec := j.Map(out["transactions_section"])
 				delete(out, "transactions_section")
+
 				return merge(out, sec), nil
 			}
+
 			return out, nil
 		})
 	})
 
 	type jobsIn struct {
-		Character        string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Character        string `json:"character,omitempty"         jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		IncludeCompleted *bool  `json:"include_completed,omitempty" jsonschema:"Also return jobs that already delivered."`
-		Limit            int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
-		ResponseFormat   string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
+		Limit            int    `json:"limit,omitempty"             jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		ResponseFormat   string `json:"response_format,omitempty"   jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
 		Name:        "eve_corp_industry_jobs",
@@ -493,13 +503,14 @@ func registerCorp(s *mcp.Server, a *session.Session) {
 			if err != nil {
 				return nil, err
 			}
+
 			return merge(who(corp), out), nil
 		})
 	})
 
 	type miningIn struct {
-		Character      string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Limit          int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 		ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
@@ -520,7 +531,8 @@ func registerCorp(s *mcp.Server, a *session.Session) {
 			canLedger := corp.HasRole(corpRoles["mining_ledger"]...)
 			canExtract := corp.HasRole(corpRoles["mining_extractions"]...)
 			if !canLedger && !canExtract {
-				if err := a.RequireCorpRole(corp, []string{"Accountant", "Station_Manager"}, "corporation mining (ledger needs Accountant, extractions need Station_Manager)"); err != nil {
+				err := a.RequireCorpRole(corp, []string{"Accountant", "Station_Manager"}, "corporation mining (ledger needs Accountant, extractions need Station_Manager)")
+				if err != nil {
 					return nil, err
 				}
 			}
@@ -545,13 +557,14 @@ func registerCorp(s *mcp.Server, a *session.Session) {
 			} else {
 				out["ledger_note"] = "The observer ledger needs Accountant (or Director) granted everywhere."
 			}
+
 			return out, nil
 		})
 	})
 
 	type ordersIn struct {
-		Character      string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Limit          int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 		ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
@@ -572,15 +585,16 @@ func registerCorp(s *mcp.Server, a *session.Session) {
 			if err != nil {
 				return nil, err
 			}
+
 			return merge(who(corp), out), nil
 		})
 	})
 
 	type contractsIn struct {
-		Character       string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Character       string `json:"character,omitempty"        jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		OutstandingOnly *bool  `json:"outstanding_only,omitempty" jsonschema:"Only contracts still awaiting action. Default true."`
-		Limit           int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
-		ResponseFormat  string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
+		Limit           int    `json:"limit,omitempty"            jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		ResponseFormat  string `json:"response_format,omitempty"  jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
 		Name:        "eve_corp_contracts",
@@ -599,13 +613,14 @@ func registerCorp(s *mcp.Server, a *session.Session) {
 			if err != nil {
 				return nil, err
 			}
+
 			return merge(who(corp), out), nil
 		})
 	})
 
 	type kmIn struct {
-		Character      string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Limit          int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 		ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
@@ -621,13 +636,14 @@ func registerCorp(s *mcp.Server, a *session.Session) {
 			if err != nil {
 				return nil, err
 			}
+
 			return merge(who(corp), j.Map(out)), nil
 		})
 	})
 
 	type stIn struct {
-		Character      string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Limit          int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 		ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
@@ -685,6 +701,7 @@ func registerCorp(s *mcp.Server, a *session.Session) {
 			}
 			sort.Slice(rows, func(i, k int) bool { return j.Str(rows[i]["fuel_expires"]) < j.Str(rows[k]["fuel_expires"]) })
 			visible, meta := page(rows, limitOr(in.Limit, 15), "")
+
 			return merge(who(corp), merge(map[string]any{
 				"structure_count": len(rows), "unfuelled": unfuelled, "data_age": result.StaleNote(),
 				"structures": project(visible, []string{"structure", "type", "system", "state", "fuel_expires_in"}, concise(in.ResponseFormat)),
@@ -693,8 +710,8 @@ func registerCorp(s *mcp.Server, a *session.Session) {
 	})
 
 	type memIn struct {
-		Character      string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Limit          int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 		ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
@@ -749,6 +766,7 @@ func registerCorp(s *mcp.Server, a *session.Session) {
 				return strings.ToLower(j.Str(rows[i]["name"])) < strings.ToLower(j.Str(rows[k]["name"]))
 			})
 			visible, meta := page(rows, limitOr(in.Limit, 25), "")
+
 			return merge(who(corp), merge(map[string]any{
 				"member_count": len(rows), "data_age": result.StaleNote(),
 				"members": project(visible, []string{"name"}, concise(in.ResponseFormat)),
@@ -769,10 +787,12 @@ func openCorp(a *session.Session, character, scopeKey, roleKey, what string) (*c
 		return nil, err
 	}
 	if roleKey != "" {
-		if err := a.RequireCorpRole(corp, corpRoles[roleKey], what); err != nil {
+		err := a.RequireCorpRole(corp, corpRoles[roleKey], what)
+		if err != nil {
 			return nil, err
 		}
 	}
+
 	return corp, nil
 }
 
@@ -781,6 +801,7 @@ func who(corp *character.Corporation) map[string]any {
 	if corp.Ticker != "" {
 		ticker = corp.Ticker
 	}
+
 	return map[string]any{"character": corp.CharacterName(), "corporation": corp.CorporationName, "ticker": ticker}
 }
 
@@ -789,9 +810,11 @@ func corpCan(corp *character.Corporation, scopeKey, roleKey string) bool {
 	for _, s := range corp.Token.Scopes {
 		if s == corpScopes[scopeKey] {
 			have = true
+
 			break
 		}
 	}
+
 	return have && corp.HasRole(corpRoles[roleKey]...)
 }
 
@@ -834,6 +857,7 @@ func rolesForDisplay(corp *character.Corporation) map[string]any {
 	addLoc("roles_at_hq", corp.RolesAtHQ)
 	addLoc("roles_at_base", corp.RolesAtBase)
 	addLoc("roles_at_other", corp.RolesAtOther)
+
 	return out
 }
 
@@ -867,6 +891,7 @@ func availableCorpTools(corp *character.Corporation) []string {
 	if _, ok := have[corpScopes["mining"]]; ok && (corp.HasRole(corpRoles["mining_ledger"]...) || corp.HasRole(corpRoles["mining_extractions"]...)) {
 		out = append(out, "eve_corp_mining")
 	}
+
 	return out
 }
 
@@ -878,6 +903,7 @@ func corpDivisions(a *session.Session, corp *character.Corporation) map[string]m
 	result, err := a.ESI.Get(fmt.Sprintf("/corporations/%d/divisions", corp.CorporationID), &corp.Token.CharacterID, nil, nil)
 	if err != nil {
 		log.Printf("could not read corporation divisions: %v", err)
+
 		return empty
 	}
 	out := map[string]map[int]string{"wallet": {}, "hangar": {}}
@@ -892,6 +918,7 @@ func corpDivisions(a *session.Session, corp *character.Corporation) map[string]m
 			}
 		}
 	}
+
 	return out
 }
 
@@ -903,6 +930,7 @@ func hangarLabel(flag string, names map[int]string) any {
 		if names[n] != "" {
 			return names[n]
 		}
+
 		return fmt.Sprintf("Hangar %d", n)
 	}
 	if flag == "CorpDeliveries" {
@@ -911,6 +939,7 @@ func hangarLabel(flag string, names map[int]string) any {
 	if flag == "Impounded" {
 		return "Impounded"
 	}
+
 	return flag
 }
 
@@ -955,6 +984,7 @@ func corpExtractions(a *session.Session, corp *character.Corporation) ([]map[str
 		})
 	}
 	sort.Slice(out, func(i, k int) bool { return j.Str(out[i]["chunk_arrival_time"]) < j.Str(out[k]["chunk_arrival_time"]) })
+
 	return out, nil
 }
 
@@ -981,6 +1011,7 @@ func corpMiningLedger(a *session.Session, corp *character.Corporation, limit int
 		go func(obs map[string]any) {
 			if j.Int(obs["observer_id"]) == 0 {
 				ch <- box{obs, esi.Result{}, nil}
+
 				return
 			}
 			r, err := a.ESI.GetAllPages(fmt.Sprintf("/corporation/%d/mining/observers/%d", corp.CorporationID, j.Int(obs["observer_id"])), &corp.Token.CharacterID, nil, 10)
@@ -996,6 +1027,7 @@ func corpMiningLedger(a *session.Session, corp *character.Corporation, limit int
 		if b.err != nil {
 			failed++
 			log.Printf("mining observer %v failed: %v", b.obs["observer_id"], b.err)
+
 			continue
 		}
 		if b.r.AgeSeconds > oldest {
@@ -1049,6 +1081,7 @@ func corpMiningLedger(a *session.Session, corp *character.Corporation, limit int
 		for _, x := range list {
 			out = append(out, map[string]any{label: nameOr(names, x.id), "units": x.q})
 		}
+
 		return out
 	}
 	age := observersRes.StaleNote()
@@ -1068,6 +1101,7 @@ func corpMiningLedger(a *session.Session, corp *character.Corporation, limit int
 		out["totals_caveat"] = "Ledger walk was capped (25 observers, 10 pages each); totals may be short."
 	}
 	_ = conciseMode
+
 	return out, nil
 }
 
@@ -1085,5 +1119,6 @@ func keepEmpty(m map[string]any, keep ...string) map[string]any {
 		}
 		out[k] = v
 	}
+
 	return out
 }

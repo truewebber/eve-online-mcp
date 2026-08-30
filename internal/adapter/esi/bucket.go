@@ -42,6 +42,7 @@ func (b *userBucket) nowTime() time.Time {
 	if b.now != nil {
 		return b.now()
 	}
+
 	return time.Now()
 }
 
@@ -53,11 +54,9 @@ func (b *userBucket) take() error {
 	if b.tokens < 1 {
 		deficit := 1 - b.tokens
 		wait := deficit / UserBucketRefill
-		retrySec := int(math.Ceil(wait))
-		if retrySec < 1 {
-			retrySec = 1
-		}
+		retrySec := max(int(math.Ceil(wait)), 1)
 		retryAt := now.Add(time.Duration(wait * float64(time.Second)))
+
 		return UserLimited{
 			Msg: fmt.Sprintf(
 				"This user's ESI request allowance is spent (refills at %.0f/s). Wait until %s, then call the same tool once. Do not retry in a loop.",
@@ -68,6 +67,7 @@ func (b *userBucket) take() error {
 		}
 	}
 	b.tokens -= 1
+
 	return nil
 }
 
@@ -84,12 +84,14 @@ func (b *userBucket) remaining() float64 {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.refillLocked(b.nowTime())
+
 	return b.tokens
 }
 
 func (b *userBucket) refillLocked(now time.Time) {
 	if b.last.IsZero() {
 		b.last = now
+
 		return
 	}
 	elapsed := now.Sub(b.last).Seconds()

@@ -23,6 +23,7 @@ func main() {
 		switch os.Args[1] {
 		case "help", "-h", "--help":
 			fmt.Print(usage)
+
 			return
 		}
 	}

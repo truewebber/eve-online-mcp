@@ -21,6 +21,7 @@ func (s *Store) CreateUser(ctx context.Context) (*domuser.User, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return u, nil
 }
 
@@ -35,6 +36,7 @@ func (s *Store) GetUser(ctx context.Context, id string) (*domuser.User, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return &domuser.User{ID: id, CreatedAt: created.UTC().Format(time.RFC3339)}, nil
 }
 
@@ -43,5 +45,6 @@ func (s *Store) UserExists(ctx context.Context, id string) (bool, error) {
 	err := s.pool.QueryRow(ctx,
 		`SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)`, id,
 	).Scan(&ok)
+
 	return ok, err
 }

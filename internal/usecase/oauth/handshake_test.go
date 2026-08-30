@@ -3,6 +3,7 @@ package oauth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -92,7 +93,7 @@ func TestAuthorizePersistsMCPLoginState(t *testing.T) {
 func TestCompleteCallbackUnknownState(t *testing.T) {
 	s := testServer(t, openDB(t))
 	_, _, err := s.CompleteCallback(context.Background(), "code", "missing")
-	if err != ErrUnknownLogin {
+	if !errors.Is(err, ErrUnknownLogin) {
 		t.Fatalf("got %v", err)
 	}
 }
@@ -131,10 +132,11 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 
 	put := func(t *testing.T, code string, expires time.Time) {
 		t.Helper()
-		if err := db.PutAuthCode(ctx, store.AuthCode{
+		err := db.PutAuthCode(ctx, store.AuthCode{
 			Code: code, UserID: u.ID, MCPClientID: "c",
 			RedirectURI: redirect, CodeChallenge: challenge, ExpiresAt: expires,
-		}); err != nil {
+		})
+		if err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -143,6 +145,7 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(vals.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		s.ServeToken(rec, req)
+
 		return rec
 	}
 
@@ -156,6 +159,7 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 			name: "good pkce",
 			setup: func(t *testing.T) url.Values {
 				put(t, "good", time.Now().Add(2*time.Minute))
+
 				return url.Values{
 					"grant_type":    {"authorization_code"},
 					"code":          {"good"},
@@ -180,6 +184,7 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 			name: "bad verifier",
 			setup: func(t *testing.T) url.Values {
 				put(t, "bad-v", time.Now().Add(2*time.Minute))
+
 				return url.Values{
 					"grant_type":    {"authorization_code"},
 					"code":          {"bad-v"},
@@ -193,6 +198,7 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 			name: "wrong redirect",
 			setup: func(t *testing.T) url.Values {
 				put(t, "bad-r", time.Now().Add(2*time.Minute))
+
 				return url.Values{
 					"grant_type":    {"authorization_code"},
 					"code":          {"bad-r"},
@@ -206,6 +212,7 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 			name: "expired",
 			setup: func(t *testing.T) url.Values {
 				put(t, "old", time.Now().Add(-time.Minute))
+
 				return url.Values{
 					"grant_type":    {"authorization_code"},
 					"code":          {"old"},
@@ -229,6 +236,7 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 				if rec.Code != 200 {
 					t.Fatalf("first take %d %s", rec.Code, rec.Body.String())
 				}
+
 				return ok
 			},
 			status: 400,

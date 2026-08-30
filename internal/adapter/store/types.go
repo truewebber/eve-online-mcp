@@ -81,6 +81,7 @@ func (c *CachedResponse) AgeSeconds() float64 {
 	if age < 0 {
 		return 0
 	}
+
 	return age
 }
 
@@ -94,9 +95,11 @@ func (c *CachedResponse) Data() any {
 		return nil
 	}
 	var v any
-	if err := json.Unmarshal(c.Body, &v); err != nil {
+	err := json.Unmarshal(c.Body, &v)
+	if err != nil {
 		return nil
 	}
+
 	return v
 }
 

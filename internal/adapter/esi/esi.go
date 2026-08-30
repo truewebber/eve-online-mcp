@@ -6,9 +6,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"math/rand"
 	"net"
 	"net/http"
@@ -76,6 +78,7 @@ func (r Result) StaleNote() string {
 	if r.AgeSeconds < 3600 {
 		return fmt.Sprintf("%dm old", int(r.AgeSeconds/60))
 	}
+
 	return fmt.Sprintf("%.1fh old", r.AgeSeconds/3600)
 }
 
@@ -106,6 +109,7 @@ func New(opts Options, httpClient *http.Client, db *store.Store, ssoClient *sso.
 	if opts.MaxConcurrency < 1 {
 		opts.MaxConcurrency = 8
 	}
+
 	return &Client{
 		opts:        opts,
 		http:        httpClient,
@@ -124,6 +128,7 @@ func (c *Client) cache() httpCache {
 	if c.store != nil {
 		return c.store
 	}
+
 	return nil
 }
 
@@ -131,6 +136,7 @@ func (c *Client) Get(path string, characterID *int, params map[string]any, cache
 	if params == nil {
 		params = map[string]any{}
 	}
+
 	return c.cachedGet(path, characterID, params, cacheTTL)
 }
 
@@ -151,10 +157,7 @@ func (c *Client) GetAllPages(path string, characterID *int, params map[string]an
 	if total <= 1 || !isSlice(first.Data) {
 		return first, nil
 	}
-	capped := total
-	if capped > maxPages {
-		capped = maxPages
-	}
+	capped := min(total, maxPages)
 	if capped < total {
 		log.Printf("%s has %d pages, fetching first %d", path, total, capped)
 	}
@@ -174,7 +177,7 @@ func (c *Client) GetAllPages(path string, characterID *int, params map[string]an
 	data := append([]any{}, j.Slice(first.Data)...)
 	oldest := first.AgeSeconds
 	allCached := first.FromCache
-	for i := 0; i < capped-1; i++ {
+	for range capped - 1 {
 		b := <-ch
 		if b.err != nil {
 			return Result{}, b.err
@@ -187,6 +190,7 @@ func (c *Client) GetAllPages(path string, characterID *int, params map[string]an
 		}
 		allCached = allCached && b.r.FromCache
 	}
+
 	return Result{
 		Data: data, FromCache: allCached, AgeSeconds: oldest,
 		ExpiresAt: first.ExpiresAt, Pages: &total, Truncated: capped < total,
@@ -213,7 +217,7 @@ func (c *Client) GetCursorPages(path string, characterID *int, params map[string
 	fetched := 0
 	truncated := false
 
-	for index := 0; index < maxPages; index++ {
+	for index := range maxPages {
 		q := clone(base)
 		q[cursorParam] = cursor
 		result, err := c.cachedGet(path, characterID, q, nil)
@@ -254,15 +258,18 @@ func (c *Client) GetCursorPages(path string, characterID *int, params map[string
 		}
 		if index == maxPages-1 {
 			truncated = true
+
 			break
 		}
 		if nextCursor == nil || (cursor != nil && !lessAny(nextCursor, cursor)) {
 			log.Printf("%s: %s did not advance past %v; stopping", path, cursorParam, cursor)
+
 			break
 		}
 		cursor = nextCursor
 	}
 	pages := fetched
+
 	return Result{
 		Data: data, FromCache: allCached, AgeSeconds: oldest,
 		ExpiresAt: expiresAt, Pages: &pages, Truncated: truncated,
@@ -286,6 +293,7 @@ func (c *Client) cacheKey(path string, characterID *int, params map[string]any) 
 	}
 	canonical, _ := json.Marshal(map[string]any{"p": path, "c": cid, "q": normalise(params), "d": c.opts.CompatDate})
 	sum := sha256.Sum256(canonical)
+
 	return hex.EncodeToString(sum[:])
 }
 
@@ -301,6 +309,7 @@ func (c *Client) headers(characterID *int) (http.Header, error) {
 		}
 		h.Set("Authorization", "Bearer "+token.AccessToken)
 	}
+
 	return h, nil
 }
 
@@ -338,13 +347,16 @@ func (c *Client) cachedGet(path string, characterID *int, params map[string]any,
 		if cache := c.cache(); cache != nil {
 			_ = cache.CacheTouch(ctx, key, unixTime(expiresAt))
 		}
+
 		return Result{Data: cached.Data(), FromCache: true, AgeSeconds: 0, ExpiresAt: expiresAt, Pages: cached.Pages}, nil
 	}
 	if resp.StatusCode >= 400 {
 		if cached != nil && resp.StatusCode >= 500 && resp.StatusCode < 600 {
 			log.Printf("%s returned %d, serving stale cache", path, resp.StatusCode)
+
 			return Result{Data: cached.Data(), FromCache: true, AgeSeconds: cached.AgeSeconds(), ExpiresAt: cached.ExpiresUnix(), Pages: cached.Pages}, nil
 		}
+
 		return Result{}, httpError(resp.StatusCode, bodyBytes, path)
 	}
 	decoded := decode(resp.StatusCode, bodyBytes)
@@ -359,6 +371,7 @@ func (c *Client) cachedGet(path string, characterID *int, params map[string]any,
 			Body: raw, ETag: resp.Header.Get("ETag"), ExpiresAt: unixTime(expires), Pages: pages,
 		})
 	}
+
 	return Result{Data: decoded, FromCache: false, AgeSeconds: 0, ExpiresAt: expires, Pages: pages}, nil
 }
 
@@ -382,6 +395,7 @@ func (c *Client) write(method, path string, characterID *int, params map[string]
 	if resp.StatusCode >= 400 {
 		return nil, httpError(resp.StatusCode, bodyBytes, path)
 	}
+
 	return decode(resp.StatusCode, bodyBytes), nil
 }
 
@@ -415,37 +429,40 @@ func (c *Client) request(method, path string, params map[string]any, headers htt
 	if err != nil {
 		if attempt < 2 && safeToRetry(method, err) {
 			time.Sleep(backoff(attempt))
+
 			return c.request(method, path, params, headers, jsonBody, attempt+1)
 		}
 		if method != http.MethodGet {
 			return nil, Error{Msg: fmt.Sprintf("Network error calling %s: %v. The request may or may not have reached EVE — check the current state with the matching read tool before trying again, because repeating it could apply the change twice.", path, err)}
 		}
+
 		return nil, Error{Msg: fmt.Sprintf("Network error calling %s: %v", path, err)}
 	}
 	c.noteErrorHeaders(resp)
-	if resp.StatusCode == 420 || resp.StatusCode == 429 {
-		if resp.StatusCode == 429 && attempt < 1 {
-			wait := retryAfter(resp)
-			if wait > 2*time.Second {
-				wait = 2 * time.Second
-			}
+	if resp.StatusCode == 420 || resp.StatusCode == http.StatusTooManyRequests {
+		if resp.StatusCode == http.StatusTooManyRequests && attempt < 1 {
+			wait := min(retryAfter(resp), 2*time.Second)
 			log.Printf("%s throttled (%d); one short retry after %s", path, resp.StatusCode, wait)
 			io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
 			time.Sleep(wait)
+
 			return c.request(method, path, params, headers, jsonBody, attempt+1)
 		}
 		err := limitError(resp, path)
 		io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
+
 		return nil, err
 	}
-	if (resp.StatusCode == 500 || resp.StatusCode == 502 || resp.StatusCode == 503 || resp.StatusCode == 504) && attempt < 2 && method == http.MethodGet {
+	if (resp.StatusCode == http.StatusInternalServerError || resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusGatewayTimeout) && attempt < 2 && method == http.MethodGet {
 		io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
 		time.Sleep(backoff(attempt))
+
 		return c.request(method, path, params, headers, jsonBody, attempt+1)
 	}
+
 	return resp, nil
 }
 
@@ -477,14 +494,13 @@ func (c *Client) awaitErrorBudget() error {
 	wait := time.Until(c.errorResetAt)
 	if wait <= 0 {
 		c.errorRemain = 100
+
 		return nil
 	}
 	remain := c.errorRemain
-	resetSec := int(wait.Seconds() + 0.5)
-	if resetSec < 1 {
-		resetSec = 1
-	}
+	resetSec := max(int(wait.Seconds()+0.5), 1)
 	retryAt := c.errorResetAt
+
 	return RateLimited{
 		Msg: fmt.Sprintf(
 			"ESI error limit is nearly spent (%d errors left, resets in %ds). This server shares one public IP, so further calls now would lock out everyone. Wait until %s, then retry the same tool. Do not retry sooner.",
@@ -498,7 +514,8 @@ func (c *Client) awaitErrorBudget() error {
 	}
 }
 
-func Ptr[T any](v T) *T { return &v }
+//go:fix inline
+func Ptr[T any](v T) *T { return new(v) }
 
 func normalise(params map[string]any) map[string]any {
 	out := map[string]any{}
@@ -525,6 +542,7 @@ func normalise(params map[string]any) map[string]any {
 			out[k] = v
 		}
 	}
+
 	return out
 }
 
@@ -533,6 +551,7 @@ func encodeParams(params map[string]any) string {
 	for k, v := range normalise(params) {
 		q.Set(k, fmt.Sprint(v))
 	}
+
 	return q.Encode()
 }
 
@@ -544,6 +563,7 @@ func decode(status int, body []byte) any {
 	if json.Unmarshal(body, &v) == nil {
 		return v
 	}
+
 	return string(body)
 }
 
@@ -556,6 +576,7 @@ func intHeader(resp *http.Response, name string) *int {
 	if err != nil {
 		return nil
 	}
+
 	return &n
 }
 
@@ -578,6 +599,7 @@ func expiresAt(resp *http.Response, fallback *float64) float64 {
 	if *ttl > maxCacheTTL {
 		*ttl = maxCacheTTL
 	}
+
 	return float64(time.Now().Unix()) + *ttl
 }
 
@@ -594,6 +616,7 @@ func headerDate(resp *http.Response, name string) *time.Time {
 	if err != nil {
 		return nil
 	}
+
 	return &t
 }
 
@@ -609,20 +632,23 @@ func serverTTL(resp *http.Response) *float64 {
 	} else {
 		ttl = exp.Sub(*served).Seconds()
 	}
+
 	return &ttl
 }
 
 func maxAge(resp *http.Response) *float64 {
-	for _, part := range strings.Split(resp.Header.Get("Cache-Control"), ",") {
+	for part := range strings.SplitSeq(resp.Header.Get("Cache-Control"), ",") {
 		part = strings.TrimSpace(part)
-		if strings.HasPrefix(part, "max-age=") {
-			f, err := strconv.ParseFloat(strings.TrimPrefix(part, "max-age="), 64)
+		if after, ok := strings.CutPrefix(part, "max-age="); ok {
+			f, err := strconv.ParseFloat(after, 64)
 			if err != nil {
 				return nil
 			}
+
 			return &f
 		}
 	}
+
 	return nil
 }
 
@@ -635,6 +661,7 @@ func retryAfter(resp *http.Response) time.Duration {
 		if sec > 0 {
 			return time.Duration(sec * float64(time.Second))
 		}
+
 		return 10 * time.Second
 	}
 	if when, err := http.ParseTime(raw); err == nil {
@@ -648,6 +675,7 @@ func retryAfter(resp *http.Response) time.Duration {
 			return d
 		}
 	}
+
 	return 10 * time.Second
 }
 
@@ -661,18 +689,22 @@ func safeToRetry(method string, err error) bool {
 	if strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "no such host") {
 		return true
 	}
+
 	return false
 }
 
 func errorAsNet(err error) bool {
 	var op *net.OpError
+
 	return errorAs(err, &op)
 }
 
 func errorAs(err error, target **net.OpError) bool {
 	for err != nil {
-		if op, ok := err.(*net.OpError); ok {
+		op := &net.OpError{}
+		if errors.As(err, &op) {
 			*target = op
+
 			return true
 		}
 		u, ok := err.(interface{ Unwrap() error })
@@ -681,14 +713,13 @@ func errorAs(err error, target **net.OpError) bool {
 		}
 		err = u.Unwrap()
 	}
+
 	return false
 }
 
 func backoff(attempt int) time.Duration {
-	base := time.Duration(1<<attempt) * time.Second
-	if base > 8*time.Second {
-		base = 8 * time.Second
-	}
+	base := min(time.Duration(1<<attempt)*time.Second, 8*time.Second)
+
 	return time.Duration(float64(base) * (0.5 + rand.Float64()/2))
 }
 
@@ -723,6 +754,7 @@ func httpError(status int, body []byte, path string) Error {
 	if h, ok := hints[status]; ok {
 		msg += " (" + h + ")"
 	}
+
 	return Error{Msg: msg, Status: status, Body: decoded}
 }
 
@@ -740,10 +772,7 @@ func limitError(resp *http.Response, path string) RateLimited {
 		retry = 10 * time.Second
 	}
 	retryAt := time.Now().Add(retry)
-	sec := int(retry.Seconds() + 0.5)
-	if sec < 1 {
-		sec = 1
-	}
+	sec := max(int(retry.Seconds()+0.5), 1)
 	remainN := 0
 	if remain != nil {
 		remainN = *remain
@@ -752,6 +781,7 @@ func limitError(resp *http.Response, path string) RateLimited {
 	if reset != nil {
 		resetN = *reset
 	}
+
 	return RateLimited{
 		Msg: fmt.Sprintf(
 			"ESI %d on %s: error limit exceeded (%d remaining, reset in %ds). Wait until %s, then retry the same tool. Do not retry sooner — this IP is shared.",
@@ -767,14 +797,14 @@ func limitError(resp *http.Response, path string) RateLimited {
 
 func clone(m map[string]any) map[string]any {
 	out := make(map[string]any, len(m))
-	for k, v := range m {
-		out[k] = v
-	}
+	maps.Copy(out, m)
+
 	return out
 }
 
 func isSlice(v any) bool {
 	_, ok := v.([]any)
+
 	return ok
 }
 

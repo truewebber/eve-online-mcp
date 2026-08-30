@@ -22,6 +22,7 @@ func (s *Store) CacheGet(ctx context.Context, key string) (*CachedResponse, erro
 		return nil, err
 	}
 	c.Pages = pages
+
 	return &c, nil
 }
 
@@ -42,6 +43,7 @@ func (s *Store) CachePut(ctx context.Context, key string, c CachedResponse) erro
 			pages = EXCLUDED.pages,
 			body = EXCLUDED.body`,
 		key, c.ETag, c.ExpiresAt, c.StoredAt, c.Pages, c.Body)
+
 	return err
 }
 
@@ -49,6 +51,7 @@ func (s *Store) CacheTouch(ctx context.Context, key string, expiresAt time.Time)
 	_, err := s.pool.Exec(ctx, `
 		UPDATE http_cache SET expires_at = $2, stored_at = $3 WHERE key = $1`,
 		key, expiresAt, time.Now().UTC())
+
 	return err
 }
 
@@ -57,6 +60,7 @@ func (s *Store) CachePurgeExpired(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+
 	return tag.RowsAffected(), nil
 }
 
@@ -72,11 +76,13 @@ func (s *Store) NameGet(ctx context.Context, ids []int64) (map[int64]NameRow, er
 	defer rows.Close()
 	for rows.Next() {
 		var n NameRow
-		if err := rows.Scan(&n.ID, &n.Name, &n.Category); err != nil {
+		err := rows.Scan(&n.ID, &n.Name, &n.Category)
+		if err != nil {
 			return nil, err
 		}
 		out[n.ID] = n
 	}
+
 	return out, rows.Err()
 }
 
@@ -97,6 +103,7 @@ func (s *Store) NamePut(ctx context.Context, rows []NameRow) error {
 			return err
 		}
 	}
+
 	return tx.Commit(ctx)
 }
 
@@ -113,6 +120,7 @@ func (s *Store) BlobGet(ctx context.Context, key string, maxAge *time.Duration) 
 	if maxAge != nil && time.Since(stored) > *maxAge {
 		return nil, nil
 	}
+
 	return value, nil
 }
 
@@ -124,6 +132,7 @@ func (s *Store) BlobPut(ctx context.Context, key string, value json.RawMessage) 
 		INSERT INTO blobs (key, stored_at, value) VALUES ($1, now(), $2)
 		ON CONFLICT (key) DO UPDATE SET stored_at = EXCLUDED.stored_at, value = EXCLUDED.value`,
 		key, value)
+
 	return err
 }
 
@@ -143,5 +152,6 @@ func (s *Store) PurgeExpired(ctx context.Context) (int64, error) {
 		}
 		n += tag.RowsAffected()
 	}
+
 	return n, nil
 }

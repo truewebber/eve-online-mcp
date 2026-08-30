@@ -48,6 +48,7 @@ func MapError(err error) map[string]any {
 		if rl.ResetSec != nil {
 			out["error_limit_reset_seconds"] = *rl.ResetSec
 		}
+
 		return out
 	case errors.As(err, &ee):
 		return map[string]any{"error": ee.Error(), "kind": "EsiError", "status": ee.Status}

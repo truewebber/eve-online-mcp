@@ -29,6 +29,7 @@ func (g *Guard) CheckCapability(capability string) error {
 	if _, ok := Capabilities[capability]; !ok {
 		return Blocked{Msg: fmt.Sprintf("Unknown write capability %q.", capability)}
 	}
+
 	return nil
 }
 
@@ -47,6 +48,7 @@ func (g *Guard) CheckScope(capability string, granted []string) error {
 	if len(missing) > 0 {
 		return Blocked{Msg: fmt.Sprintf("This character was not authorized with %s. Re-run the login for this character with eve_auth_login_url.", strings.Join(missing, ", "))}
 	}
+
 	return nil
 }
 
@@ -61,38 +63,46 @@ func (g *Guard) checkMailCap(ctx context.Context) error {
 	if n >= MailCap {
 		return Blocked{Msg: fmt.Sprintf("Mail budget exhausted: %d mails in the last hour. Wait until an earlier send drops out of the rolling hour, then try again.", MailCap)}
 	}
+
 	return nil
 }
 
 func (g *Guard) Authorize(ctx context.Context, tool, capability string, args map[string]any, preview map[string]any, confirmToken string, granted []string) (map[string]any, error) {
-	if err := g.CheckCapability(capability); err != nil {
+	err := g.CheckCapability(capability)
+	if err != nil {
 		return nil, err
 	}
-	if err := g.CheckScope(capability, granted); err != nil {
+	err = g.CheckScope(capability, granted)
+	if err != nil {
 		return nil, err
 	}
 	if capability == "mail_send" {
-		if err := g.checkMailCap(ctx); err != nil {
+		err := g.checkMailCap(ctx)
+		if err != nil {
 			return nil, err
 		}
 	}
 	digest := digestArgs(args)
 	if confirmToken != "" {
-		if err := g.consumeConfirm(ctx, tool, digest, confirmToken); err != nil {
+		err := g.consumeConfirm(ctx, tool, digest, confirmToken)
+		if err != nil {
 			return nil, err
 		}
+
 		return nil, nil
 	}
 	token := randomToken()
 	if g.persist != nil {
-		if err := g.persist.PutConfirm(ctx, Confirm{
+		err := g.persist.PutConfirm(ctx, Confirm{
 			Token: token, UserID: g.userID, Tool: tool,
 			ArgsDigest: digest, CreatedAt: time.Now().UTC(),
-		}); err != nil {
+		})
+		if err != nil {
 			return nil, err
 		}
 	}
 	ttlSec := int(ConfirmTTL / time.Second)
+
 	return map[string]any{
 		"status": "confirmation_required", "tool": tool, "capability": capability,
 		"will_do": preview, "confirm_token": token,
@@ -114,6 +124,7 @@ func (g *Guard) consumeConfirm(ctx context.Context, tool, digest, confirmToken s
 	}
 	if time.Since(pending.CreatedAt) > ConfirmTTL {
 		_ = g.persist.DeleteConfirm(ctx, confirmToken)
+
 		return Blocked{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
 	}
 	if pending.Tool != tool {
@@ -121,15 +132,18 @@ func (g *Guard) consumeConfirm(ctx context.Context, tool, digest, confirmToken s
 	}
 	if pending.ArgsDigest != digest {
 		_ = g.persist.DeleteConfirm(ctx, confirmToken)
+
 		return Blocked{Msg: "The arguments changed since the preview was generated, so the token was discarded. Request a new preview and confirm that one."}
 	}
 	_ = g.persist.DeleteConfirm(ctx, confirmToken)
+
 	return nil
 }
 
 func (g *Guard) Record(ctx context.Context, tool, capability string, args map[string]any, result any) {
 	if capability == "mail_send" && g.persist != nil {
-		if err := g.persist.InsertMail(ctx, g.userID, time.Now().UTC()); err != nil {
+		err := g.persist.InsertMail(ctx, g.userID, time.Now().UTC())
+		if err != nil {
 			log.Printf("could not record mail_log: %v", err)
 		}
 	}
@@ -150,10 +164,8 @@ func (g *Guard) Status(ctx context.Context) map[string]any {
 			pending = n
 		}
 	}
-	remaining := MailCap - mails
-	if remaining < 0 {
-		remaining = 0
-	}
+	remaining := max(MailCap-mails, 0)
+
 	return map[string]any{
 		"capabilities":              CapabilityNames(),
 		"capability_reference":      ref,
@@ -169,11 +181,13 @@ func (g *Guard) Status(ctx context.Context) map[string]any {
 func digestArgs(payload any) string {
 	raw, _ := json.Marshal(payload)
 	sum := sha256.Sum256(raw)
+
 	return hex.EncodeToString(sum[:])[:16]
 }
 
 func randomToken() string {
 	var b [9]byte
 	_, _ = rand.Read(b[:])
+
 	return strings.TrimRight(hex.EncodeToString(b[:]), "=")
 }

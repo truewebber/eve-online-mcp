@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -62,6 +63,7 @@ func Result(v any) (*mcp.CallToolResult, any, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(raw)}}}, nil, nil
 }
 
@@ -74,6 +76,7 @@ func Call(ctx context.Context, fn func(*session.Session) (any, error)) (*mcp.Cal
 	if err != nil {
 		return Handle(err)
 	}
+
 	return Result(v)
 }
 
@@ -85,6 +88,7 @@ func limitOr(v, def int) int {
 	if v <= 0 {
 		return def
 	}
+
 	return v
 }
 
@@ -94,6 +98,7 @@ func boolDef(p *bool, def bool) bool {
 	if p == nil {
 		return def
 	}
+
 	return *p
 }
 
@@ -125,6 +130,7 @@ func unitPrice(prices map[int]map[string]float64, typeID int) float64 {
 	if entry["average"] != 0 {
 		return entry["average"]
 	}
+
 	return entry["adjusted"]
 }
 
@@ -153,6 +159,7 @@ func project(rows []map[string]any, keep []string, concise bool) []map[string]an
 		}
 		out = append(out, picked)
 	}
+
 	return out
 }
 
@@ -170,6 +177,7 @@ func emptyVal(v any) bool {
 	case map[string]any:
 		return len(t) == 0
 	}
+
 	return false
 }
 
@@ -183,6 +191,7 @@ func page(rows []map[string]any, limit int, hint string) ([]map[string]any, map[
 	if hint == "" {
 		hint = fmt.Sprintf("Raise `limit` (currently %d).", limit)
 	}
+
 	return rows[:limit], map[string]any{
 		"returned": limit, "total_available": len(rows), "truncated": true, "how_to_see_more": hint,
 	}
@@ -192,6 +201,7 @@ func merge(dst map[string]any, extra map[string]any) map[string]any {
 	for k, v := range extra {
 		dst[k] = v
 	}
+
 	return dst
 }
 
@@ -203,6 +213,7 @@ func compact(m map[string]any) map[string]any {
 		}
 		out[k] = v
 	}
+
 	return out
 }
 
@@ -220,23 +231,27 @@ func rootLocations(items []map[string]any) map[int]int {
 			itemID := j.Int(current["item_id"])
 			if r, ok := roots[itemID]; ok {
 				resolved = r
+
 				break
 			}
 			parentID := j.Int(current["location_id"])
 			parent, ok := byID[parentID]
 			if !ok {
 				resolved = parentID
+
 				break
 			}
 			loop := false
 			for _, n := range chain {
 				if n == itemID {
 					loop = true
+
 					break
 				}
 			}
 			if loop {
 				resolved = parentID
+
 				break
 			}
 			chain = append(chain, itemID)
@@ -247,6 +262,7 @@ func rootLocations(items []map[string]any) map[int]int {
 		}
 		roots[j.Int(item["item_id"])] = resolved
 	}
+
 	return roots
 }
 
@@ -265,7 +281,7 @@ func roman(level int) string {
 	case 0:
 		return "0"
 	default:
-		return fmt.Sprint(level)
+		return strconv.Itoa(level)
 	}
 }
 
@@ -280,6 +296,7 @@ func parseTime(value string) *time.Time {
 			return nil
 		}
 	}
+
 	return &t
 }
 
@@ -297,6 +314,7 @@ func humanDelta(d time.Duration) string {
 	if hours > 0 {
 		return fmt.Sprintf("%dh %dm", hours, minutes)
 	}
+
 	return fmt.Sprintf("%dm", minutes)
 }
 
@@ -308,6 +326,7 @@ func idsFrom(values ...any) []int {
 			out = append(out, id)
 		}
 	}
+
 	return out
 }
 
@@ -316,6 +335,7 @@ func keys(m map[int]int) []int {
 	for k := range m {
 		out = append(out, k)
 	}
+
 	return out
 }
 
@@ -324,6 +344,7 @@ func setToList(m map[int]struct{}) []int {
 	for k := range m {
 		out = append(out, k)
 	}
+
 	return out
 }
 
@@ -334,6 +355,7 @@ func intersect(have []string, want map[string]struct{}) []string {
 			out = append(out, s)
 		}
 	}
+
 	return out
 }
 

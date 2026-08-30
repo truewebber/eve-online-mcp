@@ -108,6 +108,7 @@ func AllWriteScopeSet() map[string]struct{} {
 			out[s] = struct{}{}
 		}
 	}
+
 	return out
 }
 
@@ -116,6 +117,7 @@ func CorpScopeSet() map[string]struct{} {
 	for _, s := range CorpReadScopes {
 		out[s] = struct{}{}
 	}
+
 	return out
 }
 
@@ -126,6 +128,7 @@ func CapabilityNames() []string {
 		out = append(out, name)
 	}
 	sort.Strings(out)
+
 	return out
 }
 
@@ -147,5 +150,6 @@ func RequestedScopes() []string {
 	for _, name := range CapabilityNames() {
 		add(Capabilities[name].Scopes)
 	}
+
 	return out
 }

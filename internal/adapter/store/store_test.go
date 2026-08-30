@@ -31,6 +31,7 @@ func openTest(t *testing.T) *Store {
 	if err := s.ResetTables(ctx); err != nil {
 		t.Fatal(err)
 	}
+
 	return s
 }
 
@@ -141,6 +142,7 @@ func TestWithCharacterForUpdateSerializes(t *testing.T) {
 			mu.Lock()
 			order = append(order, "a-end")
 			mu.Unlock()
+
 			return "from-a", nil
 		})
 	}()
@@ -151,6 +153,7 @@ func TestWithCharacterForUpdateSerializes(t *testing.T) {
 			mu.Lock()
 			order = append(order, "b:"+tok)
 			mu.Unlock()
+
 			return "from-b", nil
 		})
 		close(doneB)
@@ -263,7 +266,7 @@ func TestCacheAndNamesAndBlobs(t *testing.T) {
 	ctx := context.Background()
 	body := json.RawMessage(`{"players":10}`)
 	if err := s.CachePut(ctx, "/status", CachedResponse{
-		Body: body, ETag: `"abc"`, ExpiresAt: time.Now().Add(time.Hour), Pages: intPtr(2),
+		Body: body, ETag: `"abc"`, ExpiresAt: time.Now().Add(time.Hour), Pages: new(2),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -415,7 +418,8 @@ func TestMailLog(t *testing.T) {
 	}
 }
 
-func intPtr(n int) *int { return &n }
+//go:fix inline
+func intPtr(n int) *int { return new(n) }
 
 func jsonEqual(a, b []byte) bool {
 	var x, y any
@@ -424,5 +428,6 @@ func jsonEqual(a, b []byte) bool {
 	}
 	aj, _ := json.Marshal(x)
 	bj, _ := json.Marshal(y)
+
 	return string(aj) == string(bj)
 }

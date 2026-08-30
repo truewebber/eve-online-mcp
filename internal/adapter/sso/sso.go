@@ -14,6 +14,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -114,6 +115,7 @@ func (c *Client) PrepareLogin(scopes []string) (*PreparedLogin, error) {
 		"code_challenge":        {challenge},
 		"code_challenge_method": {"S256"},
 	}
+
 	return &PreparedLogin{
 		URL:      AuthorizeURL + "?" + q.Encode(),
 		State:    state,
@@ -136,6 +138,7 @@ func (c *Client) ExchangeCode(code, verifier string) (*CharacterToken, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return c.tokenFromPayload(payload, nil)
 }
 
@@ -158,6 +161,7 @@ func (c *Client) AccessToken(characterID int) (*CharacterToken, error) {
 	if token.AccessToken != "" && time.Now().Before(token.AccessExpiresAt.Add(-refreshMargin)) {
 		return token, nil
 	}
+
 	return c.refresh(token)
 }
 
@@ -165,6 +169,7 @@ func (c *Client) refresh(token *CharacterToken) (*CharacterToken, error) {
 	if c.Store.durable() {
 		return c.refreshLocked(token)
 	}
+
 	return c.refreshMemory(token)
 }
 
@@ -176,19 +181,23 @@ func (c *Client) refreshLocked(token *CharacterToken) (*CharacterToken, error) {
 			return "", err
 		}
 		out = refreshed
+
 		return refreshed.RefreshToken, nil
 	})
 	if err != nil {
 		if strings.Contains(err.Error(), "invalid_grant") {
 			c.Store.Remove(token.CharacterID)
+
 			return nil, Err(fmt.Sprintf("Refresh token for %s was revoked or expired. Log this character in again.", token.CharacterName))
 		}
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, Err(fmt.Sprintf("Character %d was removed during refresh.", token.CharacterID))
 		}
+
 		return nil, err
 	}
 	c.Store.setAccess(out)
+
 	return out, nil
 }
 
@@ -197,13 +206,16 @@ func (c *Client) refreshMemory(token *CharacterToken) (*CharacterToken, error) {
 	if err != nil {
 		if strings.Contains(err.Error(), "invalid_grant") {
 			c.Store.Remove(token.CharacterID)
+
 			return nil, Err(fmt.Sprintf("Refresh token for %s was revoked or expired. Log this character in again.", token.CharacterName))
 		}
+
 		return nil, err
 	}
 	if err := c.Store.Upsert(refreshed); err != nil {
 		return nil, err
 	}
+
 	return refreshed, nil
 }
 
@@ -217,6 +229,7 @@ func (c *Client) exchangeRefresh(refreshToken string, fallback *CharacterToken) 
 	if err != nil {
 		return nil, err
 	}
+
 	return c.tokenFromPayload(payload, fallback)
 }
 
@@ -272,6 +285,7 @@ func (c *Client) tokenRequest(data url.Values, clientID, secret string) (map[str
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, Err("SSO returned a malformed token payload")
 	}
+
 	return payload, nil
 }
 
@@ -320,6 +334,7 @@ func (c *Client) tokenFromPayload(payload map[string]any, fallback *CharacterTok
 	if owner == "" && fallback != nil {
 		owner = fallback.OwnerHash
 	}
+
 	return &CharacterToken{
 		CharacterID:     characterID,
 		CharacterName:   name,
@@ -341,6 +356,7 @@ func (c *Client) decode(accessToken string) (jwt.MapClaims, error) {
 			return nil, Err("Malformed token from the SSO: " + err.Error())
 		}
 		claims, _ := tok.Claims.(jwt.MapClaims)
+
 		return c.checkIssuer(claims)
 	}
 	tok, err := parser.Parse(accessToken, func(t *jwt.Token) (any, error) { return key, nil })
@@ -348,16 +364,16 @@ func (c *Client) decode(accessToken string) (jwt.MapClaims, error) {
 		return nil, Err("The SSO token failed verification (" + err.Error() + "). Nothing was stored.")
 	}
 	claims, _ := tok.Claims.(jwt.MapClaims)
+
 	return c.checkIssuer(claims)
 }
 
 func (c *Client) checkIssuer(claims jwt.MapClaims) (jwt.MapClaims, error) {
 	iss, _ := claims["iss"].(string)
-	for _, allowed := range TokenIssuers {
-		if iss == allowed {
-			return claims, nil
-		}
+	if slices.Contains(TokenIssuers, iss) {
+		return claims, nil
 	}
+
 	return nil, Err(fmt.Sprintf("Unexpected token issuer: %q", iss))
 }
 
@@ -381,6 +397,7 @@ func (c *Client) signingKey(accessToken string) (any, error) {
 	if !ok {
 		return nil, fmt.Errorf("kid %s not in JWKS", kid)
 	}
+
 	return key, nil
 }
 
@@ -406,6 +423,7 @@ func fetchJWKS(httpClient *http.Client) (map[string]any, error) {
 			out[kid] = pub
 		}
 	}
+
 	return out, nil
 }
 
@@ -413,7 +431,7 @@ func rsaFromJWK(k map[string]any) (*rsa.PublicKey, error) {
 	nStr, _ := k["n"].(string)
 	eStr, _ := k["e"].(string)
 	if nStr == "" || eStr == "" {
-		return nil, fmt.Errorf("not rsa")
+		return nil, errors.New("not rsa")
 	}
 	nBytes, err := base64.RawURLEncoding.DecodeString(nStr)
 	if err != nil {
@@ -427,6 +445,7 @@ func rsaFromJWK(k map[string]any) (*rsa.PublicKey, error) {
 	for _, b := range eBytes {
 		e = e<<8 | int(b)
 	}
+
 	return &rsa.PublicKey{N: new(big.Int).SetBytes(nBytes), E: e}, nil
 }
 
@@ -457,6 +476,7 @@ func ssoDetail(contentType string, body []byte) string {
 	if len(body) > 200 {
 		return string(body[:200])
 	}
+
 	return string(body)
 }
 
@@ -467,5 +487,6 @@ func b64url(raw []byte) string {
 func random(n int) []byte {
 	b := make([]byte, n)
 	_, _ = rand.Read(b)
+
 	return b
 }

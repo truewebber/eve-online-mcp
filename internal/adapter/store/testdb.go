@@ -19,9 +19,11 @@ func (s *Store) HoldTestLock(ctx context.Context) (release func(), err error) {
 	}
 	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, testAdvisoryKey); err != nil {
 		conn.Release()
+
 		return nil, fmt.Errorf("store: test lock: %w", err)
 	}
 	var once sync.Once
+
 	return func() {
 		once.Do(func() {
 			_, _ = conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, testAdvisoryKey)
@@ -36,5 +38,6 @@ func (s *Store) ResetTables(ctx context.Context) error {
 		TRUNCATE mail_log, confirm_tokens, auth_codes, login_states,
 		         oauth_clients, http_cache, names, blobs, app_secrets,
 		         characters, users CASCADE`)
+
 	return err
 }

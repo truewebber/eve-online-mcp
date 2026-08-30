@@ -15,10 +15,10 @@ import (
 
 func registerCharacter(s *mcp.Server, a *session.Session) {
 	type skillsIn struct {
-		Character      string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Search         string `json:"search,omitempty" jsonschema:"Case-insensitive substring of the skill name, e.g. 'Gunnery' or 'Caldari'. Strongly recommended — a full skill list is hundreds of rows."`
-		TrainedOnly    *bool  `json:"trained_only,omitempty" jsonschema:"Hide skills that are injected but sitting at level 0. Default true."`
-		Limit          int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Search         string `json:"search,omitempty"          jsonschema:"Case-insensitive substring of the skill name, e.g. 'Gunnery' or 'Caldari'. Strongly recommended — a full skill list is hundreds of rows."`
+		TrainedOnly    *bool  `json:"trained_only,omitempty"    jsonschema:"Hide skills that are injected but sitting at level 0. Default true."`
+		Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 		ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
@@ -90,6 +90,7 @@ func registerCharacter(s *mcp.Server, a *session.Session) {
 			if capped > 0 {
 				out["alpha_clone_warning"] = fmt.Sprintf("%d skills have active_level below trained level — this account looks like it is on an Alpha clone, so trained levels are capped.", capped)
 			}
+
 			return out, nil
 		})
 	})
@@ -149,6 +150,7 @@ func registerCharacter(s *mcp.Server, a *session.Session) {
 			if last := parseTime(j.Str(rows[len(rows)-1]["finish_date"])); last != nil {
 				emptyIn = humanDelta(last.Sub(now))
 			}
+
 			return map[string]any{
 				"character": token.CharacterName, "queued_skills": len(rows),
 				"training_now":   strings.TrimSpace(j.Str(rows[0]["skill"]) + " " + j.Str(rows[0]["to_level"])),
@@ -223,6 +225,7 @@ func registerCharacter(s *mcp.Server, a *session.Session) {
 				}
 				jumps = append(jumps, map[string]any{"name": name, "location": loc, "implants": imps})
 			}
+
 			return map[string]any{
 				"character":       token.CharacterName,
 				"home_station":    names[j.Int(home["location_id"])],
@@ -235,7 +238,7 @@ func registerCharacter(s *mcp.Server, a *session.Session) {
 
 	type standingsIn struct {
 		Character string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Limit     int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Limit     int    `json:"limit,omitempty"     jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	}
 	addTool(s, &mcp.Tool{
 		Name:        "eve_character_standings",
@@ -302,6 +305,7 @@ func registerCharacter(s *mcp.Server, a *session.Session) {
 			} else if !lpGranted {
 				out["loyalty_points_note"] = fmt.Sprintf("%s was not authorized with '%s', so loyalty point balances are not available. Re-run the login for this character to include them.", token.CharacterName, lpScope)
 			}
+
 			return out, nil
 		})
 	})

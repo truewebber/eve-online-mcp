@@ -14,10 +14,10 @@ import (
 
 func registerIndustry(s *mcp.Server, a *session.Session) {
 	type jobsIn struct {
-		Character        string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Character        string `json:"character,omitempty"         jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		IncludeCompleted *bool  `json:"include_completed,omitempty" jsonschema:"Also return jobs that already delivered. Default false."`
-		Limit            int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
-		ResponseFormat   string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
+		Limit            int    `json:"limit,omitempty"             jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		ResponseFormat   string `json:"response_format,omitempty"   jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
 		Name:        "eve_industry_jobs",
@@ -36,13 +36,14 @@ func registerIndustry(s *mcp.Server, a *session.Session) {
 			if err != nil {
 				return nil, err
 			}
+
 			return industryJobsResult(a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, 20), concise(in.ResponseFormat), false)
 		})
 	})
 
 	type planetsIn struct {
 		Character string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Detail    *bool  `json:"detail,omitempty" jsonschema:"Fetch each colony's layout to report extractor expiry and stored output. Default false."`
+		Detail    *bool  `json:"detail,omitempty"    jsonschema:"Fetch each colony's layout to report extractor expiry and stored output. Default false."`
 	}
 	addTool(s, &mcp.Tool{
 		Name:        "eve_industry_planets",
@@ -134,6 +135,7 @@ func registerIndustry(s *mcp.Server, a *session.Session) {
 					}
 				}
 			}
+
 			return map[string]any{
 				"character": token.CharacterName, "colony_count": len(rows),
 				"data_age": result.StaleNote(), "colonies": rows,
@@ -143,7 +145,7 @@ func registerIndustry(s *mcp.Server, a *session.Session) {
 
 	type miningIn struct {
 		Character string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Limit     int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Limit     int    `json:"limit,omitempty"     jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	}
 	addTool(s, &mcp.Tool{
 		Name:        "eve_industry_mining",
@@ -196,6 +198,7 @@ func registerIndustry(s *mcp.Server, a *session.Session) {
 			for _, s := range sys {
 				top = append(top, map[string]any{"system": nameOr(names, s.id), "units": s.q})
 			}
+
 			return merge(map[string]any{
 				"character": token.CharacterName, "period": "last ~30 days",
 				"total_estimated_value": isk(grand), "top_systems": top,
@@ -279,6 +282,7 @@ func industryJobsResult(a *session.Session, character string, cid int, data any,
 	if withInstaller {
 		keep = append(keep, "installer")
 	}
+
 	return merge(map[string]any{
 		"character": character, "active_jobs": active, "ready_to_deliver": readyN,
 		"data_age": stale, "jobs": project(visible, keep, conciseMode),
@@ -289,5 +293,6 @@ func activityName(id int) string {
 	if n, ok := activities[id]; ok {
 		return n
 	}
+
 	return fmt.Sprintf("#%d", id)
 }

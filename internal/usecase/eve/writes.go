@@ -2,6 +2,7 @@ package eve
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -32,11 +33,11 @@ func registerWrites(s *mcp.Server, a *session.Session) {
 
 func registerWaypoint(s *mcp.Server, a *session.Session) {
 	type in struct {
-		Destination         string `json:"destination" jsonschema:"Exact system, station or structure name."`
-		Character           string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Destination         string `json:"destination"                     jsonschema:"Exact system, station or structure name."`
+		Character           string `json:"character,omitempty"             jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		ClearOtherWaypoints *bool  `json:"clear_other_waypoints,omitempty" jsonschema:"True replaces the whole existing route. Default true."`
-		AddToBeginning      *bool  `json:"add_to_beginning,omitempty" jsonschema:"Insert as the very next hop rather than the final stop."`
-		ConfirmToken        string `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
+		AddToBeginning      *bool  `json:"add_to_beginning,omitempty"      jsonschema:"Insert as the very next hop rather than the final stop."`
+		ConfirmToken        string `json:"confirm_token,omitempty"         jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
 	}
 	addTool(s, &mcp.Tool{
 		Name:        "eve_ui_set_waypoint",
@@ -86,6 +87,7 @@ func registerWaypoint(s *mcp.Server, a *session.Session) {
 				return nil, err
 			}
 			a.Guard.Record(ctx, "eve_ui_set_waypoint", "waypoint", args, "ok")
+
 			return map[string]any{"status": "done", "waypoint_set_to": target["name"], "note": clientCaveat}, nil
 		})
 	})
@@ -93,9 +95,9 @@ func registerWaypoint(s *mcp.Server, a *session.Session) {
 
 func registerOpenWindow(s *mcp.Server, a *session.Session) {
 	type in struct {
-		Window       string `json:"window" jsonschema:"'market' opens market details for an item. 'info' opens Show Info. 'contract' opens one contract."`
-		Target       string `json:"target" jsonschema:"For market, an exact item name. For info, an exact name of any entity. For contract, the numeric contract_id."`
-		Character    string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Window       string `json:"window"                  jsonschema:"'market' opens market details for an item. 'info' opens Show Info. 'contract' opens one contract."`
+		Target       string `json:"target"                  jsonschema:"For market, an exact item name. For info, an exact name of any entity. For contract, the numeric contract_id."`
+		Character    string `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		ConfirmToken string `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
 	}
 	addTool(s, &mcp.Tool{
@@ -157,24 +159,25 @@ func registerOpenWindow(s *mcp.Server, a *session.Session) {
 				return nil, err
 			}
 			a.Guard.Record(ctx, "eve_ui_open_window", "openwindow", args, "ok")
+
 			return map[string]any{"status": "done", "opened": label, "note": clientCaveat}, nil
 		})
 	})
 }
 
 type fittingModule struct {
-	Name     string `json:"name" jsonschema:"Exact module name."`
-	Flag     string `json:"flag,omitempty" jsonschema:"HiSlot0-7, MedSlot0-7, LoSlot0-7, RigSlot0-2, SubSystemSlot0-4, DroneBay, FighterBay, Cargo."`
+	Name     string `json:"name"               jsonschema:"Exact module name."`
+	Flag     string `json:"flag,omitempty"     jsonschema:"HiSlot0-7, MedSlot0-7, LoSlot0-7, RigSlot0-2, SubSystemSlot0-4, DroneBay, FighterBay, Cargo."`
 	Quantity int    `json:"quantity,omitempty" jsonschema:"Default 1."`
 }
 
 func registerWriteFittings(s *mcp.Server, a *session.Session) {
 	type saveIn struct {
-		Name         string          `json:"name" jsonschema:"Fitting name as it will appear in game."`
-		Ship         string          `json:"ship" jsonschema:"Exact hull name, e.g. 'Rifter'."`
-		Modules      []fittingModule `json:"modules" jsonschema:"Modules as objects with name, flag, quantity."`
-		Description  string          `json:"description,omitempty" jsonschema:"Optional note stored with the fitting."`
-		Character    string          `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Name         string          `json:"name"                    jsonschema:"Fitting name as it will appear in game."`
+		Ship         string          `json:"ship"                    jsonschema:"Exact hull name, e.g. 'Rifter'."`
+		Modules      []fittingModule `json:"modules"                 jsonschema:"Modules as objects with name, flag, quantity."`
+		Description  string          `json:"description,omitempty"   jsonschema:"Optional note stored with the fitting."`
+		Character    string          `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		ConfirmToken string          `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
 	}
 	addTool(s, &mcp.Tool{
@@ -212,6 +215,7 @@ func registerWriteFittings(s *mcp.Server, a *session.Session) {
 				tid := byName[strings.ToLower(name)]
 				if tid == 0 {
 					unknown = append(unknown, name)
+
 					continue
 				}
 				qty := m.Quantity
@@ -254,13 +258,14 @@ func registerWriteFittings(s *mcp.Server, a *session.Session) {
 				return nil, err
 			}
 			a.Guard.Record(ctx, "eve_fitting_save", "fittings", args, result)
+
 			return map[string]any{"status": "done", "fitting_id": j.Map(result)["fitting_id"], "name": name}, nil
 		})
 	})
 
 	type delIn struct {
-		FittingID    int    `json:"fitting_id" jsonschema:"Fitting id from eve_fitting_list.,minimum=1"`
-		Character    string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		FittingID    int    `json:"fitting_id"              jsonschema:"Fitting id from eve_fitting_list.,minimum=1"`
+		Character    string `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		ConfirmToken string `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
 	}
 	addTool(s, &mcp.Tool{
@@ -280,6 +285,7 @@ func registerWriteFittings(s *mcp.Server, a *session.Session) {
 			for _, f := range j.Maps(existing.Data) {
 				if j.Int(f["fitting_id"]) == in.FittingID {
 					match = f
+
 					break
 				}
 			}
@@ -302,6 +308,7 @@ func registerWriteFittings(s *mcp.Server, a *session.Session) {
 				return nil, err
 			}
 			a.Guard.Record(ctx, "eve_fitting_delete", "fittings", args, "ok")
+
 			return map[string]any{"status": "done", "deleted": match["name"]}, nil
 		})
 	})
@@ -309,9 +316,9 @@ func registerWriteFittings(s *mcp.Server, a *session.Session) {
 
 func registerMailOrganize(s *mcp.Server, a *session.Session) {
 	type markIn struct {
-		MailID       int    `json:"mail_id" jsonschema:"Mail id from eve_mail_list.,minimum=1"`
-		Read         *bool  `json:"read,omitempty" jsonschema:"True marks it read, False marks it unread. Default true."`
-		Character    string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		MailID       int    `json:"mail_id"                 jsonschema:"Mail id from eve_mail_list.,minimum=1"`
+		Read         *bool  `json:"read,omitempty"          jsonschema:"True marks it read, False marks it unread. Default true."`
+		Character    string `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		ConfirmToken string `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
 	}
 	addTool(s, &mcp.Tool{
@@ -341,13 +348,14 @@ func registerMailOrganize(s *mcp.Server, a *session.Session) {
 				return nil, err
 			}
 			a.Guard.Record(ctx, "eve_mail_mark", "mail_organize", args, "ok")
+
 			return map[string]any{"status": "done", "mail_id": in.MailID, "read": read}, nil
 		})
 	})
 
 	type delIn struct {
-		MailID       int    `json:"mail_id" jsonschema:"Mail id from eve_mail_list.,minimum=1"`
-		Character    string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		MailID       int    `json:"mail_id"                 jsonschema:"Mail id from eve_mail_list.,minimum=1"`
+		Character    string `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		ConfirmToken string `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
 	}
 	addTool(s, &mcp.Tool{
@@ -381,6 +389,7 @@ func registerMailOrganize(s *mcp.Server, a *session.Session) {
 				return nil, err
 			}
 			a.Guard.Record(ctx, "eve_mail_delete", "mail_organize", args, "ok")
+
 			return map[string]any{"status": "done", "deleted_subject": mail["subject"]}, nil
 		})
 	})
@@ -388,10 +397,10 @@ func registerMailOrganize(s *mcp.Server, a *session.Session) {
 
 func registerMailSend(s *mcp.Server, a *session.Session) {
 	type in struct {
-		To           []string `json:"to" jsonschema:"Exact character, corporation or alliance names."`
-		Subject      string   `json:"subject" jsonschema:"Mail subject."`
-		Body         string   `json:"body" jsonschema:"Mail body text."`
-		Character    string   `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		To           []string `json:"to"                      jsonschema:"Exact character, corporation or alliance names."`
+		Subject      string   `json:"subject"                 jsonschema:"Mail subject."`
+		Body         string   `json:"body"                    jsonschema:"Mail body text."`
+		Character    string   `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		ApprovedCost int      `json:"approved_cost,omitempty" jsonschema:"ISK you accept paying for CSPA charges. 0 refuses to pay.,minimum=0"`
 		ConfirmToken string   `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
 	}
@@ -439,6 +448,7 @@ func registerMailSend(s *mcp.Server, a *session.Session) {
 				for _, m := range ambiguous {
 					parts = append(parts, m.Describe())
 				}
+
 				return map[string]any{"error": "Refusing to send — " + strings.Join(parts, "; ") + ". EVE mail cannot be recalled, so confirm which one is meant with eve_universe_search. Nothing was sent."}, nil
 			}
 			subj, body := in.Subject, in.Body
@@ -467,6 +477,7 @@ func registerMailSend(s *mcp.Server, a *session.Session) {
 				return nil, err
 			}
 			a.Guard.Record(ctx, "eve_mail_send", "mail_send", args, mailID)
+
 			return map[string]any{"status": "sent", "mail_id": mailID, "to": resolvedNames}, nil
 		})
 	})
@@ -474,10 +485,10 @@ func registerMailSend(s *mcp.Server, a *session.Session) {
 
 func registerContacts(s *mcp.Server, a *session.Session) {
 	type setIn struct {
-		Names        []string `json:"names" jsonschema:"Exact character, corporation or alliance names."`
-		Standing     float64  `json:"standing" jsonschema:"-10.0 to 10.0.,minimum=-10,maximum=10"`
-		Watched      *bool    `json:"watched,omitempty" jsonschema:"Add to the watch list. Characters only."`
-		Character    string   `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Names        []string `json:"names"                   jsonschema:"Exact character, corporation or alliance names."`
+		Standing     float64  `json:"standing"                jsonschema:"-10.0 to 10.0.,minimum=-10,maximum=10"`
+		Watched      *bool    `json:"watched,omitempty"       jsonschema:"Add to the watch list. Characters only."`
+		Character    string   `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		ConfirmToken string   `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
 	}
 	addTool(s, &mcp.Tool{
@@ -557,6 +568,7 @@ func registerContacts(s *mcp.Server, a *session.Session) {
 					appliedA = append(appliedA, ids...)
 				}
 				a.Guard.Record(ctx, "eve_contacts_set", "contacts", map[string]any{"contact_ids": ids, "standing": in.Standing, "watched": flag, "character_id": token.CharacterID, "phase": verb}, "ok")
+
 				return nil
 			}
 			ops := []struct {
@@ -577,6 +589,7 @@ func registerContacts(s *mcp.Server, a *session.Session) {
 						ids  []int
 						flag bool
 					}{pair.verb, pair.ids, false})
+
 					continue
 				}
 				var yes, no []int
@@ -603,27 +616,31 @@ func registerContacts(s *mcp.Server, a *session.Session) {
 				}
 			}
 			for _, op := range ops {
-				if err := run(op.verb, op.ids, op.flag); err != nil {
+				err := run(op.verb, op.ids, op.flag)
+				if err != nil {
 					if len(appliedU)+len(appliedA) == 0 {
 						return nil, err
 					}
 					status := 0
-					if e, ok := err.(esi.Error); ok {
+					var e esi.Error
+					if errors.As(err, &e) {
 						status = e.Status
 					}
+
 					return map[string]any{
 						"error": fmt.Sprintf("Partially applied. Standing %v reached %d existing and %d new contact(s) before this failed: %v. Call eve_contacts_set again with the same arguments.", in.Standing, len(appliedU), len(appliedA), err),
 						"kind":  "EsiError", "status": status,
 					}, nil
 				}
 			}
+
 			return map[string]any{"status": "done", "contacts": resolved, "standing": in.Standing}, nil
 		})
 	})
 
 	type delIn struct {
-		Names        []string `json:"names" jsonschema:"Exact contact names to remove."`
-		Character    string   `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Names        []string `json:"names"                   jsonschema:"Exact contact names to remove."`
+		Character    string   `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		ConfirmToken string   `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
 	}
 	addTool(s, &mcp.Tool{
@@ -661,6 +678,7 @@ func registerContacts(s *mcp.Server, a *session.Session) {
 				return nil, err
 			}
 			a.Guard.Record(ctx, "eve_contacts_delete", "contacts", args, "ok")
+
 			return map[string]any{"status": "done", "removed": resolved}, nil
 		})
 	})
@@ -668,9 +686,9 @@ func registerContacts(s *mcp.Server, a *session.Session) {
 
 func registerCalendar(s *mcp.Server, a *session.Session) {
 	type in struct {
-		EventID      int    `json:"event_id" jsonschema:"Event id from the in-game calendar.,minimum=1"`
-		Response     string `json:"response" jsonschema:"accepted, declined, or tentative."`
-		Character    string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		EventID      int    `json:"event_id"                jsonschema:"Event id from the in-game calendar.,minimum=1"`
+		Response     string `json:"response"                jsonschema:"accepted, declined, or tentative."`
+		Character    string `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		ConfirmToken string `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
 	}
 	addTool(s, &mcp.Tool{
@@ -704,6 +722,7 @@ func registerCalendar(s *mcp.Server, a *session.Session) {
 				return nil, err
 			}
 			a.Guard.Record(ctx, "eve_calendar_respond", "calendar", args, "ok")
+
 			return map[string]any{"status": "done", "event": event["title"], "response": in.Response}, nil
 		})
 	})
@@ -738,8 +757,10 @@ func resolveContacts(a *session.Session, namesIn []string) ([]names.NameMatch, m
 		for _, m := range ambiguous {
 			parts = append(parts, m.Describe())
 		}
+
 		return nil, map[string]any{"error": "Refusing to act — " + strings.Join(parts, "; ") + ". Confirm which one is meant with eve_universe_search. Nothing was changed."}, nil
 	}
+
 	return matches, nil, nil
 }
 
@@ -755,6 +776,7 @@ func resolveDestination(a *session.Session, name string, characterID int) (map[s
 		if match.Ambiguous() {
 			out["ambiguity"] = match.Describe()
 		}
+
 		return out, nil
 	}
 	search, err := a.ESI.Get(fmt.Sprintf("/characters/%d/search", characterID), &characterID, map[string]any{
@@ -767,8 +789,10 @@ func resolveDestination(a *session.Session, name string, characterID int) (map[s
 	if len(structures) > 0 {
 		sid := j.Int(structures[0])
 		sname, _ := a.Resolver.Name(sid, &characterID)
+
 		return map[string]any{"id": sid, "name": sname, "kind": "structure"}, nil
 	}
+
 	return map[string]any{"error": fmt.Sprintf("No system, station or visible structure is named exactly %q. Check the spelling with eve_universe_search.", name)}, nil
 }
 
@@ -776,6 +800,7 @@ func resolveEntity(a *session.Session, name string, characterID int, kind string
 	if _, err := strconv.Atoi(strings.TrimSpace(name)); err == nil {
 		id := j.Int(name)
 		n, _ := a.Resolver.Name(id, &characterID)
+
 		return map[string]any{"id": id, "name": n, "kind": "id"}, nil
 	}
 	var prefer, only []string
@@ -795,7 +820,9 @@ func resolveEntity(a *session.Session, name string, characterID int, kind string
 		if match.Ambiguous() {
 			out["ambiguity"] = match.Describe()
 		}
+
 		return out, nil
 	}
+
 	return map[string]any{"error": fmt.Sprintf("Could not resolve %q for the %s window. Check the exact name with eve_universe_search.", name, kind)}, nil
 }

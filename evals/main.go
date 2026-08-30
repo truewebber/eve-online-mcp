@@ -12,6 +12,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -148,12 +149,14 @@ func (r *rpc) call(method string, params map[string]any) (map[string]any, error)
 		return nil, fmt.Errorf("cannot reach the MCP server at %s: HTTP Error %d: %s", r.url, resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 	body := string(raw)
-	for _, line := range strings.Split(body, "\n") {
+	for line := range strings.SplitSeq(body, "\n") {
 		if strings.HasPrefix(line, "data: ") {
 			var out map[string]any
-			if err := json.Unmarshal([]byte(line[6:]), &out); err != nil {
+			err := json.Unmarshal([]byte(line[6:]), &out)
+			if err != nil {
 				return nil, err
 			}
+
 			return out, nil
 		}
 	}
@@ -161,6 +164,7 @@ func (r *rpc) call(method string, params map[string]any) (map[string]any, error)
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return nil, err
 	}
+
 	return out, nil
 }
 
@@ -177,6 +181,7 @@ func (r *rpc) tools() ([]map[string]any, error) {
 			out = append(out, m)
 		}
 	}
+
 	return out, nil
 }
 
@@ -190,6 +195,7 @@ func (r *rpc) toolCall(name string, args map[string]any) (string, error) {
 	}
 	if errObj, ok := msg["error"]; ok {
 		raw, _ := json.Marshal(errObj)
+
 		return string(raw), nil
 	}
 	result, _ := msg["result"].(map[string]any)
@@ -200,6 +206,7 @@ func (r *rpc) toolCall(name string, args map[string]any) (string, error) {
 		text, _ := item["text"].(string)
 		b.WriteString(text)
 	}
+
 	return b.String(), nil
 }
 
@@ -207,6 +214,7 @@ func lint(r *rpc) int {
 	tools, err := r.tools()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
+
 		return 1
 	}
 	var failures, warnings []string
@@ -274,9 +282,11 @@ func lint(r *rpc) int {
 	}
 	if len(failures) > 0 {
 		fmt.Printf("\n%d failure(s)\n", len(failures))
+
 		return 1
 	}
 	fmt.Printf("\nall gates passed (%d warning(s))\n", len(warnings))
+
 	return 0
 }
 
@@ -284,6 +294,7 @@ func smoke(r *rpc) int {
 	all, err := r.tools()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
+
 		return 1
 	}
 	var tools []map[string]any
@@ -297,6 +308,7 @@ func smoke(r *rpc) int {
 	sort.Slice(tools, func(i, j int) bool {
 		a, _ := tools[i]["name"].(string)
 		b, _ := tools[j]["name"].(string)
+
 		return a < b
 	})
 
@@ -308,6 +320,7 @@ func smoke(r *rpc) int {
 		text, err := r.toolCall(name, smokeArgs[name])
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
+
 			return 1
 		}
 		total += len(text)
@@ -346,9 +359,11 @@ func smoke(r *rpc) int {
 		}
 		sort.Strings(uniq)
 		fmt.Printf("%d tool(s) need attention: %v\n", len(uniq), uniq)
+
 		return 1
 	}
 	fmt.Println("all read tools healthy")
+
 	return 0
 }
 
@@ -371,6 +386,7 @@ func comma(n int) string {
 	if neg {
 		return "-" + b.String()
 	}
+
 	return b.String()
 }
 
@@ -387,22 +403,27 @@ func run(args []string) int {
 
 	if len(args) == 0 {
 		fs.Usage()
+
 		return 2
 	}
 	gate := args[0]
 	if gate == "-h" || gate == "--help" {
 		fmt.Fprint(os.Stdout, usage)
+
 		return 0
 	}
 	if gate != "lint" && gate != "smoke" && gate != "all" {
 		fmt.Fprintf(os.Stderr, "unknown gate %q (want lint, smoke, or all)\n", gate)
 		fs.Usage()
+
 		return 2
 	}
-	if err := fs.Parse(args[1:]); err != nil {
-		if err == flag.ErrHelp {
+	err := fs.Parse(args[1:])
+	if err != nil {
+		if errors.Is(err, flag.ErrHelp) {
 			return 0
 		}
+
 		return 2
 	}
 	tok := *token
@@ -419,6 +440,7 @@ func run(args []string) int {
 		if code := lint(client); code != 0 {
 			return code
 		}
+
 		return smoke(client)
 	}
 }

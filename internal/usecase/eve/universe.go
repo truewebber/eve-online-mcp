@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
@@ -22,11 +23,11 @@ var routePrefs = map[string]string{"shorter": "Shorter", "safer": "Safer", "less
 
 func registerUniverse(s *mcp.Server, a *session.Session) {
 	type searchIn struct {
-		Query      string `json:"query" jsonschema:"At least 3 characters. Prefix match by default, so 'Trit' finds 'Tritanium'."`
+		Query      string `json:"query"                jsonschema:"At least 3 characters. Prefix match by default, so 'Trit' finds 'Tritanium'."`
 		Categories string `json:"categories,omitempty" jsonschema:"Comma-separated subset of: agent, alliance, character, constellation, corporation, faction, inventory_type, region, solar_system, station, structure."`
-		Strict     *bool  `json:"strict,omitempty" jsonschema:"Exact-match instead of prefix match."`
-		Character  string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Limit      int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Strict     *bool  `json:"strict,omitempty"     jsonschema:"Exact-match instead of prefix match."`
+		Character  string `json:"character,omitempty"  jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Limit      int    `json:"limit,omitempty"      jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	}
 	addTool(s, &mcp.Tool{
 		Name:        "eve_universe_search",
@@ -39,7 +40,7 @@ func registerUniverse(s *mcp.Server, a *session.Session) {
 			wanted := []string{"inventory_type", "solar_system", "station", "region"}
 			if strings.TrimSpace(in.Categories) != "" {
 				wanted = nil
-				for _, c := range strings.Split(in.Categories, ",") {
+				for c := range strings.SplitSeq(in.Categories, ",") {
 					c = strings.TrimSpace(c)
 					if c != "" {
 						wanted = append(wanted, c)
@@ -71,10 +72,7 @@ func registerUniverse(s *mcp.Server, a *session.Session) {
 				return nil, err
 			}
 			limit := limitOr(in.Limit, 10)
-			pool := 4 * limit
-			if pool < 50 {
-				pool = 50
-			}
+			pool := max(4*limit, 50)
 			if pool > 200 {
 				pool = 200
 			}
@@ -99,10 +97,7 @@ func registerUniverse(s *mcp.Server, a *session.Session) {
 					anyHit = true
 				}
 				var ranked []map[string]any
-				n := len(ids)
-				if n > pool {
-					n = pool
-				}
+				n := min(len(ids), pool)
 				for _, id := range ids[:n] {
 					ranked = append(ranked, map[string]any{"id": id, "name": nameOr(names, id)})
 				}
@@ -111,6 +106,7 @@ func registerUniverse(s *mcp.Server, a *session.Session) {
 					if len(ni) != len(nk) {
 						return len(ni) < len(nk)
 					}
+
 					return ni < nk
 				})
 				if len(ranked) > limit {
@@ -121,6 +117,7 @@ func registerUniverse(s *mcp.Server, a *session.Session) {
 			if !anyHit {
 				out["note"] = fmt.Sprintf("No matches for %q even after shortening the prefix. ESI searches by prefix, so a typo in the first few characters cannot be recovered. Try a different part of the name, or widen `categories`.", in.Query)
 			}
+
 			return out, nil
 		})
 	})
@@ -164,6 +161,7 @@ func registerUniverse(s *mcp.Server, a *session.Session) {
 				}
 				out["ambiguity_note"] = fmt.Sprintf("%d item types are named %q; showing #%d. Others: %s.", len(match.Alternatives)+1, in.Item, match.Chosen.ID, strings.Join(others, ", "))
 			}
+
 			return out, nil
 		})
 	})
@@ -215,12 +213,14 @@ func registerUniverse(s *mcp.Server, a *session.Session) {
 			for _, row := range j.Maps(killsRes.Data) {
 				if j.Int(row["system_id"]) == sid {
 					kills = row
+
 					break
 				}
 			}
 			for _, row := range j.Maps(jumpsRes.Data) {
 				if j.Int(row["system_id"]) == sid {
 					jumps = row
+
 					break
 				}
 			}
@@ -234,6 +234,7 @@ func registerUniverse(s *mcp.Server, a *session.Session) {
 				}
 			}
 			sec := j.Float(info["security_status"])
+
 			return map[string]any{
 				"system": name, "system_id": sid, "region": regionName,
 				"security_status": mathRound(sec, 2), "security_class": secBand(sec),
@@ -246,11 +247,11 @@ func registerUniverse(s *mcp.Server, a *session.Session) {
 	})
 
 	type routeIn struct {
-		Origin      string `json:"origin" jsonschema:"Exact origin system name."`
-		Destination string `json:"destination" jsonschema:"Exact destination system name."`
+		Origin      string `json:"origin"               jsonschema:"Exact origin system name."`
+		Destination string `json:"destination"          jsonschema:"Exact destination system name."`
 		Preference  string `json:"preference,omitempty" jsonschema:"shorter (default), safer, or less_secure."`
-		Avoid       string `json:"avoid,omitempty" jsonschema:"Comma-separated exact system names to route around, e.g. 'Uedama,Niarja'."`
-		ShowHops    *bool  `json:"show_hops,omitempty" jsonschema:"Include the full system-by-system list."`
+		Avoid       string `json:"avoid,omitempty"      jsonschema:"Comma-separated exact system names to route around, e.g. 'Uedama,Niarja'."`
+		ShowHops    *bool  `json:"show_hops,omitempty"  jsonschema:"Include the full system-by-system list."`
 	}
 	addTool(s, &mcp.Tool{
 		Name:        "eve_universe_route",
@@ -266,7 +267,7 @@ func registerUniverse(s *mcp.Server, a *session.Session) {
 				return map[string]any{"error": fmt.Sprintf("preference must be one of %v", []string{"shorter", "safer", "less_secure"})}, nil
 			}
 			wanted := []string{in.Origin, in.Destination}
-			for _, a := range strings.Split(in.Avoid, ",") {
+			for a := range strings.SplitSeq(in.Avoid, ",") {
 				if s := strings.TrimSpace(a); s != "" {
 					wanted = append(wanted, s)
 				}
@@ -288,12 +289,13 @@ func registerUniverse(s *mcp.Server, a *session.Session) {
 				if did == 0 {
 					missing = append(missing, in.Destination)
 				}
+
 				return map[string]any{"error": fmt.Sprintf("Unknown system name(s): %v. Names must be exact — call eve_universe_search with categories='solar_system'.", missing)}, nil
 			}
 			body := map[string]any{"preference": pref}
 			var avoidIDs []int
 			var avoided []string
-			for _, name := range strings.Split(in.Avoid, ",") {
+			for name := range strings.SplitSeq(in.Avoid, ",") {
 				name = strings.TrimSpace(name)
 				if name == "" {
 					continue
@@ -333,7 +335,8 @@ func registerUniverse(s *mcp.Server, a *session.Session) {
 				go func(sid int) {
 					r, err := a.ESI.Get(fmt.Sprintf("/universe/systems/%d", sid), nil, nil, nil)
 					if err != nil {
-						ch <- box{sid, map[string]any{"name": fmt.Sprint(sid)}}
+						ch <- box{sid, map[string]any{"name": strconv.Itoa(sid)}}
+
 						return
 					}
 					ch <- box{sid, j.Map(r.Data)}
@@ -350,14 +353,15 @@ func registerUniverse(s *mcp.Server, a *session.Session) {
 				data := byID[sid]
 				sec := j.Float(data["security_status"])
 				band := secBand(sec)
-				if band == "lowsec" {
+				switch band {
+				case "lowsec":
 					lowsec++
-				} else if band == "nullsec" {
+				case "nullsec":
 					nullsec++
 				}
 				n := j.Str(data["name"])
 				if n == "" {
-					n = fmt.Sprint(sid)
+					n = strconv.Itoa(sid)
 				}
 				steps = append(steps, map[string]any{"system": n, "security": mathRound(sec, 1), "class": band})
 			}
@@ -383,6 +387,7 @@ func registerUniverse(s *mcp.Server, a *session.Session) {
 				}
 				out["dangerous_hops"] = dang
 			}
+
 			return out, nil
 		})
 	})
@@ -420,6 +425,7 @@ func registerUniverse(s *mcp.Server, a *session.Session) {
 				})
 			}
 			visible, meta := page(outRows, limit, "")
+
 			return merge(map[string]any{"window": "last hour", "data_age": result.StaleNote(), "systems": visible}, meta), nil
 		})
 	})
@@ -460,5 +466,6 @@ func secBand(security float64) string {
 	if security > 0.0 {
 		return "lowsec"
 	}
+
 	return "nullsec"
 }

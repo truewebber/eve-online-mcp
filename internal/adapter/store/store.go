@@ -24,13 +24,16 @@ func Open(ctx context.Context, databaseURL string) (*Store, error) {
 	}
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
+
 		return nil, fmt.Errorf("store: ping: %w", err)
 	}
 	s := &Store{pool: pool}
 	if err := s.migrate(ctx); err != nil {
 		pool.Close()
+
 		return nil, err
 	}
+
 	return s, nil
 }
 

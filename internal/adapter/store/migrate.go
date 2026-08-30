@@ -52,15 +52,18 @@ func (s *Store) migrate(ctx context.Context) error {
 		}
 		if _, err := tx.Exec(ctx, string(body)); err != nil {
 			_ = tx.Rollback(ctx)
+
 			return fmt.Errorf("store: apply %s: %w", name, err)
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO schema_migrations (version) VALUES ($1)`, name); err != nil {
 			_ = tx.Rollback(ctx)
+
 			return fmt.Errorf("store: record %s: %w", name, err)
 		}
 		if err := tx.Commit(ctx); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }

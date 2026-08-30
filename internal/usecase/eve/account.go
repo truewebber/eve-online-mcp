@@ -25,6 +25,7 @@ func registerAccount(s *mcp.Server, a *session.Session) {
 			}
 			out := j.Map(result.Data)
 			out["data_age"] = result.StaleNote()
+
 			return out, nil
 		})
 	})
@@ -65,6 +66,7 @@ func registerAccount(s *mcp.Server, a *session.Session) {
 			if len(tokens) == 1 {
 				def = tokens[0].CharacterName
 			}
+
 			return merge(map[string]any{
 				"characters": chars, "default_character": def,
 			}, policy), nil
@@ -82,6 +84,7 @@ func registerAccount(s *mcp.Server, a *session.Session) {
 			}
 			scopes := write.RequestedScopes()
 			writes := write.CapabilityNames()
+
 			return map[string]any{
 				"login_url": url, "state": state, "scope_count": len(scopes),
 				"write_capabilities_requested": writes,
@@ -103,6 +106,7 @@ func registerAccount(s *mcp.Server, a *session.Session) {
 				return nil, err
 			}
 			a.SSO.Revoke(token.CharacterID)
+
 			return map[string]any{"removed": token.CharacterName, "character_id": token.CharacterID}, nil
 		})
 	})
@@ -130,6 +134,7 @@ func registerAccount(s *mcp.Server, a *session.Session) {
 					id = &cid
 				}
 				r, err := a.ESI.Get(path, id, nil, nil)
+
 				return box{r, err}
 			}
 			ch := make(chan box, 7)
@@ -208,6 +213,7 @@ func registerAccount(s *mcp.Server, a *session.Session) {
 			if attributes.err == nil {
 				out["remaps_available"] = j.Map(attributes.r.Data)["bonus_remaps"]
 			}
+
 			return compact(out), nil
 		})
 	})
@@ -216,13 +222,15 @@ func registerAccount(s *mcp.Server, a *session.Session) {
 func sortStrings(in []string) []string {
 	out := append([]string{}, in...)
 	sort.Strings(out)
+
 	return out
 }
 
 func mathRound(v float64, places int) float64 {
 	p := 1.0
-	for i := 0; i < places; i++ {
+	for range places {
 		p *= 10
 	}
+
 	return float64(int(v*p+0.5)) / p
 }

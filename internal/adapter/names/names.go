@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -53,6 +54,7 @@ func (r NameResolution) Describe() string {
 		others = append(others, article(m.Kind)+fmt.Sprintf(" (#%d)", m.ID))
 	}
 	chosen := article(r.Chosen.Kind) + fmt.Sprintf(" (#%d)", r.Chosen.ID)
+
 	return fmt.Sprintf("%q is %s and also %s", r.Query, chosen, strings.Join(others, ", "))
 }
 
@@ -64,6 +66,7 @@ func article(kind string) string {
 	case "a", "e", "i", "o", "u":
 		return "an " + kind
 	}
+
 	return "a " + kind
 }
 
@@ -122,14 +125,12 @@ func (r *Resolver) Names(ids []int, characterID *int) (map[int]string, error) {
 		}
 	}
 	for start := 0; start < len(universal); start += nameBatch {
-		end := start + nameBatch
-		if end > len(universal) {
-			end = len(universal)
-		}
+		end := min(start+nameBatch, len(universal))
 		chunk := universal[start:end]
 		result, err := r.esi.Post("/universe/names", nil, nil, chunk)
 		if err != nil {
 			log.Printf("bulk name lookup failed for %d ids: %v", len(chunk), err)
+
 			continue
 		}
 		var entries []store.NameRow
@@ -173,6 +174,7 @@ func (r *Resolver) Names(ids []int, characterID *int) (map[int]string, error) {
 			out[id] = fmt.Sprintf("Unknown #%d", id)
 		}
 	}
+
 	return out, nil
 }
 
@@ -184,6 +186,7 @@ func (r *Resolver) Name(id int, characterID *int) (string, error) {
 	if n, ok := m[id]; ok {
 		return n, nil
 	}
+
 	return fmt.Sprintf("Unknown #%d", id), nil
 }
 
@@ -196,6 +199,7 @@ func (r *Resolver) structureName(structureID, characterID int) (string, error) {
 	if name == "" {
 		return fmt.Sprintf("Structure #%d", structureID), nil
 	}
+
 	return name, nil
 }
 
@@ -218,10 +222,7 @@ func (r *Resolver) IDsFromNames(names []string) (map[string]any, error) {
 	}
 	out := map[string]any{}
 	for start := 0; start < len(unique); start += idsBatch {
-		end := start + idsBatch
-		if end > len(unique) {
-			end = len(unique)
-		}
+		end := min(start+idsBatch, len(unique))
 		part, err := r.esi.Post("/universe/ids", nil, nil, unique[start:end])
 		if err != nil {
 			return nil, err
@@ -231,6 +232,7 @@ func (r *Resolver) IDsFromNames(names []string) (map[string]any, error) {
 			out[key] = append(existing, j.Slice(rows)...)
 		}
 	}
+
 	return out, nil
 }
 
@@ -287,6 +289,7 @@ func (r *Resolver) ResolveNames(names []string, prefer, only []string) (map[stri
 			if matches[i].Category != matches[j].Category {
 				return matches[i].Category < matches[j].Category
 			}
+
 			return matches[i].ID < matches[j].ID
 		})
 		res := NameResolution{Query: strings.TrimSpace(asked)}
@@ -297,6 +300,7 @@ func (r *Resolver) ResolveNames(names []string, prefer, only []string) (map[stri
 		}
 		out[wanted] = res
 	}
+
 	return out, nil
 }
 
@@ -316,6 +320,7 @@ func (r *Resolver) TypeInfo(typeID int) (map[string]any, error) {
 	}
 	data := j.Map(result.Data)
 	_ = r.putBlob(key, data)
+
 	return data, nil
 }
 
@@ -338,6 +343,7 @@ func (r *Resolver) GroupName(groupID int) string {
 	if name == "" {
 		return fmt.Sprintf("Group #%d", groupID)
 	}
+
 	return name
 }
 
@@ -376,6 +382,7 @@ func (r *Resolver) TypeInfos(typeIDs []int) map[int]map[string]any {
 			out[b.id] = b.info
 		}
 	}
+
 	return out
 }
 
@@ -397,7 +404,7 @@ func (r *Resolver) ReferencePrices() (map[int]map[string]float64, error) {
 		}
 		blob := map[string]any{}
 		for _, row := range j.Maps(result.Data) {
-			blob[fmt.Sprint(j.Int(row["type_id"]))] = map[string]any{
+			blob[strconv.Itoa(j.Int(row["type_id"]))] = map[string]any{
 				"average":  j.Float(row["average_price"]),
 				"adjusted": j.Float(row["adjusted_price"]),
 			}
@@ -414,6 +421,7 @@ func (r *Resolver) ReferencePrices() (map[int]map[string]float64, error) {
 	}
 	r.prices = prices
 	r.pricesAt = time.Now()
+
 	return prices, nil
 }
 
@@ -426,6 +434,7 @@ func (r *Resolver) ReferencePrice(typeID int) float64 {
 	if entry["average"] != 0 {
 		return entry["average"]
 	}
+
 	return entry["adjusted"]
 }
 
@@ -482,6 +491,7 @@ func (r *Resolver) HubQuotes(typeID, regionID int, stationID *int) (map[string]a
 	if len(buys) > 0 {
 		out["best_buy"] = buys[0]
 	}
+
 	return out, nil
 }
 
@@ -494,6 +504,7 @@ func (r *Resolver) blob(key string, maxAge *time.Duration) (any, error) {
 	if err := json.Unmarshal(raw, &v); err != nil {
 		return nil, nil
 	}
+
 	return v, nil
 }
 
@@ -502,5 +513,6 @@ func (r *Resolver) putBlob(key string, value any) error {
 	if err != nil {
 		return err
 	}
+
 	return r.store.BlobPut(context.Background(), key, raw)
 }

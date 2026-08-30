@@ -10,6 +10,7 @@ func Map(v any) map[string]any {
 	if m, ok := v.(map[string]any); ok {
 		return m
 	}
+
 	return map[string]any{}
 }
 
@@ -17,6 +18,7 @@ func Slice(v any) []any {
 	if s, ok := v.([]any); ok {
 		return s
 	}
+
 	return nil
 }
 
@@ -28,6 +30,7 @@ func Maps(v any) []map[string]any {
 			out = append(out, m)
 		}
 	}
+
 	return out
 }
 
@@ -35,6 +38,7 @@ func Get(m map[string]any, key string) any {
 	if m == nil {
 		return nil
 	}
+
 	return m[key]
 }
 
@@ -70,9 +74,11 @@ func Float(v any) float64 {
 		return float64(t)
 	case json.Number:
 		f, _ := t.Float64()
+
 		return f
 	case string:
 		f, _ := strconv.ParseFloat(t, 64)
+
 		return f
 	default:
 		return 0
@@ -92,5 +98,6 @@ func Has(m map[string]any, key string) bool {
 		return false
 	}
 	_, ok := m[key]
+
 	return ok
 }

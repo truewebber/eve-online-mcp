@@ -34,6 +34,7 @@ func (c Corporation) CharacterID() int {
 	if c.Token == nil {
 		return 0
 	}
+
 	return c.Token.CharacterID
 }
 
@@ -41,6 +42,7 @@ func (c Corporation) CharacterName() string {
 	if c.Token == nil {
 		return ""
 	}
+
 	return c.Token.CharacterName
 }
 
@@ -55,5 +57,6 @@ func (c Corporation) HasRole(needed ...string) bool {
 			return true
 		}
 	}
+
 	return false
 }

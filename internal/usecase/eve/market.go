@@ -17,8 +17,8 @@ import (
 
 func registerMarket(s *mcp.Server, a *session.Session) {
 	type priceIn struct {
-		Item        string `json:"item" jsonschema:"Exact item type name, e.g. 'Tritanium' or 'Rifter'. Must match the in-game name exactly."`
-		Region      string `json:"region,omitempty" jsonschema:"Exact region name. Empty means The Forge / Jita 4-4."`
+		Item        string `json:"item"                   jsonschema:"Exact item type name, e.g. 'Tritanium' or 'Rifter'. Must match the in-game name exactly."`
+		Region      string `json:"region,omitempty"       jsonschema:"Exact region name. Empty means The Forge / Jita 4-4."`
 		WholeRegion *bool  `json:"whole_region,omitempty" jsonschema:"Price across every station in the region instead of just the main hub."`
 		HistoryDays int    `json:"history_days,omitempty" jsonschema:"Summarise this many days of daily price history. 0 skips it.,minimum=0,maximum=365"`
 	}
@@ -100,13 +100,14 @@ func registerMarket(s *mcp.Server, a *session.Session) {
 					out["history"] = h
 				}
 			}
+
 			return out, nil
 		})
 	})
 
 	type ordersIn struct {
-		Character      string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Limit          int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 		ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
@@ -126,15 +127,16 @@ func registerMarket(s *mcp.Server, a *session.Session) {
 			if err != nil {
 				return nil, err
 			}
+
 			return formatOrders(a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, 25), concise(in.ResponseFormat), nil)
 		})
 	})
 
 	type contractsIn struct {
-		Character       string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Character       string `json:"character,omitempty"        jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		OutstandingOnly *bool  `json:"outstanding_only,omitempty" jsonschema:"Only contracts still awaiting action. Default true."`
-		Limit           int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
-		ResponseFormat  string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
+		Limit           int    `json:"limit,omitempty"            jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		ResponseFormat  string `json:"response_format,omitempty"  jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
 		Name:        "eve_market_contracts",
@@ -153,6 +155,7 @@ func registerMarket(s *mcp.Server, a *session.Session) {
 			if err != nil {
 				return nil, err
 			}
+
 			return formatContracts(a, token.CharacterName, cid, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), limitOr(in.Limit, 15), concise(in.ResponseFormat), false)
 		})
 	})
@@ -191,6 +194,7 @@ func marketHistory(a *session.Session, typeID, regionID, days int) (map[string]a
 	if first != 0 {
 		trend = mathRound(100*(j.Float(recent[len(recent)-1]["average"])-first)/first, 2)
 	}
+
 	return map[string]any{
 		"days": len(recent), "average_price": isk(avg), "daily_volume": int(volume / float64(len(recent))),
 		"period_low": isk(low), "period_high": isk(high), "trend_pct": trend,
@@ -252,6 +256,7 @@ func formatOrders(a *session.Session, character string, cid int, data any, stale
 		if j.Str(rows[i]["side"]) != j.Str(rows[k]["side"]) {
 			return j.Str(rows[i]["side"]) < j.Str(rows[k]["side"])
 		}
+
 		return j.Str(rows[i]["item"]) < j.Str(rows[k]["item"])
 	})
 	visible, meta := page(rows, limit, "")
@@ -259,6 +264,7 @@ func formatOrders(a *session.Session, character string, cid int, data any, stale
 	if walletNames != nil {
 		keep = append(keep, "wallet")
 	}
+
 	return merge(map[string]any{
 		"character": character, "open_orders": len(rows),
 		"sell_side_value": isk(sellValue), "buy_escrow_locked": isk(buyEscrow),
@@ -285,6 +291,7 @@ func formatContracts(a *session.Session, character string, cid int, data any, st
 		if corp && outstandingOnly {
 			note = "No outstanding corporation contracts. Pass outstanding_only=false to include finished and expired ones."
 		}
+
 		return map[string]any{"character": character, "contracts": []any{}, "note": note}, nil
 	}
 	idSet := map[int]struct{}{}
@@ -324,6 +331,7 @@ func formatContracts(a *session.Session, character string, cid int, data any, st
 	if corp {
 		keep = []string{"type", "status", "title", "issuer", "price", "reward", "collateral", "from", "to", "expires"}
 	}
+
 	return merge(map[string]any{
 		"character": character, "total": len(rows), "outstanding": outstanding,
 		"data_age": stale, "contracts": project(visible, keep, conciseMode),
@@ -334,6 +342,7 @@ func nilIfZero(v any) any {
 	if j.Float(v) == 0 {
 		return nil
 	}
+
 	return isk(v)
 }
 
@@ -344,5 +353,6 @@ func walletLabel(division int, names map[int]string) string {
 	if n, ok := names[division]; ok && n != "" {
 		return n
 	}
+
 	return fmt.Sprintf("Division %d", division)
 }

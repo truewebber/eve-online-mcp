@@ -33,6 +33,7 @@ func (s *Store) UpsertCharacter(ctx context.Context, userID string, row Characte
 	if tag.RowsAffected() == 0 {
 		return ErrOwned
 	}
+
 	return nil
 }
 
@@ -43,6 +44,7 @@ func (s *Store) GetCharacter(ctx context.Context, characterID int64) (*Character
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
+
 	return row, err
 }
 
@@ -62,6 +64,7 @@ func (s *Store) ListCharacters(ctx context.Context, userID string) ([]CharacterR
 		}
 		out = append(out, *row)
 	}
+
 	return out, rows.Err()
 }
 
@@ -73,6 +76,7 @@ func (s *Store) DeleteCharacter(ctx context.Context, characterID int64) error {
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
+
 	return nil
 }
 
@@ -86,6 +90,7 @@ func (s *Store) OwnerOf(ctx context.Context, characterID int64) (userID string, 
 	if err != nil {
 		return "", false, err
 	}
+
 	return userID, true, nil
 }
 
@@ -117,6 +122,7 @@ func (s *Store) WithCharacterForUpdate(ctx context.Context, characterID int64, f
 	); err != nil {
 		return err
 	}
+
 	return tx.Commit(ctx)
 }
 
@@ -133,5 +139,6 @@ func scanCharacter(row characterScanner) (*CharacterRow, error) {
 	if c.Scopes == nil {
 		c.Scopes = []string{}
 	}
+
 	return &c, nil
 }

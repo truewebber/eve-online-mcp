@@ -23,6 +23,7 @@ func New(oauthServer *oauth.Server, host oauth.Host) *API {
 func (h *API) GetIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
+
 		return
 	}
 	body := fmt.Sprintf(`
@@ -47,25 +48,28 @@ func (h *API) GetAuthCallback(w http.ResponseWriter, r *http.Request, _ GetAuthC
 			detail = errS
 		}
 		pageStatus(w, 400, "Login refused", `<p class=warn>`+html.EscapeString(detail)+`</p>`)
+
 		return
 	}
 	code, state := r.URL.Query().Get("code"), r.URL.Query().Get("state")
 	if code == "" || state == "" {
 		pageStatus(w, 400, "Bad callback", `<p class=warn>Missing code or state.</p>`)
+
 		return
 	}
 	loc, token, err := h.OAuth.CompleteCallback(r.Context(), code, state)
 	if err != nil {
 		title := "Login failed"
-		var owned oauth.CharacterOwnedError
-		if errors.As(err, &owned) {
+		if _, ok := errors.AsType[oauth.CharacterOwnedError](err); ok {
 			title = "Character already linked"
 		}
 		pageStatus(w, 400, title, `<p class=warn>`+html.EscapeString(err.Error())+`</p>`)
+
 		return
 	}
 	if loc != "" {
 		http.Redirect(w, r, loc, http.StatusFound)
+
 		return
 	}
 	page(w, "EVE MCP", fmt.Sprintf(`

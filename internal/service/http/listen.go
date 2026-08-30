@@ -59,6 +59,7 @@ func ListenAndServe(h *API, runtime *session.Session, opts ListenOptions) error 
 	log.Printf("internal endpoint (healthz): http://%s", opts.InternalListen)
 
 	go func() { errs <- http.ListenAndServe(opts.Listen, mux) }()
+
 	return <-errs
 }
 
@@ -70,5 +71,6 @@ func internalMux() *http.ServeMux {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
+
 	return mux
 }

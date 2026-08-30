@@ -31,6 +31,7 @@ func openStore(t *testing.T) *store.Store {
 	if err := s.ResetTables(ctx); err != nil {
 		t.Fatal(err)
 	}
+
 	return s
 }
 

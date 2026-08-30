@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -50,7 +51,8 @@ func (e CharacterOwnedError) Error() string {
 	if name == "" {
 		name = "This character"
 	}
-	return fmt.Sprintf("%s already belongs to another user on this server. Call eve_auth_logout on that other session first, or sign in from your MCP client as this character (Authentication required) to use that account.", name)
+
+	return name + " already belongs to another user on this server. Call eve_auth_logout on that other session first, or sign in from your MCP client as this character (Authentication required) to use that account."
 }
 
 // Host is the public HTTP identity of this process. Built at the composition root.
@@ -72,6 +74,7 @@ func (h Host) BaseURL() string {
 	if host == "0.0.0.0" || host == "::" || host == "" {
 		host = "127.0.0.1"
 	}
+
 	return fmt.Sprintf("http://%s:%s", host, port)
 }
 
@@ -103,6 +106,7 @@ func Open(pub Host, runtime *session.Session, db *store.Store) (*Server, error) 
 	brokerOpts := runtime.Opts.SSO
 	brokerOpts.UserID = ""
 	brokerOpts.DB = nil
+
 	return &Server{
 		pub:     pub,
 		db:      db,
@@ -132,6 +136,7 @@ func (s *Server) ProtectedResource() *oauthex.ProtectedResourceMetadata {
 
 func (s *Server) AuthServerMeta() *oauthex.AuthServerMeta {
 	base := s.Base()
+
 	return &oauthex.AuthServerMeta{
 		Issuer:                            base,
 		AuthorizationEndpoint:             base + "/oauth/authorize",
@@ -159,18 +164,22 @@ func (s *Server) ServeRegister(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
+
 		return
 	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+
 		return
 	}
 	var req struct {
 		RedirectURIs []string `json:"redirect_uris"`
 		ClientName   string   `json:"client_name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.RedirectURIs) == 0 {
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil || len(req.RedirectURIs) == 0 {
 		http.Error(w, `{"error":"invalid_client_metadata"}`, http.StatusBadRequest)
+
 		return
 	}
 	var allowed []string
@@ -181,11 +190,14 @@ func (s *Server) ServeRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(allowed) == 0 {
 		http.Error(w, `{"error":"invalid_redirect_uri"}`, http.StatusBadRequest)
+
 		return
 	}
 	id := randomID(16)
-	if err := s.db.PutClient(r.Context(), store.Client{ID: id, RedirectURIs: allowed}); err != nil {
+	err = s.db.PutClient(r.Context(), store.Client{ID: id, RedirectURIs: allowed})
+	if err != nil {
 		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
+
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -217,17 +229,20 @@ func (s *Server) ServeAuthorize(w http.ResponseWriter, r *http.Request) {
 <p>Add <code>%s</code> as an HTTP MCP server. The client will show Authentication required and send you to the EVE login.</p>
 <p class=dim>EVE callback: <code>%s</code></p>`,
 			html.EscapeString(s.ResourceURL()), html.EscapeString(s.pub.CallbackURL))
+
 		return
 	}
 	if !s.clientRedirectOK(r.Context(), mcpClient, redirect) {
-		http.Error(w, "unknown client or redirect_uri", 400)
+		http.Error(w, "unknown client or redirect_uri", http.StatusBadRequest)
+
 		return
 	}
 
 	s.purge(r.Context())
 	prep, err := s.login.PrepareLogin(nil)
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+
 		return
 	}
 	if err := s.db.PutLoginState(r.Context(), store.LoginState{
@@ -240,7 +255,8 @@ func (s *Server) ServeAuthorize(w http.ResponseWriter, r *http.Request) {
 		MCPState:      state,
 		CodeChallenge: challenge,
 	}); err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+
 		return
 	}
 	http.Redirect(w, r, prep.URL, http.StatusFound)
@@ -265,11 +281,14 @@ func (s *Server) CompleteCallback(ctx context.Context, code, eveState string) (r
 	switch st.Kind {
 	case store.LoginMCP:
 		loc, err := s.finishMCP(ctx, st, token)
+
 		return loc, token, err
 	case store.LoginAlt:
-		if err := s.finishAlt(ctx, st, token); err != nil {
+		err := s.finishAlt(ctx, st, token)
+		if err != nil {
 			return "", token, err
 		}
+
 		return "", token, nil
 	default:
 		return "", token, fmt.Errorf("unknown login kind %q", st.Kind)
@@ -314,12 +333,13 @@ func (s *Server) finishMCP(ctx context.Context, p *store.LoginState, token *sso.
 	}
 	u.RawQuery = q.Encode()
 	log.Printf("mcp oauth: %s authorized user %s, redirecting client", token.CharacterName, userID)
+
 	return u.String(), nil
 }
 
 func (s *Server) finishAlt(ctx context.Context, st *store.LoginState, token *sso.CharacterToken) error {
 	if st.UserID == "" {
-		return fmt.Errorf("alt login is missing user_id")
+		return errors.New("alt login is missing user_id")
 	}
 	owner, err := s.ownerOf(ctx, token.CharacterID)
 	if err != nil {
@@ -332,9 +352,11 @@ func (s *Server) finishAlt(ctx context.Context, st *store.LoginState, token *sso
 		if errors.Is(err, store.ErrOwned) {
 			return CharacterOwnedError{CharacterName: token.CharacterName}
 		}
+
 		return err
 	}
 	log.Printf("alt oauth: %s attached to user %s", token.CharacterName, st.UserID)
+
 	return nil
 }
 
@@ -347,6 +369,7 @@ func (s *Server) ownerOf(ctx context.Context, characterID int) (string, error) {
 	if !ok {
 		return "", nil
 	}
+
 	return userID, nil
 }
 
@@ -354,11 +377,14 @@ func (s *Server) ServeToken(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+
 		return
 	}
 	s.purge(r.Context())
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, `{"error":"invalid_request"}`, 400)
+	err := r.ParseForm()
+	if err != nil {
+		http.Error(w, `{"error":"invalid_request"}`, http.StatusBadRequest)
+
 		return
 	}
 	switch r.Form.Get("grant_type") {
@@ -367,7 +393,7 @@ func (s *Server) ServeToken(w http.ResponseWriter, r *http.Request) {
 	case "refresh_token":
 		s.refresh(w, r)
 	default:
-		http.Error(w, `{"error":"unsupported_grant_type"}`, 400)
+		http.Error(w, `{"error":"unsupported_grant_type"}`, http.StatusBadRequest)
 	}
 }
 
@@ -377,19 +403,23 @@ func (s *Server) exchangeCode(w http.ResponseWriter, r *http.Request) {
 	redirect := r.Form.Get("redirect_uri")
 	ac, ok, err := s.db.TakeAuthCode(r.Context(), code)
 	if err != nil {
-		http.Error(w, `{"error":"server_error"}`, 500)
+		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
+
 		return
 	}
 	if !ok {
-		http.Error(w, `{"error":"invalid_grant"}`, 400)
+		http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
+
 		return
 	}
 	if redirect != "" && redirect != ac.RedirectURI {
-		http.Error(w, `{"error":"invalid_grant"}`, 400)
+		http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
+
 		return
 	}
 	if !pkceOK(ac.CodeChallenge, verifier) {
-		http.Error(w, `{"error":"invalid_grant"}`, 400)
+		http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
+
 		return
 	}
 	s.writeTokens(w, ac.UserID)
@@ -399,11 +429,13 @@ func (s *Server) refresh(w http.ResponseWriter, r *http.Request) {
 	raw := r.Form.Get("refresh_token")
 	userID, err := s.parseRefresh(raw)
 	if err != nil {
-		http.Error(w, `{"error":"invalid_grant"}`, 400)
+		http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
+
 		return
 	}
 	if _, err := s.db.GetUser(r.Context(), userID); err != nil {
-		http.Error(w, `{"error":"invalid_grant"}`, 400)
+		http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
+
 		return
 	}
 	s.writeTokens(w, userID)
@@ -412,12 +444,14 @@ func (s *Server) refresh(w http.ResponseWriter, r *http.Request) {
 func (s *Server) writeTokens(w http.ResponseWriter, userID string) {
 	access, err := s.issueAccess(userID)
 	if err != nil {
-		http.Error(w, `{"error":"server_error"}`, 500)
+		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
+
 		return
 	}
 	refresh, err := s.issueRefresh(userID)
 	if err != nil {
-		http.Error(w, `{"error":"server_error"}`, 500)
+		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
+
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -441,6 +475,7 @@ func (s *Server) issueAccess(userID string) (string, error) {
 		"exp":   now.Add(accessTTL).Unix(),
 		"scope": scopeEve,
 	})
+
 	return tok.SignedString(s.hmacKey)
 }
 
@@ -453,27 +488,30 @@ func (s *Server) issueRefresh(userID string) (string, error) {
 		"iat": now.Unix(),
 		"exp": now.Add(refreshTTL).Unix(),
 	})
+
 	return tok.SignedString(s.hmacKey)
 }
 
 func (s *Server) parseRefresh(raw string) (string, error) {
 	tok, err := jwt.Parse(raw, func(t *jwt.Token) (any, error) {
 		if t.Method != jwt.SigningMethodHS256 {
-			return nil, fmt.Errorf("alg")
+			return nil, errors.New("alg")
 		}
+
 		return s.hmacKey, nil
 	}, jwt.WithIssuer(s.Base()), jwt.WithLeeway(30*time.Second))
 	if err != nil || !tok.Valid {
-		return "", fmt.Errorf("invalid")
+		return "", errors.New("invalid")
 	}
 	claims, _ := tok.Claims.(jwt.MapClaims)
 	if claims["typ"] != "refresh" {
-		return "", fmt.Errorf("not refresh")
+		return "", errors.New("not refresh")
 	}
 	sub, _ := claims["sub"].(string)
 	if sub == "" {
-		return "", fmt.Errorf("no sub")
+		return "", errors.New("no sub")
 	}
+
 	return sub, nil
 }
 
@@ -484,8 +522,9 @@ func (s *Server) VerifyAccess(_ context.Context, token string, _ *http.Request) 
 func (s *Server) verifyAccess(token string) (*mcpauth.TokenInfo, error) {
 	tok, err := jwt.Parse(token, func(t *jwt.Token) (any, error) {
 		if t.Method != jwt.SigningMethodHS256 {
-			return nil, fmt.Errorf("alg")
+			return nil, errors.New("alg")
 		}
+
 		return s.hmacKey, nil
 	}, jwt.WithAudience(s.ResourceURL()), jwt.WithIssuer(s.Base()), jwt.WithLeeway(30*time.Second))
 	if err != nil || !tok.Valid {
@@ -500,6 +539,7 @@ func (s *Server) verifyAccess(token string) (*mcpauth.TokenInfo, error) {
 		return nil, mcpauth.ErrInvalidToken
 	}
 	exp, _ := claims["exp"].(float64)
+
 	return &mcpauth.TokenInfo{
 		Scopes:     []string{scopeEve},
 		Expiration: time.Unix(int64(exp), 0),
@@ -514,6 +554,7 @@ func (s *Server) SessionFor(userID string) *session.Session {
 	}
 	sess := s.runtime.ForUser(userID)
 	s.sessions.Store(userID, sess)
+
 	return sess
 }
 
@@ -522,14 +563,17 @@ func (s *Server) ProtectMCP(next http.Handler) http.Handler {
 		ti := mcpauth.TokenInfoFromContext(r.Context())
 		if ti == nil {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
+
 			return
 		}
 		if _, err := s.db.GetUser(r.Context(), ti.UserID); err != nil {
 			http.Error(w, "unknown user", http.StatusUnauthorized)
+
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(session.With(r.Context(), s.SessionFor(ti.UserID))))
 	})
+
 	return mcpauth.RequireBearerToken(s.VerifyAccess, &mcpauth.RequireBearerTokenOptions{
 		ResourceMetadataURL: s.MetadataURL(),
 		Scopes:              []string{scopeEve},
@@ -545,11 +589,10 @@ func (s *Server) clientRedirectOK(ctx context.Context, clientID, redirect string
 	if err != nil || !ok {
 		return true
 	}
-	for _, u := range c.RedirectURIs {
-		if u == redirect {
-			return true
-		}
+	if slices.Contains(c.RedirectURIs, redirect) {
+		return true
 	}
+
 	return true
 }
 
@@ -581,6 +624,7 @@ func redirectOK(raw string) bool {
 		if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
 			return u.Scheme == "http"
 		}
+
 		return false
 	}
 }
@@ -592,11 +636,13 @@ func pkceOK(challenge, verifier string) bool {
 	sum := sha256.Sum256([]byte(verifier))
 	got := strings.TrimRight(base64.URLEncoding.EncodeToString(sum[:]), "=")
 	want := strings.TrimRight(challenge, "=")
+
 	return hmac.Equal([]byte(got), []byte(want))
 }
 
 func randomID(n int) string {
 	b := make([]byte, n)
 	_, _ = rand.Read(b)
+
 	return hex.EncodeToString(b)
 }

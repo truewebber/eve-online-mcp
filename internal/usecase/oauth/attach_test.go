@@ -34,6 +34,7 @@ func openDB(t *testing.T) *store.Store {
 	if err := s.ResetTables(ctx); err != nil {
 		t.Fatal(err)
 	}
+
 	return s
 }
 
@@ -53,6 +54,7 @@ func testServer(t *testing.T, db *store.Store) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return s
 }
 
@@ -144,8 +146,7 @@ func TestFinishAltRefusesOtherUser(t *testing.T) {
 	err = s.finishAlt(ctx, &store.LoginState{UserID: b.ID}, &sso.CharacterToken{
 		CharacterID: int(charID), CharacterName: "Jane Doe", RefreshToken: "b-rt",
 	})
-	var owned CharacterOwnedError
-	if !errors.As(err, &owned) {
+	if _, ok := errors.AsType[CharacterOwnedError](err); !ok {
 		t.Fatalf("want CharacterOwnedError, got %v", err)
 	}
 	if !strings.Contains(err.Error(), "eve_auth_logout") {

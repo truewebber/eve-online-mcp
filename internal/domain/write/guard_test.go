@@ -12,6 +12,7 @@ func testGuard(t *testing.T) (*Guard, *memPersist) {
 	t.Helper()
 	mem := newMemPersist()
 	g := NewGuard(mem, "user-1")
+
 	return g, mem
 }
 
@@ -36,8 +37,7 @@ func TestAuthorizePreviewAndConfirm(t *testing.T) {
 		t.Fatalf("confirm %v %v", done, err)
 	}
 	_, err = g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, preview, token, scopes)
-	var blocked Blocked
-	if !errors.As(err, &blocked) {
+	if _, ok := errors.AsType[Blocked](err); !ok {
 		t.Fatalf("replay want Blocked, got %v", err)
 	}
 }
@@ -105,7 +105,7 @@ func TestSixthMailIsBlocked(t *testing.T) {
 	ctx := context.Background()
 	g, _ := testGuard(t)
 	scopes := Capabilities["mail_send"].Scopes
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		g.Record(ctx, "eve_mail_send", "mail_send", nil, "ok")
 	}
 	_, err := g.Authorize(ctx, "eve_mail_send", "mail_send", nil, nil, "", scopes)

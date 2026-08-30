@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"maps"
 	"sort"
 	"strings"
 	"sync"
@@ -59,7 +60,8 @@ func (s *TokenStore) Upsert(token *CharacterToken) error {
 	if token.AddedAt != 0 {
 		row.AddedAt = time.Unix(int64(token.AddedAt), 0).UTC()
 	}
-	if err := s.db.UpsertCharacter(context.Background(), s.userID, row); err != nil {
+	err := s.db.UpsertCharacter(context.Background(), s.userID, row)
+	if err != nil {
 		return err
 	}
 	s.mu.Lock()
@@ -70,6 +72,7 @@ func (s *TokenStore) Upsert(token *CharacterToken) error {
 			AccessExpiresAt: token.AccessExpiresAt,
 		}
 	}
+
 	return nil
 }
 
@@ -89,6 +92,7 @@ func (s *TokenStore) upsertMemory(token *CharacterToken) error {
 		token.AddedAt = float64(time.Now().Unix())
 	}
 	s.tokens[token.CharacterID] = token
+
 	return nil
 }
 
@@ -100,6 +104,7 @@ func (s *TokenStore) Remove(id int) bool {
 			return false
 		}
 		delete(s.tokens, id)
+
 		return true
 	}
 	row, err := s.db.GetCharacter(context.Background(), int64(id))
@@ -112,6 +117,7 @@ func (s *TokenStore) Remove(id int) bool {
 	s.mu.Lock()
 	delete(s.access, id)
 	s.mu.Unlock()
+
 	return true
 }
 
@@ -119,6 +125,7 @@ func (s *TokenStore) Get(id int) *CharacterToken {
 	if !s.durable() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
+
 		return s.tokens[id]
 	}
 	row, err := s.db.GetCharacter(context.Background(), int64(id))
@@ -128,6 +135,7 @@ func (s *TokenStore) Get(id int) *CharacterToken {
 	s.mu.Lock()
 	acc := s.access[id]
 	s.mu.Unlock()
+
 	return tokenFromRow(row, acc)
 }
 
@@ -140,24 +148,25 @@ func (s *TokenStore) All() []*CharacterToken {
 			out = append(out, t)
 		}
 		sortTokens(out)
+
 		return out
 	}
 	rows, err := s.db.ListCharacters(context.Background(), s.userID)
 	if err != nil {
 		log.Printf("sso: list characters: %v", err)
+
 		return nil
 	}
 	s.mu.Lock()
 	access := make(map[int]accessMem, len(s.access))
-	for k, v := range s.access {
-		access[k] = v
-	}
+	maps.Copy(access, s.access)
 	s.mu.Unlock()
 	out := make([]*CharacterToken, 0, len(rows))
 	for i := range rows {
 		out = append(out, tokenFromRow(&rows[i], access[int(rows[i].CharacterID)]))
 	}
 	sortTokens(out)
+
 	return out
 }
 
@@ -174,6 +183,7 @@ func (s *TokenStore) FindByName(name string) *CharacterToken {
 			return t
 		}
 	}
+
 	return nil
 }
 
@@ -188,6 +198,7 @@ func (s *TokenStore) setAccess(token *CharacterToken) {
 			AccessToken:     token.AccessToken,
 			AccessExpiresAt: token.AccessExpiresAt,
 		}
+
 		return
 	}
 	s.tokens[token.CharacterID] = token
@@ -198,6 +209,7 @@ func tokenFromRow(row *store.CharacterRow, acc accessMem) *CharacterToken {
 	if scopes == nil {
 		scopes = []string{}
 	}
+
 	return &CharacterToken{
 		CharacterID:     int(row.CharacterID),
 		CharacterName:   row.Name,

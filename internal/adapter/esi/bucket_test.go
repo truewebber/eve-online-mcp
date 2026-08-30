@@ -17,8 +17,9 @@ func TestUserBucketExhausted(t *testing.T) {
 	b := newUserBucket()
 	now := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
 	b.now = func() time.Time { return now }
-	for i := 0; i < int(UserBucketCapacity); i++ {
-		if err := b.take(); err != nil {
+	for i := range int(UserBucketCapacity) {
+		err := b.take()
+		if err != nil {
 			t.Fatalf("take %d: %v", i, err)
 		}
 	}
@@ -39,19 +40,23 @@ func TestUserBucketRefill(t *testing.T) {
 	b := newUserBucket()
 	now := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
 	b.now = func() time.Time { return now }
-	for i := 0; i < int(UserBucketCapacity); i++ {
-		if err := b.take(); err != nil {
+	for range int(UserBucketCapacity) {
+		err := b.take()
+		if err != nil {
 			t.Fatal(err)
 		}
 	}
 	now = now.Add(time.Second)
-	if err := b.take(); err != nil {
+	err := b.take()
+	if err != nil {
 		t.Fatalf("first after refill: %v", err)
 	}
-	if err := b.take(); err != nil {
+	err = b.take()
+	if err != nil {
 		t.Fatalf("second after refill: %v", err)
 	}
-	if err := b.take(); err == nil {
+	err = b.take()
+	if err == nil {
 		t.Fatal("third after 1s refill should fail")
 	}
 }
@@ -105,13 +110,13 @@ func TestNetworkGetTakesToken(t *testing.T) {
 		t.Fatalf("tokens %v", got)
 	}
 	for c.bucket.remaining() >= 1 {
-		if err := c.bucket.take(); err != nil {
+		err := c.bucket.take()
+		if err != nil {
 			t.Fatal(err)
 		}
 	}
 	_, err := c.Get("/status", nil, nil, nil)
-	var limited UserLimited
-	if !errors.As(err, &limited) {
+	if _, ok := errors.AsType[UserLimited](err); !ok {
 		t.Fatalf("empty bucket Get: %v", err)
 	}
 }
@@ -160,6 +165,7 @@ func (m *memCache) CacheGet(_ context.Context, key string) (*store.CachedRespons
 		return nil, nil
 	}
 	cp := *c
+
 	return &cp, nil
 }
 
@@ -171,6 +177,7 @@ func (m *memCache) CachePut(_ context.Context, key string, c store.CachedRespons
 	}
 	cp := c
 	m.m[key] = &cp
+
 	return nil
 }
 
@@ -180,5 +187,6 @@ func (m *memCache) CacheTouch(_ context.Context, key string, expiresAt time.Time
 	if c := m.m[key]; c != nil {
 		c.ExpiresAt = expiresAt
 	}
+
 	return nil
 }

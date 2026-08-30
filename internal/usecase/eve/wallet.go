@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/truewebber/eve-online-mcp/internal/domain/j"
@@ -14,10 +15,10 @@ import (
 
 func registerWallet(s *mcp.Server, a *session.Session) {
 	type histIn struct {
-		Character      string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Kind           string `json:"kind,omitempty" jsonschema:"'journal' is every ISK movement. 'transactions' is market trades. 'both' returns each in its own section. Default journal."`
-		RefType        string `json:"ref_type,omitempty" jsonschema:"Journal only: keep just one reason code, e.g. 'bounty_prizes'."`
-		Limit          int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Kind           string `json:"kind,omitempty"            jsonschema:"'journal' is every ISK movement. 'transactions' is market trades. 'both' returns each in its own section. Default journal."`
+		RefType        string `json:"ref_type,omitempty"        jsonschema:"Journal only: keep just one reason code, e.g. 'bounty_prizes'."`
+		Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 		ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
@@ -55,13 +56,16 @@ func registerWallet(s *mcp.Server, a *session.Session) {
 			if kind == "journal" {
 				sec := j.Map(out["journal_section"])
 				delete(out, "journal_section")
+
 				return merge(out, sec), nil
 			}
 			if kind == "transactions" {
 				sec := j.Map(out["transactions_section"])
 				delete(out, "transactions_section")
+
 				return merge(out, sec), nil
 			}
+
 			return out, nil
 		})
 	})
@@ -72,6 +76,7 @@ func journalSection(a *session.Session, cid int, refType string, limit int, conc
 	if err != nil {
 		return nil, err
 	}
+
 	return summarizeJournal(result.Data, result.StaleNote(), result.Truncated, 10, refType, limit, conciseMode, "")
 }
 
@@ -101,6 +106,7 @@ func summarizeJournal(data any, stale string, truncated bool, pageCap int, refTy
 			if divisionNote != "" {
 				msg = fmt.Sprintf("No journal entries with ref_type %q in %s. Codes actually present: %v", refType, divisionNote, available)
 			}
+
 			return map[string]any{"journal": []any{}, "error": msg}, nil
 		}
 		entries = filtered
@@ -140,6 +146,7 @@ func summarizeJournal(data any, stale string, truncated bool, pageCap int, refTy
 		if ak < 0 {
 			ak = -ak
 		}
+
 		return ai > ak
 	})
 	if len(byCat) > 15 {
@@ -168,6 +175,7 @@ func summarizeJournal(data any, stale string, truncated bool, pageCap int, refTy
 	if truncated {
 		out["totals_caveat"] = fmt.Sprintf("Hit the %d-page read cap: the totals and by_category above cover the newest %s entries, not the full window.", pageCap, formatInt(len(entries)))
 	}
+
 	return out, nil
 }
 
@@ -176,6 +184,7 @@ func transactionSection(a *session.Session, path string, cid int, limit int, con
 	if err != nil {
 		return nil, err
 	}
+
 	return summarizeTransactions(a, cid, result.Data, result.StaleNote(), result.Truncated, limit, conciseMode)
 }
 
@@ -224,13 +233,15 @@ func summarizeTransactions(a *session.Session, cid int, data any, stale string, 
 	if truncated {
 		out["totals_caveat"] = fmt.Sprintf("Only the newest %s trades were read, so the totals cover `covers` and not the full retention window.", formatInt(len(entries)))
 	}
+
 	return out, nil
 }
 
 func formatInt(n int) string {
-	s := fmt.Sprintf("%d", n)
+	s := strconv.Itoa(n)
 	if n >= 1000 {
-		return strings.ReplaceAll(fmt.Sprintf("%d", n), "", "")
+		return strings.ReplaceAll(strconv.Itoa(n), "", "")
 	}
+
 	return s
 }

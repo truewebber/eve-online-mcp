@@ -14,11 +14,11 @@ import (
 
 func registerAssets(s *mcp.Server, a *session.Session) {
 	type listIn struct {
-		Character      string  `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Location       string  `json:"location,omitempty" jsonschema:"Case-insensitive substring of a station or structure name, e.g. 'Jita' or 'Amarr VIII'. Empty means every location."`
-		MinValue       float64 `json:"min_value,omitempty" jsonschema:"Hide locations holding less than this many ISK.,minimum=0"`
-		Limit          int     `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
-		Items          int     `json:"items,omitempty" jsonschema:"Maximum items to list inside each location in detailed mode.,minimum=1,maximum=200"`
+		Character      string  `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Location       string  `json:"location,omitempty"        jsonschema:"Case-insensitive substring of a station or structure name, e.g. 'Jita' or 'Amarr VIII'. Empty means every location."`
+		MinValue       float64 `json:"min_value,omitempty"       jsonschema:"Hide locations holding less than this many ISK.,minimum=0"`
+		Limit          int     `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Items          int     `json:"items,omitempty"           jsonschema:"Maximum items to list inside each location in detailed mode.,minimum=1,maximum=200"`
 		ResponseFormat string  `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
@@ -118,6 +118,7 @@ func registerAssets(s *mcp.Server, a *session.Session) {
 			for _, b := range buckets {
 				total += b.value
 			}
+
 			return merge(map[string]any{
 				"character": token.CharacterName, "total_estimated_value": isk(total),
 				"total_locations": len(buckets), "matching_locations": len(rows),
@@ -129,9 +130,9 @@ func registerAssets(s *mcp.Server, a *session.Session) {
 	})
 
 	type findIn struct {
-		Name           string `json:"name" jsonschema:"Case-insensitive substring of the item type name, e.g. 'Drake' or 'Tritanium'."`
-		Character      string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Limit          int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Name           string `json:"name"                      jsonschema:"Case-insensitive substring of the item type name, e.g. 'Drake' or 'Tritanium'."`
+		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 		ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
@@ -211,6 +212,7 @@ func registerAssets(s *mcp.Server, a *session.Session) {
 			for _, r := range rows {
 				total += j.Int(r["quantity"])
 			}
+
 			return merge(map[string]any{
 				"character": token.CharacterName, "query": in.Name,
 				"total_units": total, "total_stacks": len(rows), "data_age": result.StaleNote(),
@@ -220,8 +222,8 @@ func registerAssets(s *mcp.Server, a *session.Session) {
 	})
 
 	type bpIn struct {
-		Character      string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Limit          int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 		ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
@@ -295,9 +297,11 @@ func registerAssets(s *mcp.Server, a *session.Session) {
 				if j.Str(rows[i]["kind"]) != j.Str(rows[k]["kind"]) {
 					return j.Str(rows[i]["kind"]) == "original"
 				}
+
 				return j.Int(rows[i]["material_efficiency"]) > j.Int(rows[k]["material_efficiency"])
 			})
 			visible, meta := page(rows, limitOr(in.Limit, 25), "")
+
 			return merge(map[string]any{
 				"character": token.CharacterName, "originals": orig, "copies": copies,
 				"data_age":   result.StaleNote(),
@@ -317,6 +321,7 @@ func valuesOf(m map[int]int) []int {
 		seen[v] = struct{}{}
 		out = append(out, v)
 	}
+
 	return out
 }
 
@@ -324,5 +329,6 @@ func nameOr(names map[int]string, id int) string {
 	if n, ok := names[id]; ok && n != "" {
 		return n
 	}
+
 	return fmt.Sprintf("Unknown #%d", id)
 }

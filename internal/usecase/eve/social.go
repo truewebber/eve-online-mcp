@@ -21,9 +21,9 @@ var (
 
 func registerSocial(s *mcp.Server, a *session.Session) {
 	type mailListIn struct {
-		Character      string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		UnreadOnly     *bool  `json:"unread_only,omitempty" jsonschema:"Only list mail that has not been read yet."`
-		Limit          int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		UnreadOnly     *bool  `json:"unread_only,omitempty"     jsonschema:"Only list mail that has not been read yet."`
+		Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 		ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
@@ -82,6 +82,7 @@ func registerSocial(s *mcp.Server, a *session.Session) {
 				})
 			}
 			visible, meta := page(rows, limitOr(in.Limit, 15), "")
+
 			return merge(map[string]any{
 				"character": token.CharacterName, "unread": unread, "data_age": result.StaleNote(),
 				"mails": project(visible, []string{"mail_id", "from", "subject", "timestamp", "read"}, concise(in.ResponseFormat)),
@@ -90,7 +91,7 @@ func registerSocial(s *mcp.Server, a *session.Session) {
 	})
 
 	type mailReadIn struct {
-		MailID    int    `json:"mail_id" jsonschema:"Mail id from eve_mail_list.,minimum=1"`
+		MailID    int    `json:"mail_id"             jsonschema:"Mail id from eve_mail_list.,minimum=1"`
 		Character string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	}
 	addTool(s, &mcp.Tool{
@@ -125,6 +126,7 @@ func registerSocial(s *mcp.Server, a *session.Session) {
 			for _, r := range j.Maps(mail["recipients"]) {
 				to = append(to, names[j.Int(r["recipient_id"])])
 			}
+
 			return map[string]any{
 				"mail_id": in.MailID, "from": names[j.Int(mail["from"])], "to": to,
 				"subject": mail["subject"], "timestamp": mail["timestamp"],
@@ -134,8 +136,8 @@ func registerSocial(s *mcp.Server, a *session.Session) {
 	})
 
 	type notesIn struct {
-		Character      string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Limit          int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 		ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
@@ -192,6 +194,7 @@ func registerSocial(s *mcp.Server, a *session.Session) {
 				})
 			}
 			visible, meta := page(rows, limitOr(in.Limit, 15), "")
+
 			return merge(map[string]any{
 				"character": token.CharacterName, "unread": unread, "data_age": result.StaleNote(),
 				"notifications": project(visible, []string{"type", "from", "timestamp", "read"}, concise(in.ResponseFormat)),
@@ -200,8 +203,8 @@ func registerSocial(s *mcp.Server, a *session.Session) {
 	})
 
 	type kmIn struct {
-		Character      string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Limit          int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 		ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
@@ -216,13 +219,14 @@ func registerSocial(s *mcp.Server, a *session.Session) {
 			if err := a.RequireScope(token, "esi-killmails.read_killmails.v1", "killmails"); err != nil {
 				return nil, err
 			}
+
 			return formatKillmails(a, token.CharacterName, token.CharacterID, 0, fmt.Sprintf("/characters/%d/killmails/recent", token.CharacterID), limitOr(in.Limit, 8), concise(in.ResponseFormat))
 		})
 	})
 
 	type fitIn struct {
-		Character      string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Limit          int    `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+		Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 		ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 	}
 	addTool(s, &mcp.Tool{
@@ -274,6 +278,7 @@ func registerSocial(s *mcp.Server, a *session.Session) {
 				})
 			}
 			visible, meta := page(rows, limitOr(in.Limit, 10), "")
+
 			return merge(map[string]any{
 				"character": token.CharacterName, "data_age": result.StaleNote(),
 				"fittings": project(visible, []string{"fitting_id", "name", "ship", "module_count"}, concise(in.ResponseFormat)),
@@ -310,6 +315,7 @@ func formatKillmails(a *session.Session, character string, characterID, corpID i
 			r, err := a.ESI.Get(fmt.Sprintf("/killmails/%d/%s", j.Int(ref["killmail_id"]), j.Str(ref["killmail_hash"])), nil, nil, nil)
 			if err != nil {
 				ch <- box{ref["killmail_id"], nil, err}
+
 				return
 			}
 			ch <- box{ref["killmail_id"], j.Map(r.Data), nil}
@@ -386,6 +392,7 @@ func formatKillmails(a *session.Session, character string, characterID, corpID i
 		out["unavailable"] = len(failed)
 		out["unavailable_note"] = fmt.Sprintf("%d of %d killmails could not be fetched from ESI, so kills/losses below undercount by that many. Try again shortly.", len(failed), len(refs))
 	}
+
 	return out, nil
 }
 

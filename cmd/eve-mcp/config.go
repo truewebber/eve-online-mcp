@@ -74,10 +74,10 @@ func (c *config) validate() error {
 	}
 	_, port, err := net.SplitHostPort(c.Listen)
 	if err != nil {
-		return fmt.Errorf("%w: %v", errListen, err)
+		return fmt.Errorf("%w: %w", errListen, err)
 	}
 	if _, _, err := net.SplitHostPort(c.InternalListen); err != nil {
-		return fmt.Errorf("INTERNAL_LISTEN must be host:port: %v", err)
+		return fmt.Errorf("INTERNAL_LISTEN must be host:port: %w", err)
 	}
 
 	c.PublicURL = strings.TrimRight(c.PublicURL, "/")

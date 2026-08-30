@@ -23,6 +23,7 @@ func (p guardPersist) GetConfirm(ctx context.Context, token string) (*write.Conf
 	if err != nil || !ok {
 		return nil, ok, err
 	}
+
 	return &write.Confirm{
 		Token: row.Token, UserID: row.UserID, Tool: row.Tool,
 		ArgsDigest: row.ArgsDigest, CreatedAt: row.CreatedAt,
