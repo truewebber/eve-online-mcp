@@ -5,8 +5,9 @@ document says how to build it. Where the current code differs, the delta
 is listed in §12 — the spec describes the target.
 
 §12 is the remaining work. The board in [plan/README.md](plan/README.md)
-slices finished work into Composer-sized tasks and predates §12; it is
-being rebuilt from it. This file stays the contract either way.
+slices it into Composer-sized tasks: T01–T10 are the current state of the
+repo, T11–T26 are §12 items 0–15 in dependency order. This file stays the
+contract either way — a task that disagrees with it is wrong.
 
 ## 1. Runtime topology
 
