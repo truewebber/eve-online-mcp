@@ -39,7 +39,7 @@ const (
 
 var (
 	// ErrUnknownLogin is returned when the EVE callback state is missing or expired.
-	ErrUnknownLogin = errors.New("Unknown or expired login state — start the login again.") //nolint:revive // shown on the login-failed HTML page
+	ErrUnknownLogin = errors.New("unknown or expired login state")
 	// ErrStoreRequired is returned when Open is called without a Postgres store.
 	ErrStoreRequired = errors.New("oauth: postgres store is required")
 	// ErrHMACTooShort is returned when the persisted JWT HMAC is shorter than 32 bytes.

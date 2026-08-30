@@ -60,10 +60,14 @@ func (h *API) GetAuthCallback(w http.ResponseWriter, r *http.Request, _ GetAuthC
 	loc, token, err := h.OAuth.CompleteCallback(r.Context(), code, state)
 	if err != nil {
 		title := "Login failed"
+		detail := err.Error()
 		if _, ok := errors.AsType[oauth.CharacterOwnedError](err); ok {
 			title = "Character already linked"
 		}
-		pageStatus(w, 400, title, `<p class=warn>`+html.EscapeString(err.Error())+`</p>`)
+		if errors.Is(err, oauth.ErrUnknownLogin) {
+			detail = "Unknown or expired login state — start the login again."
+		}
+		pageStatus(w, 400, title, `<p class=warn>`+html.EscapeString(detail)+`</p>`)
 
 		return
 	}
