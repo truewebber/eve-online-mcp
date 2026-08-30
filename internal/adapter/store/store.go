@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,7 +15,7 @@ type Store struct {
 
 func Open(ctx context.Context, databaseURL string) (*Store, error) {
 	if databaseURL == "" {
-		return nil, errors.New("store: DATABASE_URL is empty")
+		return nil, ErrEmptyDatabaseURL
 	}
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {

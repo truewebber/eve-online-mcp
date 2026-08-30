@@ -21,6 +21,9 @@ import (
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 )
 
+// ErrStoreRequired is returned when Open is called without a Postgres store.
+var ErrStoreRequired = errors.New("session: postgres store is required")
+
 // Options is assembled at the composition root from process config.
 type Options struct {
 	UserAgent         string
@@ -43,7 +46,7 @@ type Session struct {
 
 func Open(opts Options) (*Session, error) {
 	if opts.Store == nil {
-		return nil, errors.New("session: postgres store is required")
+		return nil, ErrStoreRequired
 	}
 	if opts.RequestTimeoutSec <= 0 {
 		opts.RequestTimeoutSec = 30

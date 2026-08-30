@@ -98,6 +98,8 @@ Flags:
 lint checks tool definitions. smoke calls every read tool. all runs both.
 `
 
+var errUnreachable = errors.New("cannot reach the MCP server")
+
 type rpc struct {
 	url    string
 	token  string
@@ -146,7 +148,7 @@ func (r *rpc) call(method string, params map[string]any) (map[string]any, error)
 		return nil, fmt.Errorf("cannot reach the MCP server at %s: %w", r.url, err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("cannot reach the MCP server at %s: HTTP Error %d: %s", r.url, resp.StatusCode, strings.TrimSpace(string(raw)))
+		return nil, fmt.Errorf("%w at %s: HTTP Error %d: %s", errUnreachable, r.url, resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 	body := string(raw)
 	for line := range strings.SplitSeq(body, "\n") {

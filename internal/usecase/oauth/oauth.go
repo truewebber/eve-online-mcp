@@ -37,8 +37,21 @@ const (
 	jwtSecretName = "mcp_jwt_hmac"
 )
 
-// ErrUnknownLogin is returned when the EVE callback state is missing or expired.
-var ErrUnknownLogin = errors.New("Unknown or expired login state — start the login again.")
+var (
+	// ErrUnknownLogin is returned when the EVE callback state is missing or expired.
+	ErrUnknownLogin = errors.New("Unknown or expired login state — start the login again.")
+	// ErrStoreRequired is returned when Open is called without a Postgres store.
+	ErrStoreRequired = errors.New("oauth: postgres store is required")
+	// ErrHMACTooShort is returned when the persisted JWT HMAC is shorter than 32 bytes.
+	ErrHMACTooShort = errors.New("oauth: mcp_jwt_hmac is too short")
+	// ErrUnknownLoginKind is returned when a login_states row has an unexpected kind.
+	ErrUnknownLoginKind = errors.New("unknown login kind")
+	errAltMissingUser   = errors.New("alt login is missing user_id")
+	errBadAlg           = errors.New("alg")
+	errInvalidToken     = errors.New("invalid")
+	errNotRefresh       = errors.New("not refresh")
+	errNoSub            = errors.New("no sub")
+)
 
 // CharacterOwnedError is an alt-add refused because the character already
 // belongs to a different user. The HTML callback page shows Error().
@@ -94,14 +107,14 @@ func Open(pub Host, runtime *session.Session, db *store.Store) (*Server, error) 
 		pub.MCPPath = "/mcp"
 	}
 	if db == nil {
-		return nil, errors.New("oauth: postgres store is required")
+		return nil, ErrStoreRequired
 	}
 	key, err := db.GetOrCreateSecret(context.Background(), jwtSecretName)
 	if err != nil {
 		return nil, err
 	}
 	if len(key) < 32 {
-		return nil, errors.New("oauth: mcp_jwt_hmac is too short")
+		return nil, ErrHMACTooShort
 	}
 	brokerOpts := runtime.Opts.SSO
 	brokerOpts.UserID = ""
@@ -291,7 +304,7 @@ func (s *Server) CompleteCallback(ctx context.Context, code, eveState string) (r
 
 		return "", token, nil
 	default:
-		return "", token, fmt.Errorf("unknown login kind %q", st.Kind)
+		return "", token, fmt.Errorf("%w: %q", ErrUnknownLoginKind, st.Kind)
 	}
 }
 
@@ -339,7 +352,7 @@ func (s *Server) finishMCP(ctx context.Context, p *store.LoginState, token *sso.
 
 func (s *Server) finishAlt(ctx context.Context, st *store.LoginState, token *sso.CharacterToken) error {
 	if st.UserID == "" {
-		return errors.New("alt login is missing user_id")
+		return errAltMissingUser
 	}
 	owner, err := s.ownerOf(ctx, token.CharacterID)
 	if err != nil {
@@ -495,21 +508,21 @@ func (s *Server) issueRefresh(userID string) (string, error) {
 func (s *Server) parseRefresh(raw string) (string, error) {
 	tok, err := jwt.Parse(raw, func(t *jwt.Token) (any, error) {
 		if t.Method != jwt.SigningMethodHS256 {
-			return nil, errors.New("alg")
+			return nil, errBadAlg
 		}
 
 		return s.hmacKey, nil
 	}, jwt.WithIssuer(s.Base()), jwt.WithLeeway(30*time.Second))
 	if err != nil || !tok.Valid {
-		return "", errors.New("invalid")
+		return "", errInvalidToken
 	}
 	claims, _ := tok.Claims.(jwt.MapClaims)
 	if claims["typ"] != "refresh" {
-		return "", errors.New("not refresh")
+		return "", errNotRefresh
 	}
 	sub, _ := claims["sub"].(string)
 	if sub == "" {
-		return "", errors.New("no sub")
+		return "", errNoSub
 	}
 
 	return sub, nil
@@ -522,7 +535,7 @@ func (s *Server) VerifyAccess(_ context.Context, token string, _ *http.Request) 
 func (s *Server) verifyAccess(token string) (*mcpauth.TokenInfo, error) {
 	tok, err := jwt.Parse(token, func(t *jwt.Token) (any, error) {
 		if t.Method != jwt.SigningMethodHS256 {
-			return nil, errors.New("alg")
+			return nil, errBadAlg
 		}
 
 		return s.hmacKey, nil

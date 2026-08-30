@@ -30,6 +30,9 @@ type TokenStore struct {
 	access map[int]accessMem       // durable overlay
 }
 
+// ErrMissingCharacterID is returned when Upsert is called without a character id.
+var ErrMissingCharacterID = errors.New("sso: missing character id")
+
 func newTokenStore(db *store.Store, userID string) *TokenStore {
 	return &TokenStore{
 		db:     db,
@@ -45,7 +48,7 @@ func (s *TokenStore) durable() bool {
 
 func (s *TokenStore) Upsert(token *CharacterToken) error {
 	if token == nil || token.CharacterID == 0 {
-		return errors.New("sso: missing character id")
+		return ErrMissingCharacterID
 	}
 	if !s.durable() {
 		return s.upsertMemory(token)

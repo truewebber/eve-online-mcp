@@ -50,6 +50,11 @@ const (
 	refreshMargin = 60 * time.Second
 )
 
+var (
+	errKidNotInJWKS = errors.New("kid not in JWKS")
+	errNotRSA       = errors.New("not rsa")
+)
+
 type Error struct{ Msg string }
 
 func (e Error) Error() string { return e.Msg }
@@ -395,7 +400,7 @@ func (c *Client) signingKey(accessToken string) (any, error) {
 	}
 	key, ok := c.jwks[kid]
 	if !ok {
-		return nil, fmt.Errorf("kid %s not in JWKS", kid)
+		return nil, fmt.Errorf("%w: %s", errKidNotInJWKS, kid)
 	}
 
 	return key, nil
@@ -431,7 +436,7 @@ func rsaFromJWK(k map[string]any) (*rsa.PublicKey, error) {
 	nStr, _ := k["n"].(string)
 	eStr, _ := k["e"].(string)
 	if nStr == "" || eStr == "" {
-		return nil, errors.New("not rsa")
+		return nil, errNotRSA
 	}
 	nBytes, err := base64.RawURLEncoding.DecodeString(nStr)
 	if err != nil {
