@@ -115,10 +115,11 @@ func registerOpenWindow(s *mcp.Server) {
 			var label string
 			var resolved map[string]any
 			if kind == "contract" {
-				if _, err := strconv.Atoi(strings.TrimSpace(in.Target)); err != nil {
+				id, ok := parseContractID(in.Target)
+				if !ok {
 					return map[string]any{"error": "For window='contract', `target` must be the numeric contract_id from eve_market_contracts (run it with response_format='detailed' to get the id)."}, nil
 				}
-				path, params = "/ui/openwindow/contract", map[string]any{"contract_id": j.Int(in.Target)}
+				path, params = "/ui/openwindow/contract", map[string]any{"contract_id": id}
 				label = "contract #" + strings.TrimSpace(in.Target)
 			} else {
 				resolved, err = resolveEntity(a, in.Target, token.CharacterID, kind)
@@ -824,4 +825,13 @@ func resolveEntity(a *session.Session, name string, characterID int, kind string
 	}
 
 	return map[string]any{"error": fmt.Sprintf("Could not resolve %q for the %s window. Check the exact name with eve_universe_search.", name, kind)}, nil
+}
+
+func parseContractID(s string) (int, bool) {
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return 0, false
+	}
+
+	return n, true
 }

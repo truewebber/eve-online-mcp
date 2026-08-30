@@ -502,7 +502,7 @@ func (r *Resolver) blob(key string, maxAge *time.Duration) (any, error) {
 	}
 	var v any
 	if err := json.Unmarshal(raw, &v); err != nil {
-		return nil, nil
+		return nil, err
 	}
 
 	return v, nil
