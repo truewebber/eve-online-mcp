@@ -13,7 +13,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func registerAccount(s *mcp.Server, a *session.Session) {
+func registerAccount(s *mcp.Server) {
 	addTool(s, &mcp.Tool{
 		Name:        "eve_server_status",
 		Description: "Tranquility server status: player count, build version, uptime, VIP mode.\n\nAlso the cheapest way to confirm this server can reach ESI at all. EVE has a daily downtime around 11:00 UTC; a low player count right after it is normal, not a bug.\n\nReturns: server_version, players, vip, start_time, data_age.",

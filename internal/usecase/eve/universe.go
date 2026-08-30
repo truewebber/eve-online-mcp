@@ -21,7 +21,7 @@ var searchCategories = []string{
 
 var routePrefs = map[string]string{"shorter": "Shorter", "safer": "Safer", "less_secure": "LessSecure"}
 
-func registerUniverse(s *mcp.Server, a *session.Session) {
+func registerUniverse(s *mcp.Server) {
 	type searchIn struct {
 		Query      string `json:"query"                jsonschema:"At least 3 characters. Prefix match by default, so 'Trit' finds 'Tritanium'."`
 		Categories string `json:"categories,omitempty" jsonschema:"Comma-separated subset of: agent, alliance, character, constellation, corporation, faction, inventory_type, region, solar_system, station, structure."`

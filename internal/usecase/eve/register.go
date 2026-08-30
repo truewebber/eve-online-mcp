@@ -1,8 +1,6 @@
 package eve
 
 import (
-	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
-
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -76,15 +74,15 @@ Corporation data
     tools; these ones are the shared hangar.
 `
 
-func Register(s *mcp.Server, a *session.Session) {
-	registerAccount(s, a)
-	registerCharacter(s, a)
-	registerAssets(s, a)
-	registerWallet(s, a)
-	registerIndustry(s, a)
-	registerMarket(s, a)
-	registerSocial(s, a)
-	registerUniverse(s, a)
-	registerCorp(s, a)
-	registerWrites(s, a)
+func Register(s *mcp.Server) {
+	registerAccount(s)
+	registerCharacter(s)
+	registerAssets(s)
+	registerWallet(s)
+	registerIndustry(s)
+	registerMarket(s)
+	registerSocial(s)
+	registerUniverse(s)
+	registerCorp(s)
+	registerWrites(s)
 }

@@ -12,7 +12,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func registerIndustry(s *mcp.Server, a *session.Session) {
+func registerIndustry(s *mcp.Server) {
 	type jobsIn struct {
 		Character        string `json:"character,omitempty"         jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		IncludeCompleted *bool  `json:"include_completed,omitempty" jsonschema:"Also return jobs that already delivered. Default false."`

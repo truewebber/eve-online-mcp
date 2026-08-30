@@ -3,7 +3,6 @@ package mcp
 
 import (
 	"github.com/truewebber/eve-online-mcp/internal/usecase/eve"
-	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -12,6 +11,6 @@ func Instructions() string {
 	return eve.Instructions + eve.CorpInstructions
 }
 
-func Register(s *mcp.Server, runtime *session.Session) {
-	eve.Register(s, runtime)
+func Register(s *mcp.Server) {
+	eve.Register(s)
 }

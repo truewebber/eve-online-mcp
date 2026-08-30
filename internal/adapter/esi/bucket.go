@@ -66,7 +66,7 @@ func (b *userBucket) take() error {
 			RetrySec: retrySec,
 		}
 	}
-	b.tokens -= 1
+	b.tokens--
 
 	return nil
 }
@@ -74,7 +74,7 @@ func (b *userBucket) take() error {
 func (b *userBucket) refund() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.tokens += 1
+	b.tokens++
 	if b.tokens > UserBucketCapacity {
 		b.tokens = UserBucketCapacity
 	}

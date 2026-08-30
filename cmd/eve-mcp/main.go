@@ -69,7 +69,7 @@ func main() {
 	}
 
 	h := httpsvc.New(oauthServer, host)
-	if err := httpsvc.ListenAndServe(h, runtime, httpsvc.ListenOptions{
+	if err := httpsvc.ListenAndServe(h, httpsvc.ListenOptions{
 		Listen:         cfg.Listen,
 		InternalListen: cfg.InternalListen,
 		MCPPath:        host.MCPPath,

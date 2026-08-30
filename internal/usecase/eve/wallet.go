@@ -13,7 +13,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func registerWallet(s *mcp.Server, a *session.Session) {
+func registerWallet(s *mcp.Server) {
 	type histIn struct {
 		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		Kind           string `json:"kind,omitempty"            jsonschema:"'journal' is every ISK movement. 'transactions' is market trades. 'both' returns each in its own section. Default journal."`

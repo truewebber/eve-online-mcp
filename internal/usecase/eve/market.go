@@ -15,7 +15,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func registerMarket(s *mcp.Server, a *session.Session) {
+func registerMarket(s *mcp.Server) {
 	type priceIn struct {
 		Item        string `json:"item"                   jsonschema:"Exact item type name, e.g. 'Tritanium' or 'Rifter'. Must match the in-game name exactly."`
 		Region      string `json:"region,omitempty"       jsonschema:"Exact region name. Empty means The Forge / Jita 4-4."`

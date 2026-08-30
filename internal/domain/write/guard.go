@@ -34,13 +34,13 @@ func (g *Guard) CheckCapability(capability string) error {
 }
 
 func (g *Guard) CheckScope(capability string, granted []string) error {
-	cap := Capabilities[capability]
+	need := Capabilities[capability]
 	have := map[string]struct{}{}
 	for _, s := range granted {
 		have[s] = struct{}{}
 	}
 	var missing []string
-	for _, s := range cap.Scopes {
+	for _, s := range need.Scopes {
 		if _, ok := have[s]; !ok {
 			missing = append(missing, s)
 		}
@@ -140,7 +140,7 @@ func (g *Guard) consumeConfirm(ctx context.Context, tool, digest, confirmToken s
 	return nil
 }
 
-func (g *Guard) Record(ctx context.Context, tool, capability string, args map[string]any, result any) {
+func (g *Guard) Record(ctx context.Context, _ string, capability string, _ map[string]any, _ any) {
 	if capability == "mail_send" && g.persist != nil {
 		err := g.persist.InsertMail(ctx, g.userID, time.Now().UTC())
 		if err != nil {

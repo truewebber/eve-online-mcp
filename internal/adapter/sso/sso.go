@@ -364,7 +364,7 @@ func (c *Client) decode(accessToken string) (jwt.MapClaims, error) {
 
 		return c.checkIssuer(claims)
 	}
-	tok, err := parser.Parse(accessToken, func(t *jwt.Token) (any, error) { return key, nil })
+	tok, err := parser.Parse(accessToken, func(_ *jwt.Token) (any, error) { return key, nil })
 	if err != nil {
 		return nil, Err("The SSO token failed verification (" + err.Error() + "). Nothing was stored.")
 	}

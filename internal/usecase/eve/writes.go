@@ -21,17 +21,17 @@ var recipientKeys = map[string]string{
 	"characters": "character", "corporations": "corporation", "alliances": "alliance",
 }
 
-func registerWrites(s *mcp.Server, a *session.Session) {
-	registerWaypoint(s, a)
-	registerOpenWindow(s, a)
-	registerWriteFittings(s, a)
-	registerMailOrganize(s, a)
-	registerMailSend(s, a)
-	registerContacts(s, a)
-	registerCalendar(s, a)
+func registerWrites(s *mcp.Server) {
+	registerWaypoint(s)
+	registerOpenWindow(s)
+	registerWriteFittings(s)
+	registerMailOrganize(s)
+	registerMailSend(s)
+	registerContacts(s)
+	registerCalendar(s)
 }
 
-func registerWaypoint(s *mcp.Server, a *session.Session) {
+func registerWaypoint(s *mcp.Server) {
 	type in struct {
 		Destination         string `json:"destination"                     jsonschema:"Exact system, station or structure name."`
 		Character           string `json:"character,omitempty"             jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
@@ -55,11 +55,11 @@ func registerWaypoint(s *mcp.Server, a *session.Session) {
 			if _, ok := target["error"]; ok {
 				return target, nil
 			}
-			clear := boolDef(in.ClearOtherWaypoints, true)
+			clearOthers := boolDef(in.ClearOtherWaypoints, true)
 			add := boolDef(in.AddToBeginning, false)
 			args := map[string]any{
 				"destination_id": target["id"], "character_id": token.CharacterID,
-				"clear_other_waypoints": clear, "add_to_beginning": add,
+				"clear_other_waypoints": clearOthers, "add_to_beginning": add,
 			}
 			pos := "final stop"
 			if add {
@@ -69,7 +69,7 @@ func registerWaypoint(s *mcp.Server, a *session.Session) {
 				"action":                "Set an autopilot waypoint in the game client",
 				"character":             token.CharacterName,
 				"destination":           fmt.Sprintf("%v (%v)", target["name"], target["kind"]),
-				"clears_existing_route": clear, "position": pos,
+				"clears_existing_route": clearOthers, "position": pos,
 			}
 			if amb := j.Str(target["ambiguity"]); amb != "" {
 				preview["ambiguous_name"] = amb + " — this routes to the first. Cancel and use eve_universe_search if the other one was meant."
@@ -82,7 +82,7 @@ func registerWaypoint(s *mcp.Server, a *session.Session) {
 				return blocked, nil
 			}
 			if _, err := a.ESI.Post("/ui/autopilot/waypoint", &token.CharacterID, map[string]any{
-				"destination_id": target["id"], "clear_other_waypoints": clear, "add_to_beginning": add,
+				"destination_id": target["id"], "clear_other_waypoints": clearOthers, "add_to_beginning": add,
 			}, nil); err != nil {
 				return nil, err
 			}
@@ -93,7 +93,7 @@ func registerWaypoint(s *mcp.Server, a *session.Session) {
 	})
 }
 
-func registerOpenWindow(s *mcp.Server, a *session.Session) {
+func registerOpenWindow(s *mcp.Server) {
 	type in struct {
 		Window       string `json:"window"                  jsonschema:"'market' opens market details for an item. 'info' opens Show Info. 'contract' opens one contract."`
 		Target       string `json:"target"                  jsonschema:"For market, an exact item name. For info, an exact name of any entity. For contract, the numeric contract_id."`
@@ -171,7 +171,7 @@ type fittingModule struct {
 	Quantity int    `json:"quantity,omitempty" jsonschema:"Default 1."`
 }
 
-func registerWriteFittings(s *mcp.Server, a *session.Session) {
+func registerWriteFittings(s *mcp.Server) {
 	type saveIn struct {
 		Name         string          `json:"name"                    jsonschema:"Fitting name as it will appear in game."`
 		Ship         string          `json:"ship"                    jsonschema:"Exact hull name, e.g. 'Rifter'."`
@@ -314,7 +314,7 @@ func registerWriteFittings(s *mcp.Server, a *session.Session) {
 	})
 }
 
-func registerMailOrganize(s *mcp.Server, a *session.Session) {
+func registerMailOrganize(s *mcp.Server) {
 	type markIn struct {
 		MailID       int    `json:"mail_id"                 jsonschema:"Mail id from eve_mail_list.,minimum=1"`
 		Read         *bool  `json:"read,omitempty"          jsonschema:"True marks it read, False marks it unread. Default true."`
@@ -395,7 +395,7 @@ func registerMailOrganize(s *mcp.Server, a *session.Session) {
 	})
 }
 
-func registerMailSend(s *mcp.Server, a *session.Session) {
+func registerMailSend(s *mcp.Server) {
 	type in struct {
 		To           []string `json:"to"                      jsonschema:"Exact character, corporation or alliance names."`
 		Subject      string   `json:"subject"                 jsonschema:"Mail subject."`
@@ -483,7 +483,7 @@ func registerMailSend(s *mcp.Server, a *session.Session) {
 	})
 }
 
-func registerContacts(s *mcp.Server, a *session.Session) {
+func registerContacts(s *mcp.Server) {
 	type setIn struct {
 		Names        []string `json:"names"                   jsonschema:"Exact character, corporation or alliance names."`
 		Standing     float64  `json:"standing"                jsonschema:"-10.0 to 10.0.,minimum=-10,maximum=10"`
@@ -683,7 +683,7 @@ func registerContacts(s *mcp.Server, a *session.Session) {
 	})
 }
 
-func registerCalendar(s *mcp.Server, a *session.Session) {
+func registerCalendar(s *mcp.Server) {
 	type in struct {
 		EventID      int    `json:"event_id"                jsonschema:"Event id from the in-game calendar.,minimum=1"`
 		Response     string `json:"response"                jsonschema:"accepted, declined, or tentative."`

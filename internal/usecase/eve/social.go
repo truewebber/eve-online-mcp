@@ -19,7 +19,7 @@ var (
 	brRe  = regexp.MustCompile(`(?i)<br\s*/?>`)
 )
 
-func registerSocial(s *mcp.Server, a *session.Session) {
+func registerSocial(s *mcp.Server) {
 	type mailListIn struct {
 		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		UnreadOnly     *bool  `json:"unread_only,omitempty"     jsonschema:"Only list mail that has not been read yet."`

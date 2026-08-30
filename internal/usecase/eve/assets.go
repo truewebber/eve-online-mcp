@@ -12,7 +12,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func registerAssets(s *mcp.Server, a *session.Session) {
+func registerAssets(s *mcp.Server) {
 	type listIn struct {
 		Character      string  `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		Location       string  `json:"location,omitempty"        jsonschema:"Case-insensitive substring of a station or structure name, e.g. 'Jita' or 'Amarr VIII'. Empty means every location."`

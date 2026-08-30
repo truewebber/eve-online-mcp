@@ -133,7 +133,7 @@ func TestWithCharacterForUpdateSerializes(t *testing.T) {
 	errc := make(chan error, 2)
 
 	go func() {
-		errc <- s.WithCharacterForUpdate(ctx, id, func(tok string) (string, error) {
+		errc <- s.WithCharacterForUpdate(ctx, id, func(_ string) (string, error) {
 			mu.Lock()
 			order = append(order, "a-start")
 			mu.Unlock()

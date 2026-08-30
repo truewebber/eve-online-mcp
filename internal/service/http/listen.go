@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	svcmcp "github.com/truewebber/eve-online-mcp/internal/service/mcp"
-	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -20,7 +19,7 @@ type ListenOptions struct {
 
 // ListenAndServe runs two HTTP servers: the public one (MCP + OAuth + pages)
 // and the internal one (healthz, later metrics) that must never be exposed.
-func ListenAndServe(h *API, runtime *session.Session, opts ListenOptions) error {
+func ListenAndServe(h *API, opts ListenOptions) error {
 	mux := http.NewServeMux()
 	HandlerFromMux(h, mux)
 
@@ -32,7 +31,7 @@ func ListenAndServe(h *API, runtime *session.Session, opts ListenOptions) error 
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name: "eve-online", Title: "EVE Online", Version: opts.Version,
 	}, &mcp.ServerOptions{Instructions: svcmcp.Instructions()})
-	svcmcp.Register(mcpServer, runtime)
+	svcmcp.Register(mcpServer)
 	stream := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return mcpServer
 	}, &mcp.StreamableHTTPOptions{

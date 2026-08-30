@@ -39,7 +39,7 @@ const (
 
 var (
 	// ErrUnknownLogin is returned when the EVE callback state is missing or expired.
-	ErrUnknownLogin = errors.New("Unknown or expired login state — start the login again.")
+	ErrUnknownLogin = errors.New("Unknown or expired login state — start the login again.") //nolint:revive // shown on the login-failed HTML page
 	// ErrStoreRequired is returned when Open is called without a Postgres store.
 	ErrStoreRequired = errors.New("oauth: postgres store is required")
 	// ErrHMACTooShort is returned when the persisted JWT HMAC is shorter than 32 bytes.
@@ -167,7 +167,7 @@ func (s *Server) ProtectedResourceHandler() http.Handler {
 	return mcpauth.ProtectedResourceMetadataHandler(s.ProtectedResource())
 }
 
-func (s *Server) ServeASMeta(w http.ResponseWriter, r *http.Request) {
+func (s *Server) ServeASMeta(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(s.AuthServerMeta())

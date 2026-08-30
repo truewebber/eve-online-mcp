@@ -50,7 +50,7 @@ var esiRoles = map[string]struct{}{
 	"Factory_Manager": {}, "Station_Manager": {}, "Trader": {},
 }
 
-func registerCorp(s *mcp.Server, a *session.Session) {
+func registerCorp(s *mcp.Server) {
 	type charIn struct {
 		Character string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	}

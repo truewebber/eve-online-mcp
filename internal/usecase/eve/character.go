@@ -13,7 +13,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func registerCharacter(s *mcp.Server, a *session.Session) {
+func registerCharacter(s *mcp.Server) {
 	type skillsIn struct {
 		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		Search         string `json:"search,omitempty"          jsonschema:"Case-insensitive substring of the skill name, e.g. 'Gunnery' or 'Caldari'. Strongly recommended — a full skill list is hundreds of rows."`
