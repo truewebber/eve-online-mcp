@@ -65,6 +65,7 @@ func loadConfig() (config, error) {
 	if err := c.validate(); err != nil {
 		return config{}, err
 	}
+
 	return c, nil
 }
 
@@ -91,5 +92,6 @@ func (c *config) validate() error {
 	if c.Contact != "" {
 		c.UserAgent += " " + c.Contact
 	}
+
 	return nil
 }
