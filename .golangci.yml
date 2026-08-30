@@ -125,6 +125,10 @@ linters:
     rules:
       - path: _test\.go
         linters: [wrapcheck, maintidx, gocognit]
+      # oapi-codegen writes a package godoc; godoclint counts the whole
+      # package and reports the clash on handler.go, not on *.gen.go.
+      - path: internal/service/http/
+        linters: [godoclint]
       - path: cmd/
         linters: [forbidigo]
       - path: evals/
