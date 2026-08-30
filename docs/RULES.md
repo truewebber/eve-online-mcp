@@ -154,3 +154,28 @@ spliced into a path.
 
 `filepath.Join` is for files. A string literal that is already a
 complete URL is not assembly.
+
+## 9. The user sees only static errors
+
+The transport is the only place an error becomes a response. It logs
+the internal error and returns a static message (and kind) from a
+fixed catalog. Inner layers return real Go errors so the log can say
+what broke; those strings never cross the edge — not in JSON, not in
+HTML, not in a `Location`.
+
+Validation may name the field that failed. The field name and the
+invariant are still static (`character_id` / `must be a positive
+integer`), not `err.Error()` from a parser or the database. If a case
+has no catalog entry, the user gets the generic static error and the
+real one stays in the log.
+
+## 10. A function returns one result
+
+A function or method returns one value, or two when the second is
+`error` or `bool`. That second slot is the control channel — failed,
+or not found / not present — not another piece of the answer. Two
+business values are one result that has not been named yet: put them
+in a struct.
+
+A signature we do not own (generated code, an SDK callback) is not
+this rule.

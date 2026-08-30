@@ -233,7 +233,7 @@ same commit as its document.
 | [docs/ESI.md](docs/ESI.md) | every ESI endpoint the server may call |
 | [docs/AUTH.md](docs/AUTH.md) | every credential: where it travels, where it rests |
 | [docs/DB.md](docs/DB.md) | the schema, its TTLs and sweeps |
-| [docs/RULES.md](docs/RULES.md) | how we write: time, SQL, lint, tests, comments, logs, URLs |
+| [docs/RULES.md](docs/RULES.md) | how we write: time, SQL, lint, tests, comments, logs, URLs, errors, returns |
 
 Four invariants are worth knowing before you read any of them, because
 breaking one regresses the server in ways the tests will not catch:
