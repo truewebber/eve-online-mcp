@@ -1,0 +1,118 @@
+# eve-mcp — Development Rules
+
+**This document is normative.** These rules are not discussed. A PR, a
+task file, a "for testability" comment, or a review note that disagrees
+with this file is wrong. The product contracts live in
+[PRD.md](PRD.md), [SPEC.md](SPEC.md), [TOOLS.md](TOOLS.md),
+[ESI.md](ESI.md), [AUTH.md](AUTH.md) and [DB.md](DB.md). This file owns
+how the code that implements them is written.
+
+The sections below are the first unbreakable rules. Later sections may
+be added; none of these is weakened by that.
+
+## 1. Time is not a test seam
+
+Production types do not carry a clock.
+
+`time.Now` belongs in one of two places:
+
+1. **Inside the function that needs "now".** The implementation reads
+   the clock at the moment it runs. That call is a local detail of the
+   function — not a field, not a constructor argument, not an interface.
+2. **As a function argument that is part of the business question.**
+   "Count mail since `since`", "is this session live at `at`", "expire
+   everything before `cutoff`". The instant is domain input. It is not
+   a hook so a test can pretend it is Tuesday.
+
+**Forbidden** — these are the same crime:
+
+- `now func() time.Time` on a struct
+- a `Clock` interface, `NowFunc`, `timeNow` field, `WithClock` option
+- storing `time.Now` (the function) so a test can overwrite it
+- threading "current time" through constructors, options, or context
+  *so that tests can stub it*
+
+A `time.Time` **value** on a struct is data (`ExpiresAt`, `CreatedAt`,
+`valid_til`). That is not a clock. Defaulting a zero `CreatedAt` to
+`time.Now()` *inside the write* is form (1) and is fine.
+
+**Tests do not receive a clock.** Time-dependent and concurrent
+behaviour is tested with
+[`testing/synctest`](https://pkg.go.dev/testing/synctest).
+`synctest.Test` runs the real code in a bubble whose `time.Now`,
+`time.Sleep` and timers are virtual; `synctest.Wait` (or
+`synctest.Sleep`) waits until the bubble is durably blocked. The
+production function still calls `time.Now()` itself.
+
+When the instant is domain input, the test passes a `time.Time`. That
+is exercising the API, not stubbing a clock.
+
+A store test may persist a past timestamp
+(`UPDATE … SET created_at = now() - interval '10 minutes'`) and then
+run the real path. The clock is still Postgres `now()`, not a field on
+`Store`. Do not wrap a test that talks to a real database or a real
+network in `synctest.Test`: I/O outside the bubble is not durably
+blocking and the bubble deadlocks.
+
+Existing clock fields (the ESI user bucket) are debt. Do not copy them.
+Do not add more.
+
+## 2. Postgres constraints are not control flow
+
+Write SQL that does not lose. Do not catch a unique, check, foreign-key
+or exclusion violation and translate it into a business error.
+
+The statement itself handles the race: `ON CONFLICT DO UPDATE`,
+`ON CONFLICT DO NOTHING`, a `WHERE` on the conflict target,
+`INSERT … SELECT`, `FOR UPDATE`, an advisory lock. A constraint that
+still fires is a bug in the statement or the schema, and the error
+propagates.
+
+`RowsAffected() == 0` after a predicated `UPDATE` or
+`INSERT … ON CONFLICT … WHERE` is a result, not a violation — that is
+how ownership refuse works today and it stays.
+
+**Forbidden:** branching on `pgconn.PgError`,
+`pgerrcode.UniqueViolation`, `23505`, `23503`, `23514`, or any other
+constraint SQLSTATE as if it meant "already exists", "owned by someone
+else", or "token reused".
+
+## 3. The linter is the style
+
+[`golangci-lint`](https://golangci-lint.run/) as configured in
+`.golangci.yml` is how this repository is written. `make lint` is the
+contract. You obey it.
+
+A lint finding is fixed by changing the code. `make lint-fix` is the
+first move; read the diff.
+
+`//nolint` is allowed only when, at this exact site, the linter is
+wrong and rewriting the code would make it worse. The directive names
+the linter and the reason on the same line. It is not a way to keep a
+shape you like. Do not disable a linter in `.golangci.yml` to silence
+one call site.
+
+## 4. A failing test is a diagnosis
+
+A red test has exactly two possible causes: the test is wrong, or the
+business logic is. Find which, then fix that one.
+
+- The test encodes a business case the product still promises, and the
+  code disagrees → fix the code.
+- The test asserts something the product does not promise, or the
+  contract changed with the code → fix the test.
+
+**Tests are deleted only when they do not help verify business logic**
+— a duplicate of another case, an assertion about an implementation
+detail that is not a product promise, or coverage of a behaviour that
+was removed. A failing test is never deleted to go green.
+
+## 5. Tests are the only proof the code works
+
+Reading the code, running the binary once, and "it looks right" are not
+feedback. A test that exercises the business case is.
+
+Every new piece of business behaviour lands with tests for the cases
+that matter: the happy path, the refuse, the expiry, the cap, the
+ownership, the one-time consume — whatever the change claims. A change
+that cannot be shown to work by a test has not landed.

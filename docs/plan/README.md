@@ -28,9 +28,10 @@ Status values: `todo` · `done` · `later`.
 ## Composer rules (every task)
 
 - Code, comments, docs, commit messages: **English only**.
-- Follow [SPEC.md](../SPEC.md) and this task file. `docs/` is normative
-  and the code follows it, never the other way round; `README.md`
-  describes the repo, not the contract.
+- Follow [SPEC.md](../SPEC.md), [RULES.md](../RULES.md) and this task
+  file. `docs/` is normative and the code follows it, never the other
+  way round; `README.md` describes the repo, not the contract. The
+  rules in RULES.md are not discussed.
 - A change to behaviour lands in the same commit as the change to the
   document that owns it.
 - Import direction stays `service → usecase → adapter|domain`.

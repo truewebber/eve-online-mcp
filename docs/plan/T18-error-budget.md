@@ -22,7 +22,8 @@ rolling 60 s window per character. Over budget → `UserRateLimited` with
 ## Why this is one Composer session
 
 It is `adapter/esi` plus one error mapping, next to the token bucket T09
-already built. Tests are fake clocks and recorded 4xx responses.
+already built. Tests are `testing/synctest` bubbles and recorded 4xx
+responses — no injected clock (RULES.md §1).
 
 ## Do not
 
