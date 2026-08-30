@@ -26,6 +26,10 @@ Reading data
     parsed from X-Esi-Error-Limit-Reset / Retry-After. Tell the user to
     wait until retry_at. Do not retry in a loop — that locks everyone
     behind the same IP.
+  * kind=UserRateLimited means this user's ESI request allowance is spent
+    (400 requests, refill 2/s). Cache hits and 304s served from cache are
+    free; only network calls count. The result has retry_at and
+    retry_after_seconds. Wait until retry_at. Do not retry in a loop.
   * List tools default to response_format="concise" and a small limit.
     That is deliberate: raise the limit or ask for "detailed" only when the
     question actually needs it.

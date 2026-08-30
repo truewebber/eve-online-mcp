@@ -3,17 +3,12 @@ package eve
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"strings"
 	"time"
 
-	"eve-mcp/internal/adapter/esi"
-	"eve-mcp/internal/adapter/sso"
-	"eve-mcp/internal/domain/character"
 	"eve-mcp/internal/domain/j"
-	"eve-mcp/internal/domain/write"
 	"eve-mcp/internal/usecase/session"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -83,39 +78,7 @@ func Call(ctx context.Context, fn func(*session.Session) (any, error)) (*mcp.Cal
 }
 
 func Handle(err error) (*mcp.CallToolResult, any, error) {
-	var ae sso.Error
-	var nf character.NotFound
-	var wb write.Blocked
-	var rl esi.RateLimited
-	var ee esi.Error
-	switch {
-	case errors.As(err, &ae):
-		return Result(map[string]any{"error": ae.Error(), "kind": "AuthError"})
-	case errors.As(err, &nf):
-		return Result(map[string]any{"error": nf.Error(), "kind": "CharacterNotFound"})
-	case errors.As(err, &wb):
-		return Result(map[string]any{"error": wb.Error(), "kind": "WriteBlocked"})
-	case errors.As(err, &rl):
-		out := map[string]any{
-			"error":               rl.Error(),
-			"kind":                "EsiRateLimited",
-			"status":              rl.Status,
-			"retry_after_seconds": rl.RetrySec,
-			"retry_at":            rl.RetryAt.UTC().Format(time.RFC3339),
-			"hint":                "CCP's ESI error limit is shared for this server's public IP. Wait until retry_at, then call the same tool once. Do not retry in a loop.",
-		}
-		if rl.Remain != nil {
-			out["error_limit_remain"] = *rl.Remain
-		}
-		if rl.ResetSec != nil {
-			out["error_limit_reset_seconds"] = *rl.ResetSec
-		}
-		return Result(out)
-	case errors.As(err, &ee):
-		return Result(map[string]any{"error": ee.Error(), "kind": "EsiError", "status": ee.Status})
-	default:
-		return Result(map[string]any{"error": err.Error(), "kind": "Error"})
-	}
+	return Result(session.MapError(err))
 }
 
 func limitOr(v, def int) int {

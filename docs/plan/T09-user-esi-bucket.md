@@ -1,6 +1,6 @@
 # T09 — Per-user ESI token bucket
 
-- Status: `todo`
+- Status: `done`
 - Size: M
 - Depends on: T07 (per-user ESI client already exists)
 - SPEC: §5.3, §12.3, error kinds in §4
@@ -67,10 +67,10 @@ env.
 
 ## Acceptance
 
-- [ ] Tests cover empty bucket and cache-hit exemption
-- [ ] Mapped JSON kind is exactly `UserRateLimited`
-- [ ] Instructions tell the model to wait, not retry in a loop
-- [ ] No new env vars
+- [x] Tests cover empty bucket and cache-hit exemption
+- [x] Mapped JSON kind is exactly `UserRateLimited`
+- [x] Instructions tell the model to wait, not retry in a loop
+- [x] No new env vars
 
 ## Verify
 

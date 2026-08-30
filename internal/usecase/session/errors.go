@@ -15,6 +15,7 @@ func MapError(err error) map[string]any {
 	var ae sso.Error
 	var nf character.NotFound
 	var wb write.Blocked
+	var ul esi.UserLimited
 	var rl esi.RateLimited
 	var ee esi.Error
 	switch {
@@ -24,6 +25,14 @@ func MapError(err error) map[string]any {
 		return map[string]any{"error": nf.Error(), "kind": "CharacterNotFound"}
 	case errors.As(err, &wb):
 		return map[string]any{"error": wb.Error(), "kind": "WriteBlocked"}
+	case errors.As(err, &ul):
+		return map[string]any{
+			"error":               ul.Error(),
+			"kind":                "UserRateLimited",
+			"retry_after_seconds": ul.RetrySec,
+			"retry_at":            ul.RetryAt.UTC().Format(time.RFC3339),
+			"hint":                "Wait until retry_at, then call the same tool once. Do not retry in a loop.",
+		}
 	case errors.As(err, &rl):
 		out := map[string]any{
 			"error":               rl.Error(),

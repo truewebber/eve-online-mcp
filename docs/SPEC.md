@@ -436,10 +436,9 @@ content is ignored; players re-authenticate once.
    and mail cap 5/h are constants, not env.
 2. **Write budget and audit log:** **done (T08).** Guard is confirm +
    mail cap only.
-3. Implement the per-user ESI token bucket (§5.3) in `adapter/esi`,
-   fed by user identity via the per-user client; new error kind
-   `UserRateLimited` + mapping in `usecase/eve` and a line in the server
-   instructions.
+3. **Per-user ESI token bucket** (§5.3): **done (T09).** Capacity 400,
+   refill 2/s on the per-user ESI client; cache hits and 304-from-cache
+   are free; `kind: UserRateLimited` with `retry_at`.
 3a. Enforce the ownership invariant in the alt-add flow (§3.3): the EVE
    callback for a tool-started login must check `ownerOf(character_id)`
    and refuse storing a character that belongs to a different user

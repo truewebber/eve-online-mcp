@@ -79,6 +79,12 @@ func (r Result) StaleNote() string {
 	return fmt.Sprintf("%.1fh old", r.AgeSeconds/3600)
 }
 
+type httpCache interface {
+	CacheGet(ctx context.Context, key string) (*store.CachedResponse, error)
+	CachePut(ctx context.Context, key string, c store.CachedResponse) error
+	CacheTouch(ctx context.Context, key string, expiresAt time.Time) error
+}
+
 type Client struct {
 	opts         Options
 	http         *http.Client
@@ -88,6 +94,9 @@ type Client struct {
 	errorRemain  int
 	errorResetAt time.Time
 	errorMu      sync.Mutex
+	bucket       *userBucket
+	// testCache, if set, replaces Postgres for HTTP cache (unit tests).
+	testCache httpCache
 }
 
 func New(opts Options, httpClient *http.Client, db *store.Store, ssoClient *sso.Client) *Client {
@@ -104,7 +113,18 @@ func New(opts Options, httpClient *http.Client, db *store.Store, ssoClient *sso.
 		sso:         ssoClient,
 		sem:         make(chan struct{}, opts.MaxConcurrency),
 		errorRemain: 100,
+		bucket:      newUserBucket(),
 	}
+}
+
+func (c *Client) cache() httpCache {
+	if c.testCache != nil {
+		return c.testCache
+	}
+	if c.store != nil {
+		return c.store
+	}
+	return nil
 }
 
 func (c *Client) Get(path string, characterID *int, params map[string]any, cacheTTL *float64) (Result, error) {
@@ -287,9 +307,13 @@ func (c *Client) headers(characterID *int) (http.Header, error) {
 func (c *Client) cachedGet(path string, characterID *int, params map[string]any, cacheTTL *float64) (Result, error) {
 	ctx := context.Background()
 	key := c.cacheKey(path, characterID, params)
-	cached, err := c.store.CacheGet(ctx, key)
-	if err != nil {
-		return Result{}, err
+	var cached *store.CachedResponse
+	if cache := c.cache(); cache != nil {
+		var err error
+		cached, err = cache.CacheGet(ctx, key)
+		if err != nil {
+			return Result{}, err
+		}
 	}
 	if cached != nil && cached.Fresh() {
 		return Result{Data: cached.Data(), FromCache: true, AgeSeconds: cached.AgeSeconds(), ExpiresAt: cached.ExpiresUnix(), Pages: cached.Pages}, nil
@@ -309,8 +333,11 @@ func (c *Client) cachedGet(path string, characterID *int, params map[string]any,
 	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 
 	if resp.StatusCode == http.StatusNotModified && cached != nil {
+		c.bucket.refund()
 		expiresAt := expiresAt(resp, cacheTTL)
-		_ = c.store.CacheTouch(ctx, key, unixTime(expiresAt))
+		if cache := c.cache(); cache != nil {
+			_ = cache.CacheTouch(ctx, key, unixTime(expiresAt))
+		}
 		return Result{Data: cached.Data(), FromCache: true, AgeSeconds: 0, ExpiresAt: expiresAt, Pages: cached.Pages}, nil
 	}
 	if resp.StatusCode >= 400 {
@@ -327,9 +354,11 @@ func (c *Client) cachedGet(path string, characterID *int, params map[string]any,
 	if err != nil {
 		return Result{}, err
 	}
-	_ = c.store.CachePut(ctx, key, store.CachedResponse{
-		Body: raw, ETag: resp.Header.Get("ETag"), ExpiresAt: unixTime(expires), Pages: pages,
-	})
+	if cache := c.cache(); cache != nil {
+		_ = cache.CachePut(ctx, key, store.CachedResponse{
+			Body: raw, ETag: resp.Header.Get("ETag"), ExpiresAt: unixTime(expires), Pages: pages,
+		})
+	}
 	return Result{Data: decoded, FromCache: false, AgeSeconds: 0, ExpiresAt: expires, Pages: pages}, nil
 }
 
@@ -358,6 +387,9 @@ func (c *Client) write(method, path string, characterID *int, params map[string]
 
 func (c *Client) request(method, path string, params map[string]any, headers http.Header, jsonBody any, attempt int) (*http.Response, error) {
 	if err := c.awaitErrorBudget(); err != nil {
+		return nil, err
+	}
+	if err := c.bucket.take(); err != nil {
 		return nil, err
 	}
 	u := c.opts.BaseURL + path

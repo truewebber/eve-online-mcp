@@ -43,7 +43,7 @@ Status values: `todo` · `done` · `later`.
 | [T06](T06-oauth-postgres.md) | OAuth handshake + JWT key in Postgres | done | L | T05 | §3.1, §8 |
 | [T07](T07-guard-drop-datadir.md) | Confirm/mail in Postgres; drop `DATA_DIR` | done | M | T04 T06 | §4.1, §8, §12.0 |
 | [T08](T08-write-policy-constants.md) | Always-on writes; drop budget + audit | done | M | T07 | §2, §12.1–2 |
-| [T09](T09-user-esi-bucket.md) | Per-user ESI token bucket | todo | M | T07 | §5.3, §12.3 |
+| [T09](T09-user-esi-bucket.md) | Per-user ESI token bucket | done | M | T07 | §5.3, §12.3 |
 | [T10](T10-character-ownership.md) | Alt-add ownership refuse | todo | S | T05 T06 | §3.3, §12.3a |
 | [T11](T11-docs-catchup.md) | README, CLAUDE, env, OpenAPI, TOOLS | todo | M | T08 T09 T10 | §12.4 |
 | [T12](T12-metrics.md) | Prometheus `/metrics` | later | M | T11 | §11, §12.5 |
@@ -58,7 +58,7 @@ Still true today, and the plan removes it:
 |---|---|
 | Durable state in PostgreSQL (`DATABASE_URL`) | — (done T03–T07) |
 | Write/corp tools always registered; confirm + mail cap 5/h | — (done T08) |
-| No per-user ESI allowance | Token bucket 400 / 2 rps, `UserRateLimited` |
+| Per-user ESI token bucket 400 / 2 rps, `UserRateLimited` | — (done T09) |
 | Alt-add can duplicate a character onto a second user | Unique `character_id`; refuse with an actionable error |
 
 ## Local loop (the end state of T02 + T07)
