@@ -350,7 +350,7 @@ func formatKillmails(a *session.Session, character string, characterID, corpID i
 	killsN, losses := 0, 0
 	for _, kill := range kills {
 		victim := j.Map(kill["victim"])
-		wasVictim := false
+		var wasVictim bool
 		if corpID != 0 {
 			wasVictim = j.Int(victim["corporation_id"]) == corpID
 		} else {
