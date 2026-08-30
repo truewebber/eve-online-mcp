@@ -259,24 +259,12 @@ func registerAssets(s *mcp.Server) {
 			for _, b := range bps {
 				kind := "original"
 				var runs any
-				if j.Int(b["runs"]) != -1 || (b["runs"] != nil && j.Int(b["runs"]) != -1) {
-					if j.Float(b["runs"]) != -1 {
-						kind = "copy"
-						runs = b["runs"]
-						copies++
-					} else {
-						orig++
-					}
-				} else {
-					orig++
-				}
-				// runs == -1 means original
 				if j.Float(b["runs"]) == -1 {
-					kind = "original"
-					runs = nil
+					orig++
 				} else {
 					kind = "copy"
 					runs = b["runs"]
+					copies++
 				}
 				rows = append(rows, map[string]any{
 					"blueprint": typeNames[j.Int(b["type_id"])], "kind": kind,
@@ -284,14 +272,6 @@ func registerAssets(s *mcp.Server) {
 					"runs_left": runs, "location": nameOr(placeNames, j.Int(b["location_id"])),
 					"quantity": b["quantity"],
 				})
-			}
-			orig, copies = 0, 0
-			for _, r := range rows {
-				if j.Str(r["kind"]) == "original" {
-					orig++
-				} else {
-					copies++
-				}
 			}
 			sort.Slice(rows, func(i, k int) bool {
 				if j.Str(rows[i]["kind"]) != j.Str(rows[k]["kind"]) {
