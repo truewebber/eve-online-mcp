@@ -78,7 +78,7 @@ func registerAccount(s *mcp.Server) {
 		Description: "Generate an EVE SSO link the user must open to authorize a character.\n\nYou cannot complete this yourself — hand the URL to the user. They log in with their EVE account, approve the scope list, and the server stores the resulting token. One-time per character; several characters can be authorized by repeating it. The link always requests the full read, corporation, and write scope set.\n\nReturns: login_url, scope_count, write_capabilities_requested, instructions.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
 		return Call(ctx, func(a *session.Session) (any, error) {
-			url, state, err := a.StartAltLogin(ctx)
+			login, err := a.StartAltLogin(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -86,7 +86,7 @@ func registerAccount(s *mcp.Server) {
 			writes := write.CapabilityNames()
 
 			return map[string]any{
-				"login_url": url, "state": state, "scope_count": len(scopes),
+				"login_url": login.URL, "state": login.State, "scope_count": len(scopes),
 				"write_capabilities_requested": writes,
 				"instructions":                 "Open login_url in a browser, pick the character, approve. The link is valid for 15 minutes and works once.",
 			}, nil

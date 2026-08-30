@@ -57,7 +57,7 @@ func (h *API) GetAuthCallback(w http.ResponseWriter, r *http.Request, _ GetAuthC
 
 		return
 	}
-	loc, token, err := h.OAuth.CompleteCallback(r.Context(), code, state)
+	cb, err := h.OAuth.CompleteCallback(r.Context(), code, state)
 	if err != nil {
 		title := "Login failed"
 		detail := err.Error()
@@ -71,8 +71,8 @@ func (h *API) GetAuthCallback(w http.ResponseWriter, r *http.Request, _ GetAuthC
 
 		return
 	}
-	if loc != "" {
-		http.Redirect(w, r, loc, http.StatusFound)
+	if cb.Redirect != "" {
+		http.Redirect(w, r, cb.Redirect, http.StatusFound)
 
 		return
 	}
@@ -81,7 +81,7 @@ func (h *API) GetAuthCallback(w http.ResponseWriter, r *http.Request, _ GetAuthC
 			<p class=dim>%d scopes · character #%d</p>
 			<p>You can close this tab. Cursor and Claude Code can now read this character.</p>
 			<p><a class=btn href="/">Back to status</a></p>`,
-		html.EscapeString(token.CharacterName), len(token.Scopes), token.CharacterID))
+		html.EscapeString(cb.Token.CharacterName), len(cb.Token.Scopes), cb.Token.CharacterID))
 }
 
 func (h *API) GetProtectedResourceMetadata(w http.ResponseWriter, r *http.Request) {

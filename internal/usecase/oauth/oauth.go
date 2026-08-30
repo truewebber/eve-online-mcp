@@ -278,33 +278,38 @@ func (s *Server) ServeAuthorize(w http.ResponseWriter, r *http.Request) {
 // CompleteCallback finishes an EVE SSO callback using the login_states
 // row: MCP authorize issues a client redirect; alt login attaches the
 // character to the user recorded on the row.
-func (s *Server) CompleteCallback(ctx context.Context, code, eveState string) (redirect string, token *sso.CharacterToken, err error) {
+type Callback struct {
+	Redirect string
+	Token    *sso.CharacterToken
+}
+
+func (s *Server) CompleteCallback(ctx context.Context, code, eveState string) (Callback, error) {
 	s.purge(ctx)
 	st, ok, err := s.db.TakeLoginState(ctx, eveState)
 	if err != nil {
-		return "", nil, err
+		return Callback{}, err
 	}
 	if !ok {
-		return "", nil, ErrUnknownLogin
+		return Callback{}, ErrUnknownLogin
 	}
-	token, err = s.login.ExchangeCode(code, st.PKCEVerifier)
+	token, err := s.login.ExchangeCode(code, st.PKCEVerifier)
 	if err != nil {
-		return "", nil, err
+		return Callback{}, err
 	}
 	switch st.Kind {
 	case store.LoginMCP:
 		loc, err := s.finishMCP(ctx, st, token)
 
-		return loc, token, err
+		return Callback{Redirect: loc, Token: token}, err
 	case store.LoginAlt:
 		err := s.finishAlt(ctx, st, token)
 		if err != nil {
-			return "", token, err
+			return Callback{Token: token}, err
 		}
 
-		return "", token, nil
+		return Callback{Token: token}, nil
 	default:
-		return "", token, fmt.Errorf("%w: %q", ErrUnknownLoginKind, st.Kind)
+		return Callback{Token: token}, fmt.Errorf("%w: %q", ErrUnknownLoginKind, st.Kind)
 	}
 }
 

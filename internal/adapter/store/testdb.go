@@ -12,7 +12,7 @@ const testAdvisoryKey int64 = 87265001
 
 // HoldTestLock takes a session-level advisory lock on a dedicated pool
 // connection so Truncate/CRUD in another package cannot interleave.
-func (s *Store) HoldTestLock(ctx context.Context) (release func(), err error) {
+func (s *Store) HoldTestLock(ctx context.Context) (func(), error) {
 	conn, err := s.pool.Acquire(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("store: test lock: %w", err)

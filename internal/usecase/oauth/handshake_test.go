@@ -41,14 +41,14 @@ func TestStartAltLoginRecordsUserID(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := testServer(t, db)
-	loginURL, state, err := s.SessionFor(u.ID).StartAltLogin(ctx)
+	login, err := s.SessionFor(u.ID).StartAltLogin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(loginURL, "login.eveonline.com") || state == "" {
-		t.Fatalf("url %s state %s", loginURL, state)
+	if !strings.Contains(login.URL, "login.eveonline.com") || login.State == "" {
+		t.Fatalf("url %s state %s", login.URL, login.State)
 	}
-	st, ok, err := db.GetLoginState(ctx, state)
+	st, ok, err := db.GetLoginState(ctx, login.State)
 	if err != nil || !ok {
 		t.Fatalf("ok %v err %v", ok, err)
 	}
@@ -92,7 +92,7 @@ func TestAuthorizePersistsMCPLoginState(t *testing.T) {
 
 func TestCompleteCallbackUnknownState(t *testing.T) {
 	s := testServer(t, openDB(t))
-	_, _, err := s.CompleteCallback(context.Background(), "code", "missing")
+	_, err := s.CompleteCallback(context.Background(), "code", "missing")
 	if !errors.Is(err, ErrUnknownLogin) {
 		t.Fatalf("got %v", err)
 	}

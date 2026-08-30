@@ -124,13 +124,18 @@ func (s *Session) ForUser(userID string) *Session {
 // StartAltLogin begins an EVE SSO handshake for an extra character on
 // this user. The PKCE verifier is stored in login_states with kind=alt
 // so any replica can finish the callback.
-func (s *Session) StartAltLogin(ctx context.Context) (loginURL, state string, err error) {
+type AltLogin struct {
+	URL   string
+	State string
+}
+
+func (s *Session) StartAltLogin(ctx context.Context) (AltLogin, error) {
 	if s.Opts.SSO.UserID == "" {
-		return "", "", sso.Err("This request is not tied to an EVE login. Re-authenticate the MCP server (Authentication required) and try again.")
+		return AltLogin{}, sso.Err("This request is not tied to an EVE login. Re-authenticate the MCP server (Authentication required) and try again.")
 	}
 	prep, err := s.SSO.PrepareLogin(nil)
 	if err != nil {
-		return "", "", err
+		return AltLogin{}, err
 	}
 	if err := s.Store.PutLoginState(ctx, store.LoginState{
 		State:        prep.State,
@@ -139,10 +144,10 @@ func (s *Session) StartAltLogin(ctx context.Context) (loginURL, state string, er
 		Kind:         store.LoginAlt,
 		UserID:       s.Opts.SSO.UserID,
 	}); err != nil {
-		return "", "", err
+		return AltLogin{}, err
 	}
 
-	return prep.URL, prep.State, nil
+	return AltLogin{URL: prep.URL, State: prep.State}, nil
 }
 
 func (s *Session) DomainToken(tok *sso.CharacterToken) *character.Token {

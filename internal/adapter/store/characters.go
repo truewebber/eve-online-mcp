@@ -80,8 +80,9 @@ func (s *Store) DeleteCharacter(ctx context.Context, characterID int64) error {
 	return nil
 }
 
-func (s *Store) OwnerOf(ctx context.Context, characterID int64) (userID string, ok bool, err error) {
-	err = s.pool.QueryRow(ctx,
+func (s *Store) OwnerOf(ctx context.Context, characterID int64) (string, bool, error) {
+	var userID string
+	err := s.pool.QueryRow(ctx,
 		`SELECT user_id FROM characters WHERE character_id = $1`, characterID,
 	).Scan(&userID)
 	if errors.Is(err, pgx.ErrNoRows) {
