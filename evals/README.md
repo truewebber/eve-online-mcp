@@ -1,63 +1,75 @@
-# Эвалы
+# Evals
 
-Три уровня, от дешёвого к дорогому.
+Three levels, cheapest first.
 
-## 1. `lint` — качество определений инструментов
-
-```bash
-python3 evals/run.py lint
-```
-
-Детерминированный гейт, модель не нужна. Проверяет то, что легко сломать при
-правках и невозможно заметить глазами:
-
-- каждый инструмент под неймспейсом `eve_`;
-- **у каждого параметра есть `description` в JSON Schema**, а не только в тексте;
-- описание не короче 120 символов (иначе оно объясняет «что это», но не «когда звать»);
-- в описание не протёк отступ докстринга;
-- у числовых тюнингов объявлены границы;
-- у списочных инструментов есть `response_format`.
-
-Исключения задаются явно в `NO_RESPONSE_FORMAT_NEEDED` с объяснением, почему.
-
-## 2. `smoke` — здоровье и цена в токенах
+## 1. `lint` — tool definition quality
 
 ```bash
-python3 evals/run.py smoke
+go run ./evals lint
 ```
 
-Дёргает каждый read-инструмент с дефолтными аргументами, проверяет что ответ —
-валидный JSON без `error`, и печатает стоимость в токенах. Падает, если ответ по
-умолчанию превысил 6 000 символов: дефолт, который вываливает простыню, — это баг,
-даже если данные правильные.
+Deterministic; no model. Catches the things that are easy to break
+when editing a tool and impossible to notice by eye:
 
-Мутирующие инструменты в smoke не входят.
+- every tool is namespaced under `eve_`;
+- **every parameter has a `description` in JSON Schema**, not only in prose;
+- the tool description is at least 120 characters (otherwise it says
+  what it is, not when to call it);
+- docstring indentation has not leaked into the description;
+- numeric tunables declare bounds;
+- list tools expose `response_format`.
 
-## 3. `tasks.yaml` — агентские задачи
+Exceptions live in `noResponseFormatNeeded` in `evals/main.go`, with a
+comment explaining why.
 
-Это то, что два предыдущих уровня поймать не могут: модель выбрала не тот
-инструмент, или подала число как живое, когда оно часовой давности.
+Needs a running server. `/mcp` is an OAuth resource, so pass a bearer
+token with `--token` or `EVE_MCP_TOKEN`.
 
-Автоматического прогона нет — нужна модель в цикле. Запускается так: подключаешь
-сервер к агенту (`claude mcp add --transport http eve http://localhost:8765/mcp`),
-даёшь `prompt` из задачи, сверяешь с `expect`.
+```bash
+go run ./evals lint --url http://127.0.0.1:8765/mcp --token "$EVE_MCP_TOKEN"
+```
 
-Ключевые задачи:
+`go build -o eve-eval ./evals` compiles a binary (plain `go build ./evals` cannot: the output name collides with this directory).
 
-| id | Что проверяет |
+## 2. `smoke` — health and token cost
+
+```bash
+go run ./evals smoke --token "$EVE_MCP_TOKEN"
+```
+
+Calls every read tool with its default arguments, checks the answer is
+valid JSON without `error`, and prints the cost in characters / tokens.
+Fails if a default response exceeds 6 000 characters: a default that
+dumps a sheet is a bug even when the data is right.
+
+Mutating tools are not in smoke.
+
+## 3. `tasks.yaml` — agentic tasks
+
+This is what the two cheaper gates cannot catch: the model picked the
+wrong tool, or presented a number as live when it is an hour old.
+
+There is no automatic runner — a model has to be in the loop. Connect
+the server (`claude mcp add --transport http eve http://localhost:8765/mcp`),
+give it the task `prompt`, and grade against `expect`.
+
+Key tasks:
+
+| id | What it checks |
 |---|---|
-| `misspelled` | Опечатка в имени — модель ищет, а не сдаётся |
-| `write_consent` | Превью показано и подтверждение запрошено **до** действия |
-| `write_refusal` | Отключённая capability не выдумывается |
-| `alpha_cap` | Замечен ли разрыв trained/active уровня |
-| `stale_awareness` | Не выдаётся ли протухший кэш за реальное время |
-| `corp_hangar` | Корп-ангар и кошельки, не персональные тулы |
+| `misspelled` | A typo in a name — the model searches instead of giving up |
+| `write_consent` | Preview shown and confirmation asked **before** the action |
+| `write_refusal` | A disabled capability is not invented |
+| `alpha_cap` | The trained/active level gap is noticed |
+| `stale_awareness` | Stale cache is not presented as real time |
+| `corp_hangar` | Corp hangar and wallets, not the personal tools |
 
-### Что нашли эвалы
+### What evals have found
 
-- `eve_social_killmails` возвращал 8 полей на строку без concise-режима — `lint`.
-- **Поиск ESI префиксный, а не нечёткий.** «Tritanum» не находило «Tritanium»,
-  потому что опечатка в середине слова. Задача `misspelled` падала. Починено
-  автоматическим укорачиванием префикса с пометкой `matched_on_prefix` в ответе.
+- `eve_social_killmails` returned 8 fields per row with no concise mode — `lint`.
+- **ESI search is prefix, not fuzzy.** "Tritanum" did not find "Tritanium"
+  because the typo is in the middle. Task `misspelled` failed. Fixed by
+  shortening the prefix automatically and tagging `matched_on_prefix`.
 
-Второй баг не нашёл бы ни один автоматический гейт — только реальная задача.
+The second bug would not have been caught by any automatic gate — only
+a real task.

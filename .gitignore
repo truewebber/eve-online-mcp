@@ -33,3 +33,5 @@ dist/
 # Go binary
 /eve-mcp
 /eve-mcp.exe
+/eve-eval
+/eve-eval.exe

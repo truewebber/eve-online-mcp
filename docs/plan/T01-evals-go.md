@@ -1,6 +1,6 @@
 # T01 — Rewrite evals in Go
 
-- Status: `todo`
+- Status: `done`
 - Size: M
 - Depends on: —
 - SPEC: §4 (tool contract the harness enforces)
@@ -64,11 +64,12 @@ sets in Go, same members as the Python file.
 
 ## Acceptance
 
-- [ ] `go run ./evals lint --help` works; `lint` / `smoke` / `all` exist
-- [ ] Makefile `lint` does not invoke `python3`
-- [ ] Exception sets match `evals/run.py` today
-- [ ] `evals/README.md` is English and documents `--token` / `EVE_MCP_TOKEN`
-- [ ] `go build ./evals` and `go build ./cmd/eve-mcp` succeed
+- [x] `go run ./evals lint --help` works; `lint` / `smoke` / `all` exist
+- [x] Makefile `lint` does not invoke `python3`
+- [x] Exception sets match `evals/run.py` today
+- [x] `evals/README.md` is English and documents `--token` / `EVE_MCP_TOKEN`
+- [x] `go build -o eve-eval ./evals` and `go build ./cmd/eve-mcp` succeed
+      (`go build ./evals` cannot write a file named `evals` next to this directory)
 
 ## Verify
 

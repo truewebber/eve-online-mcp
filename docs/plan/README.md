@@ -35,7 +35,7 @@ Status values: `todo` · `done` · `later`.
 
 | ID | Title | Status | Size | Depends | SPEC |
 |---|---|---|---|---|---|
-| [T01](T01-evals-go.md) | Rewrite evals in Go | todo | M | — | §4 |
+| [T01](T01-evals-go.md) | Rewrite evals in Go | done | M | — | §4 |
 | [T02](T02-python-out-local-postgres.md) | Remove Python; local Postgres | todo | M | T01 | §10 |
 | [T03](T03-adapter-store.md) | `adapter/store` (pgx + migrations) | todo | L | T02 | §8, §12.0 |
 | [T04](T04-cache-postgres.md) | ESI cache + names on Postgres | todo | M | T03 | §5.1, §8 |
