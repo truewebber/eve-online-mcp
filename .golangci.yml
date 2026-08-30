@@ -1,5 +1,10 @@
-# golangci-lint v2. Version pinned in go.mod (tool directive); run via `make lint` / `go tool`.
+# golangci-lint v2 — https://golangci-lint.run/docs/configuration/file/
+# Version pinned in go.mod (tool directive); run via `make lint` / `go tool`.
 version: "2"
+
+run:
+  # Paths in exclusions and linters are relative to go.mod, not cwd.
+  relative-path-mode: gomod
 
 linters:
   default: all
@@ -9,16 +14,19 @@ linters:
     - gocyclo
     - cyclop
     - ireturn # conflicts with domain-exported interfaces
-    - wsl # deprecated alias
-    - wsl_v5 # same noisy rule family as wsl
     - lll
-    - gomodguard # deprecated; gomodguard_v2 is enabled via default: all
-    # Conflicts with same-package tests for unexported helpers.
-    - testpackage
-    # Partial struct literals are idiomatic; forcing zero fields is noise.
+    # Deprecated aliases. Replacements: wsl_v5 stays off (noisy autofix);
+    # gomodguard_v2 is configured below; exhaustruct_v5 still forces zero fields.
+    - wsl
+    - wsl_v5
+    - gomodguard
     - exhaustruct
-    # JSON/YAML tag names follow external contracts (OpenAPI, ESI, vendors),
-    # not a global case rule — tagliatelle would fight the wire format.
+    - exhaustruct_v5
+    # Autofix rewrites `else if err := f(); err != nil` into invalid Go.
+    - noinlineerr
+    # Same-package tests for unexported helpers.
+    - testpackage
+    # JSON/YAML tag names follow OpenAPI / ESI / vendors, not a global case rule.
     - tagliatelle
   settings:
     godot:
@@ -29,39 +37,45 @@ linters:
       check-type-assertions: true
     nakedret:
       max-func-lines: 0
-    # Integration suites share one DB per TestXxx; only top-level may Parallel.
+    # Default 1 flags a blank line before every return in a 2-statement
+    # block (`x := 1; return x`). 2 leaves one-liners and `if err { return }`
+    # alone; longer blocks still need the blank line.
+    nlreturn:
+      block-size: 2
+    # Store suites share one DB per TestXxx; only top-level may Parallel.
     paralleltest:
       ignore-missing-subtests: true
     revive:
+      # Listing any rule turns defaults off unless this is set.
       enable-default-rules: true
-      rules:
-        - name: indent-error-flow
-        - name: exported
-        - name: bare-return
-        - name: blank-imports
-        - name: context-as-argument
-        - name: context-keys-type
-        - name: dot-imports
-        - name: error-return
-        - name: error-strings
-        - name: error-naming
-        - name: if-return
-        - name: var-declaration
-        - name: package-comments
-        - name: range
-        - name: receiver-naming
-        - name: time-naming
-        - name: unexported-return
-        - name: increment-decrement
-        - name: errorf
-        - name: empty-block
-        - name: superfluous-else
-        - name: unreachable-code
-        - name: redefines-builtin-id
+    # Direct go.mod requires only — not import paths (that is depguard).
+    gomodguard_v2:
+      local-replace-directives: true
+      blocked:
+        - module: github.com/pkg/errors
+          recommendations:
+            - errors
+          reason: use stdlib errors and fmt.Errorf with %w
+        - module: github.com/sirupsen/logrus
+          reason: use the standard library log package
+        - module: go.uber.org/zap
+          reason: use the standard library log package
+        - module: github.com/rs/zerolog
+          reason: use the standard library log package
+        - module: github.com/dgrijalva/jwt-go
+          recommendations:
+            - github.com/golang-jwt/jwt/v5
+          reason: unmaintained; this module already uses jwt/v5
+        - module: github.com/lib/pq
+          recommendations:
+            - github.com/jackc/pgx/v5
+          reason: Postgres access is pgx only
+        - module: github.com/mattn/go-sqlite3
+          reason: durable store is Postgres, not SQLite
+        - module: modernc.org/sqlite
+          reason: durable store is Postgres, not SQLite
     depguard:
       rules:
-        # Domain packages must not import each other. Cross-domain access goes
-        # through exported interfaces only.
         domain-boundaries:
           list-mode: lax
           files:
@@ -70,7 +84,6 @@ linters:
           deny:
             - pkg: github.com/truewebber/eve-online-mcp/internal/domain/
               desc: domains must not import each other; use interfaces only
-        # Transport stays thin: service → usecase only.
         service-no-domain:
           list-mode: lax
           files:
@@ -79,7 +92,6 @@ linters:
           deny:
             - pkg: github.com/truewebber/eve-online-mcp/internal/domain/
               desc: service must not import domain; depend on usecase only
-        # Banned packages everywhere.
         banned-pkgs:
           list-mode: lax
           deny:
@@ -99,26 +111,44 @@ linters:
       require-explanation: true
       require-specific: true
   exclusions:
-    # oapi-codegen output (still built/typechecked via `go test ./...`).
+    # oapi-codegen output still typechecks via `go test ./...`.
     generated: lax
+    warn-unused: true
+    # Replaces v1 issues.exclude-use-default.
+    presets:
+      - comments
+      - std-error-handling
+      - common-false-positives
+      - legacy
     paths:
       - internal/service/http/api.gen.go
     rules:
-      # Tests may return bare errors from fakes.
-      # maintidx/gocognit: store suites are intentionally long/nested.
       - path: _test\.go
         linters: [wrapcheck, maintidx, gocognit]
-      # CLI entrypoints and the eval harness print to stdout by design.
       - path: cmd/
         linters: [forbidigo]
       - path: evals/
         linters: [forbidigo]
 
+issues:
+  # Defaults (50 / 3) hide the rest of a first-run report.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
 formatters:
   enable:
     - gofmt
     - goimports
+  settings:
+    gofmt:
+      rewrite-rules:
+        - pattern: 'interface{}'
+          replacement: 'any'
+    goimports:
+      local-prefixes:
+        - github.com/truewebber/eve-online-mcp
   exclusions:
     generated: lax
+    warn-unused: true
     paths:
       - internal/service/http/api.gen.go

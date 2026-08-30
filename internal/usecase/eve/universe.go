@@ -72,10 +72,7 @@ func registerUniverse(s *mcp.Server, a *session.Session) {
 				return nil, err
 			}
 			limit := limitOr(in.Limit, 10)
-			pool := max(4*limit, 50)
-			if pool > 200 {
-				pool = 200
-			}
+			pool := min(max(4*limit, 50), 200)
 			idSet := map[int]struct{}{}
 			for _, ids := range raw {
 				for i, id := range ids {

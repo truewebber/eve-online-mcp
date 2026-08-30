@@ -1,4 +1,4 @@
-.PHONY: build run lint lint-check smoke eval gen postgres down test-store
+.PHONY: build run lint lint-fix lint-check smoke eval gen postgres down test-store
 
 GO ?= go
 COMPOSE ?= docker compose
@@ -19,10 +19,10 @@ down:
 	$(COMPOSE) down
 
 lint:
-	$(GOLANGCI_LINT) run --fix ./...
-
-lint-check:
 	$(GOLANGCI_LINT) run ./...
+
+lint-fix:
+	$(GOLANGCI_LINT) run --fix ./...
 
 smoke:
 	$(GO) run ./evals smoke

@@ -622,8 +622,7 @@ func registerContacts(s *mcp.Server, a *session.Session) {
 						return nil, err
 					}
 					status := 0
-					var e esi.Error
-					if errors.As(err, &e) {
+					if e, ok := errors.AsType[esi.Error](err); ok {
 						status = e.Status
 					}
 

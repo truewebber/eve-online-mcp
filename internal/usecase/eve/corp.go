@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -806,14 +807,7 @@ func who(corp *character.Corporation) map[string]any {
 }
 
 func corpCan(corp *character.Corporation, scopeKey, roleKey string) bool {
-	have := false
-	for _, s := range corp.Token.Scopes {
-		if s == corpScopes[scopeKey] {
-			have = true
-
-			break
-		}
-	}
+	have := slices.Contains(corp.Token.Scopes, corpScopes[scopeKey])
 
 	return have && corp.HasRole(corpRoles[roleKey]...)
 }

@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -25,7 +27,8 @@ func addTool[In any](s *mcp.Server, t *mcp.Tool, h mcp.ToolHandlerFor[In, any]) 
 	mcp.AddTool(s, t, h)
 }
 
-func f64ptr(v float64) *float64 { return &v }
+//go:fix inline
+func f64ptr(v float64) *float64 { return new(v) }
 
 func patchBounds(schema *jsonschema.Schema) {
 	if schema == nil {
@@ -198,9 +201,7 @@ func page(rows []map[string]any, limit int, hint string) ([]map[string]any, map[
 }
 
 func merge(dst map[string]any, extra map[string]any) map[string]any {
-	for k, v := range extra {
-		dst[k] = v
-	}
+	maps.Copy(dst, extra)
 
 	return dst
 }
@@ -241,14 +242,7 @@ func rootLocations(items []map[string]any) map[int]int {
 
 				break
 			}
-			loop := false
-			for _, n := range chain {
-				if n == itemID {
-					loop = true
-
-					break
-				}
-			}
+			loop := slices.Contains(chain, itemID)
 			if loop {
 				resolved = parentID
 

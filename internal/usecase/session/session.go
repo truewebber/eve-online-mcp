@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -199,12 +200,8 @@ func (s *Session) RequireGranted(characterName string, scopes []string, scope, w
 		return nil
 	}
 	extra := ""
-	for _, sc := range write.CorpReadScopes {
-		if sc == scope {
-			extra = " That is a corporation scope: add the matching permissions on the EVE developer application and re-authorize this character with eve_auth_login_url."
-
-			break
-		}
+	if slices.Contains(write.CorpReadScopes, scope) {
+		extra = " That is a corporation scope: add the matching permissions on the EVE developer application and re-authorize this character with eve_auth_login_url."
 	}
 
 	return sso.Err(fmt.Sprintf("%s was not authorized with '%s', which is required to read %s. Re-run the login for this character.%s", characterName, scope, what, extra))
@@ -215,13 +212,7 @@ func (s *Session) HasScope(token *sso.CharacterToken, scope string) bool {
 }
 
 func (s *Session) HasGranted(scopes []string, scope string) bool {
-	for _, sc := range scopes {
-		if sc == scope {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(scopes, scope)
 }
 
 func (s *Session) ResolveCorporation(spec string) (*character.Corporation, error) {
