@@ -21,16 +21,6 @@ func main() {
 
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
-		case "install":
-			if err := installService(); err != nil {
-				log.Fatal(err)
-			}
-			return
-		case "uninstall":
-			if err := uninstallService(); err != nil {
-				log.Fatal(err)
-			}
-			return
 		case "help", "-h", "--help":
 			fmt.Print(usage)
 			return
@@ -93,8 +83,6 @@ const usage = `eve-mcp — MCP server that exposes EVE Online accounts to LLM cl
 
 Usage:
   eve-mcp                  run the server (config from env / ./.env)
-  eve-mcp install          install a user service (launchd on macOS)
-  eve-mcp uninstall        stop and remove the user service
 
 Required env: CLIENT_ID — the EVE application from developers.eveonline.com.
 DATABASE_URL — Postgres DSN (make postgres). See .env.example.

@@ -69,10 +69,8 @@ reach `/healthz` and the Service cannot reach `/mcp` (§10).
 ## 2. Configuration
 
 Env only. Read from the process environment, or from `./.env` in the
-working directory (godotenv; the file wins if present) — which for a
-service installed with `eve-mcp install` is the OS user config dir,
-`~/Library/Application Support/eve-mcp` or `~/.config/eve-mcp`. No config
-file, nothing written back at runtime. Config lives in `cmd/eve-mcp/config.go`
+working directory (godotenv; the file wins if present). No config file,
+nothing written back at runtime. Config lives in `cmd/eve-mcp/config.go`
 (`package main`) and is never imported by inner layers; `main` maps it
 into per-module `Options`.
 
@@ -705,7 +703,7 @@ declines to answer the second.
 ```
 api/                    http.yaml + http.cfg.yaml (oapi-codegen)
 cmd/eve-mcp/            package main: main.go (composition root),
-                        config.go (env, no prefix), service.go (launchd/systemd)
+                        config.go (env, no prefix)
 internal/
   adapter/              external systems; each package owns its Options
     esi/                ESI HTTP: in-memory cache, error limit + budget,
@@ -811,9 +809,7 @@ the mail cap counts from (§5.4). It stores no message bodies.
   from anywhere but the tunnel, and until that is true the header is
   ignored in favour of the socket address.
 - **Local dev:** any reachable Postgres (e.g. `docker run postgres`),
-  `DATABASE_URL` in `./.env`, `./eve-mcp` in the foreground. The
-  launchd/systemd `install` path remains for a laptop instance and also
-  requires a running Postgres.
+  `DATABASE_URL` in `./.env`, `./eve-mcp` in the foreground.
 - **Rollout:** migrations are forward-only and run at startup under an
   advisory lock — with rolling updates several pods start at once, so
   the lock is load-bearing, not paranoia. A migration must therefore be
@@ -822,7 +818,7 @@ the mail cap counts from (§5.4). It stores no message bodies.
 
 ## 11. Observability
 
-- Now: `/healthz`, structured process logs to stdout/launchd log file,
+- Now: `/healthz`, structured process logs to stdout,
   and the `mutations` audit log (§8), which is queryable with SQL and is
   the only durable record of in-game changes.
 - Next (internal listener): Prometheus `/metrics` — ESI requests/errors

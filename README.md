@@ -38,11 +38,7 @@ Copy the **Client ID**. No Client Secret is needed — the server uses PKCE.
 ### 2. Configure
 
 Config is env only (see `.env.example`). Put a `.env` in the working
-directory of the process (the installed service uses the OS user config
-dir):
-
-- macOS: `~/Library/Application Support/eve-mcp/.env`
-- Linux: `~/.config/eve-mcp/.env`
+directory of the process, or set real env vars:
 
 ```bash
 CLIENT_ID=...                # required, from step 1
@@ -51,15 +47,15 @@ HMAC_KEY=...                 # required, openssl rand -hex 32
 CONTACT=you@example.com      # identifies you to CCP
 ```
 
-### 3. Build and install
+### 3. Build and run
 
 ```bash
 go build -o eve-mcp ./cmd/eve-mcp
-./eve-mcp install
+./eve-mcp
 ```
 
-That copies the binary to `~/.local/bin/eve-mcp` and starts a user service
-(launchd on macOS, systemd --user on Linux). It keeps running across reboots.
+Or `make run` (starts local Postgres too). The process stays in the
+foreground and reads `./.env`.
 
 ### 4. Connect a client
 
@@ -186,8 +182,8 @@ logged in on that character.
 
 ## Configuration
 
-Env only — process environment, or a `.env` in the working directory
-(the OS user config dir for an installed service). See `.env.example`.
+Env only — process environment, or a `.env` in the working directory.
+See `.env.example`.
 
 | Env | Default | Meaning |
 |---|---|---|
@@ -221,8 +217,7 @@ The server is a Go binary on the host. Postgres is Compose-only — do not
 put the app in Compose, and do not run `docker compose down -v`: that
 deletes the `eve-mcp-pg` volume. `make down` stops Postgres and keeps it.
 
-Nothing reloads in place. Rebuild, then restart — after `./eve-mcp
-install`, that is `launchctl kickstart -k gui/$(id -u)/eve-mcp`.
+Nothing reloads in place. Rebuild, then start the binary again.
 
 ### Where the contracts live
 

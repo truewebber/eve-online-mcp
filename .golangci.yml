@@ -1,0 +1,124 @@
+# golangci-lint v2. Version pinned in go.mod (tool directive); run via `make lint` / `go tool`.
+version: "2"
+
+linters:
+  default: all
+  disable:
+    - varnamelen
+    - funlen
+    - gocyclo
+    - cyclop
+    - ireturn # conflicts with domain-exported interfaces
+    - wsl # deprecated alias
+    - wsl_v5 # same noisy rule family as wsl
+    - lll
+    - gomodguard # deprecated; gomodguard_v2 is enabled via default: all
+    # Conflicts with same-package tests for unexported helpers.
+    - testpackage
+    # Partial struct literals are idiomatic; forcing zero fields is noise.
+    - exhaustruct
+    # JSON/YAML tag names follow external contracts (OpenAPI, ESI, vendors),
+    # not a global case rule — tagliatelle would fight the wire format.
+    - tagliatelle
+  settings:
+    godot:
+      period: true
+      capital: true
+    errcheck:
+      check-blank: true
+      check-type-assertions: true
+    nakedret:
+      max-func-lines: 0
+    # Integration suites share one DB per TestXxx; only top-level may Parallel.
+    paralleltest:
+      ignore-missing-subtests: true
+    revive:
+      enable-default-rules: true
+      rules:
+        - name: indent-error-flow
+        - name: exported
+        - name: bare-return
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: if-return
+        - name: var-declaration
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: unexported-return
+        - name: increment-decrement
+        - name: errorf
+        - name: empty-block
+        - name: superfluous-else
+        - name: unreachable-code
+        - name: redefines-builtin-id
+    depguard:
+      rules:
+        # Domain packages must not import each other. Cross-domain access goes
+        # through exported interfaces only.
+        domain-boundaries:
+          list-mode: lax
+          files:
+            - "**/internal/domain/**/*.go"
+            - "!**/internal/domain/**/mocks/**/*.go"
+          deny:
+            - pkg: github.com/truewebber/eve-online-mcp/internal/domain/
+              desc: domains must not import each other; use interfaces only
+        # Transport stays thin: service → usecase only.
+        service-no-domain:
+          list-mode: lax
+          files:
+            - "**/internal/service/**/*.go"
+            - "!$test"
+          deny:
+            - pkg: github.com/truewebber/eve-online-mcp/internal/domain/
+              desc: service must not import domain; depend on usecase only
+        # Banned packages everywhere.
+        banned-pkgs:
+          list-mode: lax
+          deny:
+            - pkg: io/ioutil
+              desc: use io and os — io/ioutil is deprecated
+            - pkg: github.com/pkg/errors
+              desc: use fmt.Errorf with %w / errors from stdlib
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: ^(fmt\.Print(|f|ln)|print|println)$
+          msg: do not use fmt.Print* / print; use log
+        - pattern: ^slog\.(Debug|Info|Warn|Error|Default|New|Log|LogAttrs|With|WithGroup)
+          msg: do not use slog directly; use the standard library log package
+    nolintlint:
+      allow-unused: false
+      require-explanation: true
+      require-specific: true
+  exclusions:
+    # oapi-codegen output (still built/typechecked via `go test ./...`).
+    generated: lax
+    paths:
+      - internal/service/http/api.gen.go
+    rules:
+      # Tests may return bare errors from fakes.
+      # maintidx/gocognit: store suites are intentionally long/nested.
+      - path: _test\.go
+        linters: [wrapcheck, maintidx, gocognit]
+      # CLI entrypoints and the eval harness print to stdout by design.
+      - path: cmd/
+        linters: [forbidigo]
+      - path: evals/
+        linters: [forbidigo]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - internal/service/http/api.gen.go
