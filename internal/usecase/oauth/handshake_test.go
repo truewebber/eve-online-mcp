@@ -158,6 +158,7 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 		{
 			name: "good pkce",
 			setup: func(t *testing.T) url.Values {
+				t.Helper()
 				put(t, "good", time.Now().Add(2*time.Minute))
 
 				return url.Values{
@@ -169,6 +170,7 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 			},
 			status: 200,
 			check: func(t *testing.T, rec *httptest.ResponseRecorder) {
+				t.Helper()
 				var payload map[string]any
 				if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 					t.Fatal(err)
@@ -183,6 +185,7 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 		{
 			name: "bad verifier",
 			setup: func(t *testing.T) url.Values {
+				t.Helper()
 				put(t, "bad-v", time.Now().Add(2*time.Minute))
 
 				return url.Values{
@@ -197,6 +200,7 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 		{
 			name: "wrong redirect",
 			setup: func(t *testing.T) url.Values {
+				t.Helper()
 				put(t, "bad-r", time.Now().Add(2*time.Minute))
 
 				return url.Values{
@@ -211,6 +215,7 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 		{
 			name: "expired",
 			setup: func(t *testing.T) url.Values {
+				t.Helper()
 				put(t, "old", time.Now().Add(-time.Minute))
 
 				return url.Values{
@@ -225,6 +230,7 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 		{
 			name: "replay after take",
 			setup: func(t *testing.T) url.Values {
+				t.Helper()
 				put(t, "once", time.Now().Add(2*time.Minute))
 				ok := url.Values{
 					"grant_type":    {"authorization_code"},
