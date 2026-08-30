@@ -51,14 +51,6 @@ func patchBounds(schema *jsonschema.Schema) {
 	}
 }
 
-const (
-	characterDesc = "Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."
-	detailDesc    = "'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."
-	confirmDesc   = "Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."
-	limitDesc     = "Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."
-	divisionDesc  = "Corporation wallet division, 1 through 7. Division 1 is the master wallet. Named divisions (if this character is a Director) come back from eve_corp_overview."
-)
-
 type empty struct{}
 
 func Result(v any) (*mcp.CallToolResult, any, error) {

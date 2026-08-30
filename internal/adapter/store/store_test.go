@@ -418,9 +418,6 @@ func TestMailLog(t *testing.T) {
 	}
 }
 
-//go:fix inline
-func intPtr(n int) *int { return new(n) }
-
 func jsonEqual(a, b []byte) bool {
 	var x, y any
 	if json.Unmarshal(a, &x) != nil || json.Unmarshal(b, &y) != nil {
