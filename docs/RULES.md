@@ -141,3 +141,16 @@ The logger is a **dependency**, and nothing else. `main` constructs it
 (`log.NewLogger()`), `Close`s it on shutdown, and passes `log.Logger`
 in. A type that logs has that field, set at construction. Nobody else
 creates a logger, looks one up, or pulls one from context.
+
+## 8. URLs are assembled, never concatenated
+
+A host, a path, a query, a fragment — none of them is glued with `+`
+or `fmt.Sprintf`. The string form of a URL is the output of
+`url.URL`, `url.Values`, `url.JoinPath` / `path.Join`, and
+`net.JoinHostPort`. That is what keeps `../`, a second host, or an
+unescaped value out of the request — the same class of bug as SSRF,
+open redirects, XSS in a `Location`, and an IDOR that is just an id
+spliced into a path.
+
+`filepath.Join` is for files. A string literal that is already a
+complete URL is not assembly.
