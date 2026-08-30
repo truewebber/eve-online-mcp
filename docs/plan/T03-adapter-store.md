@@ -1,6 +1,6 @@
 # T03 — `adapter/store` (pgx + migrations)
 
-- Status: `todo`
+- Status: `done`
 - Size: L
 - Depends on: T02
 - SPEC: §8 (tables), §12.0 (replace SQLite + files). **Do not wire
@@ -114,10 +114,10 @@ Makefile: `test-store` that runs `make postgres` then
 
 ## Acceptance
 
-- [ ] `make test-store` passes on a clean Compose Postgres
-- [ ] Unique `character_id` is enforced by the database
-- [ ] No package outside `adapter/store` imports it yet
-- [ ] `go build ./cmd/eve-mcp` still works without `DATABASE_URL`
+- [x] `make test-store` passes on a clean Compose Postgres
+- [x] Unique `character_id` is enforced by the database
+- [x] No package outside `adapter/store` imports it yet
+- [x] `go build ./cmd/eve-mcp` still works without `DATABASE_URL`
 
 ## Verify
 
