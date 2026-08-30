@@ -61,7 +61,7 @@ func TestAuthorizePersistsMCPLoginState(t *testing.T) {
 	db := openDB(t)
 	s := testServer(t, db)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?"+url.Values{
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/oauth/authorize?"+url.Values{
 		"client_id":      {"mcp-client"},
 		"redirect_uri":   {"http://localhost:1/cb"},
 		"state":          {"mcp-state"},
@@ -142,7 +142,7 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 	}
 	post := func(vals url.Values) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(vals.Encode()))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/oauth/token", strings.NewReader(vals.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		s.ServeToken(rec, req)
 

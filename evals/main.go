@@ -11,6 +11,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -129,7 +130,7 @@ func (r *rpc) call(method string, params map[string]any) (map[string]any, error)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(http.MethodPost, r.url, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, r.url, bytes.NewReader(payload))
 	if err != nil {
 		return nil, err
 	}

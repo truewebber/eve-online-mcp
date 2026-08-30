@@ -248,7 +248,13 @@ func (c *Client) Revoke(characterID int) {
 		"token":           {token.RefreshToken},
 		"client_id":       {c.opts.ClientID},
 	}
-	req, _ := http.NewRequest(http.MethodPost, RevokeURL, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, RevokeURL, strings.NewReader(data.Encode()))
+	if err != nil {
+		log.Printf("revoke request for %d: %v", characterID, err)
+		c.Store.Remove(characterID)
+
+		return
+	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("User-Agent", c.opts.UserAgent)
 	if c.opts.ClientSecret != "" {
@@ -267,7 +273,7 @@ func (c *Client) tokenRequest(data url.Values, clientID, secret string) (map[str
 	if secret != "" {
 		data.Del("client_id")
 	}
-	req, err := http.NewRequest(http.MethodPost, TokenURL, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, TokenURL, strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, err
 	}
@@ -407,7 +413,11 @@ func (c *Client) signingKey(accessToken string) (any, error) {
 }
 
 func fetchJWKS(httpClient *http.Client) (map[string]any, error) {
-	resp, err := httpClient.Get(JWKSURL)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, JWKSURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

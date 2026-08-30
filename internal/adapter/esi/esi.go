@@ -418,7 +418,7 @@ func (c *Client) request(method, path string, params map[string]any, headers htt
 		}
 		body = bytes.NewReader(raw)
 	}
-	req, err := http.NewRequest(method, u, body)
+	req, err := http.NewRequestWithContext(context.Background(), method, u, body)
 	if err != nil {
 		return nil, err
 	}
