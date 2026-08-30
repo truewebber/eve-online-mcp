@@ -1,6 +1,9 @@
 .git
-data/
-*.pyc
-__pycache__/
 .env
-README.md
+.env.local
+eve-mcp
+eve-eval
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+data/

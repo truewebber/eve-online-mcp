@@ -8,8 +8,8 @@ browser.
 **Target vs current.** Product target is `docs/SPEC.md` (plus `TOOLS.md`
 and `ESI.md`). Remaining work is sliced in `docs/plan/README.md` — pick
 the first `todo` task and follow that file. Where this file disagrees
-with the spec (file-based `DATA_DIR`, write-capability gates, audit log,
-Python evals), the spec and the task file win.
+with the spec (file-based `DATA_DIR`, write-capability gates, audit log),
+the spec and the task file win.
 
 ## Two modes
 
@@ -29,13 +29,14 @@ things that change how you *edit the repo*.
 
 ## Running it
 
-The server is a Go binary. No Docker, no `.env` on the client.
+The server is a Go binary on the host. Postgres is Compose-only
+(`make postgres`); do not put the app in Compose. No `.env` on the MCP client.
 
 ```bash
 go build -o eve-mcp ./cmd/eve-mcp
 ./eve-mcp                         # foreground
 ./eve-mcp install                 # user service (launchd / systemd --user)
-python3 evals/run.py all          # lint + smoke against http://127.0.0.1:8765/mcp
+go run ./evals all                # lint + smoke against http://127.0.0.1:8765/mcp
 ```
 
 Config is env only (`CLIENT_ID` is required; see `.env.example`), read from
@@ -50,14 +51,14 @@ The process does not reload code or config in place. Rebuild, then restart
 
 Do not recreate a git remote unless the user asks. The repo is local-only.
 
-**Do not run `docker compose down -v`.** The leftover `eve-mcp-data` volume
-still holds the previous Python install's SSO refresh tokens.
+**Do not run `docker compose down -v`.** That deletes the `eve-mcp-pg`
+volume. `make down` is enough to stop Postgres.
 
 ## Invariants
 
 Break these and the server regresses in ways tests will not obviously catch.
 
-**Tool definitions.** `evals/run.py lint` talks to the running server and
+**Tool definitions.** `go run ./evals lint` talks to the running server and
 enforces most of this.
 
 - Every parameter needs a `jsonschema` tag — that is the description the
@@ -122,7 +123,6 @@ internal/
   usecase/            business logic (session, oauth, eve tools)
   service/            interaction: HTTP (generated OpenAPI) and MCP
 evals/                lint and smoke gates, agentic task definitions
-eve_mcp/              previous Python implementation (reference only)
 ```
 
 Import direction: `service → usecase → adapter|domain`. Process config lives

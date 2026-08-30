@@ -196,10 +196,8 @@ with `eve_auth_logout` or from
 ## Development
 
 ```bash
+make postgres                     # local Postgres (loopback :5432); not required to boot yet
 go build -o eve-mcp ./cmd/eve-mcp
 ./eve-mcp                         # foreground, reads ./.env or the environment
-python3 evals/run.py all          # lint + smoke against the running server
+go run ./evals all                # lint + smoke; needs EVE_MCP_TOKEN
 ```
-
-The Python tree under `eve_mcp/` is the previous implementation, kept as a
-reference. The running server is this Go binary.

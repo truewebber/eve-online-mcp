@@ -1,6 +1,6 @@
 # T02 — Remove Python; local Postgres
 
-- Status: `todo`
+- Status: `done`
 - Size: M
 - Depends on: T01
 - SPEC: §10 (local dev = reachable Postgres + `./eve-mcp`)
@@ -74,15 +74,15 @@ Keep `evals/tasks.yaml` and the Go evals from T01.
 
 ## Acceptance
 
-- [ ] `find . -name '*.py'` is empty (ignore `.git`)
-- [ ] `go.mod` / `go.sum` unchanged unless the Go Dockerfile needs nothing
+- [x] `find . -name '*.py'` is empty (ignore `.git`)
+- [x] `go.mod` / `go.sum` unchanged unless the Go Dockerfile needs nothing
       from them at runtime
-- [ ] `docker compose config` validates; `make postgres` brings up a
+- [x] `docker compose config` validates; `make postgres` brings up a
       reachable `5432` on loopback
-- [ ] `make run` still starts the **current** file-backed server when
+- [x] `make run` still starts the **current** file-backed server when
       `CLIENT_ID` is set (no `DATABASE_URL` required yet)
-- [ ] `make down` does not use `-v`
-- [ ] No `python3` in Makefile
+- [x] `make down` does not use `-v`
+- [x] No `python3` in Makefile
 
 ## Verify
 

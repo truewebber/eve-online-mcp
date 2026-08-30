@@ -36,7 +36,7 @@ Status values: `todo` · `done` · `later`.
 | ID | Title | Status | Size | Depends | SPEC |
 |---|---|---|---|---|---|
 | [T01](T01-evals-go.md) | Rewrite evals in Go | done | M | — | §4 |
-| [T02](T02-python-out-local-postgres.md) | Remove Python; local Postgres | todo | M | T01 | §10 |
+| [T02](T02-python-out-local-postgres.md) | Remove Python; local Postgres | done | M | T01 | §10 |
 | [T03](T03-adapter-store.md) | `adapter/store` (pgx + migrations) | todo | L | T02 | §8, §12.0 |
 | [T04](T04-cache-postgres.md) | ESI cache + names on Postgres | todo | M | T03 | §5.1, §8 |
 | [T05](T05-users-characters.md) | Users, characters, refresh `FOR UPDATE` | todo | L | T03 | §3.3, §8 |
@@ -61,7 +61,6 @@ Still true today, and the plan removes it:
 | Write budget + `audit.jsonl` | Gone; mail cap 5/h + confirm 300 s remain |
 | No per-user ESI allowance | Token bucket 400 / 2 rps, `UserRateLimited` |
 | Alt-add can duplicate a character onto a second user | Unique `character_id`; refuse with an actionable error |
-| `evals/run.py`, `eve_mcp/` Python tree, Python `Dockerfile` | Go evals, no Python, Compose = Postgres, binary on the host |
 
 ## Local loop (the end state of T02 + T07)
 

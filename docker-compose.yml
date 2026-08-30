@@ -1,24 +1,21 @@
 services:
-  eve-mcp:
-    build: .
-    image: eve-mcp:latest
-    container_name: eve-mcp
-    restart: unless-stopped
-    env_file:
-      - path: .env
-        required: false
+  postgres:
+    image: postgres:16-alpine
     environment:
-      # Keep the callback in sync with what you registered on the dev portal.
-      EVE_CALLBACK_URL: http://localhost:8765/auth/callback
+      POSTGRES_USER: eve
+      POSTGRES_PASSWORD: eve
+      POSTGRES_DB: eve_mcp
     ports:
-      # Bound to loopback: the token store behind this port is your EVE account.
-      - "127.0.0.1:8765:8765"
+      - "127.0.0.1:5432:5432"
     volumes:
-      - eve-data:/data
+      - eve-mcp-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eve -d eve_mcp"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
 
 volumes:
-  eve-data:
-    # Pinned so the token store does not follow the directory name. Compose
-    # otherwise prefixes volumes with the project (directory) name, and moving
-    # this file would orphan the SSO refresh tokens.
-    name: eve-mcp-data
+  eve-mcp-pg:
+    name: eve-mcp-pg

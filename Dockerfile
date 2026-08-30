@@ -1,27 +1,16 @@
-FROM python:3.12-slim
+# syntax=docker/dockerfile:1
 
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    EVE_DATA_DIR=/data \
-    EVE_HOST=0.0.0.0 \
-    EVE_PORT=8765
+# Matches go.mod. Not used by default Compose (Postgres only);
+# the binary runs on the host so OAuth callbacks stay simple.
+FROM golang:1.26.5 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -o /eve-mcp ./cmd/eve-mcp
 
-WORKDIR /app
-
-COPY requirements.txt pyproject.toml ./
-COPY eve_mcp ./eve_mcp
-# Locked tree first, then the package itself without re-resolving anything.
-RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir --no-deps . \
-    && useradd --system --uid 10001 --create-home eve \
-    && mkdir -p /data && chown eve:eve /data
-
-USER eve
-VOLUME ["/data"]
-EXPOSE 8765
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8765/health', timeout=4).status==200 else 1)"
-
-ENTRYPOINT ["python", "-m", "eve_mcp"]
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /eve-mcp /eve-mcp
+EXPOSE 8765 8766
+USER nonroot:nonroot
+ENTRYPOINT ["/eve-mcp"]

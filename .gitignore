@@ -11,16 +11,6 @@ audit.jsonl
 # MCP client configs that may carry credentials
 .cursor/
 
-# Python
-__pycache__/
-*.pyc
-*.pyo
-.venv/
-venv/
-*.egg-info/
-build/
-dist/
-
 # Editors and OS
 .DS_Store
 .idea/

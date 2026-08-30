@@ -1,6 +1,7 @@
-.PHONY: build install uninstall run lint smoke eval gen
+.PHONY: build install uninstall run lint smoke eval gen postgres down
 
 GO ?= go
+COMPOSE ?= docker compose
 OAPI_CODEGEN ?= $(GO) tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 
 build:
@@ -14,6 +15,12 @@ uninstall:
 
 run: build
 	./eve-mcp
+
+postgres:
+	$(COMPOSE) up -d --wait postgres
+
+down:
+	$(COMPOSE) down
 
 lint:
 	$(GO) run ./evals lint
