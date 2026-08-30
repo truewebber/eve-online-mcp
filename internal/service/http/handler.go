@@ -2,6 +2,7 @@
 package httpsvc
 
 import (
+	"errors"
 	"fmt"
 	"html"
 	"net/http"
@@ -55,7 +56,12 @@ func (h *API) GetAuthCallback(w http.ResponseWriter, r *http.Request, _ GetAuthC
 	}
 	loc, token, err := h.OAuth.CompleteCallback(r.Context(), code, state)
 	if err != nil {
-		pageStatus(w, 400, "Login failed", `<p class=warn>`+html.EscapeString(err.Error())+`</p>`)
+		title := "Login failed"
+		var owned oauth.CharacterOwnedError
+		if errors.As(err, &owned) {
+			title = "Character already linked"
+		}
+		pageStatus(w, 400, title, `<p class=warn>`+html.EscapeString(err.Error())+`</p>`)
 		return
 	}
 	if loc != "" {

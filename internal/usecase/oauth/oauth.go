@@ -39,6 +39,20 @@ const (
 // ErrUnknownLogin is returned when the EVE callback state is missing or expired.
 var ErrUnknownLogin = errors.New("Unknown or expired login state — start the login again.")
 
+// CharacterOwnedError is an alt-add refused because the character already
+// belongs to a different user. The HTML callback page shows Error().
+type CharacterOwnedError struct {
+	CharacterName string
+}
+
+func (e CharacterOwnedError) Error() string {
+	name := e.CharacterName
+	if name == "" {
+		name = "This character"
+	}
+	return fmt.Sprintf("%s already belongs to another user on this server. Call eve_auth_logout on that other session first, or sign in from your MCP client as this character (Authentication required) to use that account.", name)
+}
+
 // Host is the public HTTP identity of this process. Built at the composition root.
 type Host struct {
 	Listen      string
@@ -307,7 +321,17 @@ func (s *Server) finishAlt(ctx context.Context, st *store.LoginState, token *sso
 	if st.UserID == "" {
 		return fmt.Errorf("alt login is missing user_id")
 	}
+	owner, err := s.ownerOf(ctx, token.CharacterID)
+	if err != nil {
+		return err
+	}
+	if owner != "" && owner != st.UserID {
+		return CharacterOwnedError{CharacterName: token.CharacterName}
+	}
 	if err := s.SessionFor(st.UserID).SSO.Store.Upsert(token); err != nil {
+		if errors.Is(err, store.ErrOwned) {
+			return CharacterOwnedError{CharacterName: token.CharacterName}
+		}
 		return err
 	}
 	log.Printf("alt oauth: %s attached to user %s", token.CharacterName, st.UserID)

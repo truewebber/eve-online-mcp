@@ -2,8 +2,10 @@ package oauth
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 
 	"eve-mcp/internal/adapter/sso"
@@ -118,5 +120,85 @@ func TestFinishMCPCreatesUser(t *testing.T) {
 	}
 	if _, err := db.GetUser(context.Background(), owner); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestFinishAltRefusesOtherUser(t *testing.T) {
+	db := openDB(t)
+	ctx := context.Background()
+	a, err := db.CreateUser(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := db.CreateUser(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const charID int64 = 2112625428
+	if err := db.UpsertCharacter(ctx, a.ID, store.CharacterRow{
+		CharacterID: charID, Name: "Jane Doe", RefreshToken: "a-rt",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s := testServer(t, db)
+	err = s.finishAlt(ctx, &store.LoginState{UserID: b.ID}, &sso.CharacterToken{
+		CharacterID: int(charID), CharacterName: "Jane Doe", RefreshToken: "b-rt",
+	})
+	var owned CharacterOwnedError
+	if !errors.As(err, &owned) {
+		t.Fatalf("want CharacterOwnedError, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "eve_auth_logout") {
+		t.Fatalf("want actionable message, got %q", err)
+	}
+	owner, ok, err := db.OwnerOf(ctx, charID)
+	if err != nil || !ok || owner != a.ID {
+		t.Fatalf("owner %s ok %v err %v", owner, ok, err)
+	}
+	row, err := db.GetCharacter(ctx, charID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.RefreshToken != "a-rt" {
+		t.Fatalf("A must keep the token, got %s", row.RefreshToken)
+	}
+	if tok := s.SessionFor(b.ID).SSO.Store.Get(int(charID)); tok != nil {
+		t.Fatal("B must not hold the character")
+	}
+}
+
+func TestFinishAltRefreshesOwnCharacter(t *testing.T) {
+	db := openDB(t)
+	ctx := context.Background()
+	u, err := db.CreateUser(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const charID int64 = 99
+	if err := db.UpsertCharacter(ctx, u.ID, store.CharacterRow{
+		CharacterID: charID, Name: "Alt", RefreshToken: "old-rt",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s := testServer(t, db)
+	if err := s.finishAlt(ctx, &store.LoginState{UserID: u.ID}, &sso.CharacterToken{
+		CharacterID: int(charID), CharacterName: "Alt", RefreshToken: "new-rt",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	owner, ok, err := db.OwnerOf(ctx, charID)
+	if err != nil || !ok || owner != u.ID {
+		t.Fatalf("owner %s ok %v err %v", owner, ok, err)
+	}
+	row, err := db.GetCharacter(ctx, charID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.RefreshToken != "new-rt" {
+		t.Fatalf("refresh %s", row.RefreshToken)
+	}
+	n, err := db.ListCharacters(ctx, u.ID)
+	if err != nil || len(n) != 1 {
+		t.Fatalf("rows %d err %v", len(n), err)
 	}
 }

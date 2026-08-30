@@ -43,7 +43,8 @@ into per-module `Options`.
 | `LISTEN` | no | `127.0.0.1:8765` | Public bind address |
 | `INTERNAL_LISTEN` | no | `127.0.0.1:8766` | Internal bind address |
 | `PUBLIC_URL` | no | empty | Public base URL; also fixes the EVE callback to `{PUBLIC_URL}/auth/callback` |
-| `DATABASE_URL` | **yes** | — | PostgreSQL DSN; sole durable store (tokens, users, OAuth state, cache) |
+| `DATABASE_URL` | **yes** | — | PostgreSQL DSN; sole durable store (see DB.md) |
+| `HMAC_KEY` | **yes** | — | MCP JWT signing key, min 32 bytes (`openssl rand -hex 32`); same value on every replica. Rotation = new secret + rolling restart → all clients re-authenticate |
 
 Validation: listeners must be `host:port`; the callback URL defaults to
 `http://127.0.0.1:{port}/auth/callback` when `PUBLIC_URL` is empty.
@@ -57,8 +58,8 @@ bridge, no host policy"):
 | Compatibility date | `2026-08-18` | Changing it is a code change: every response shape must be re-verified (§9) |
 | Confirm token TTL | 300 s | Consent window for one mutation |
 | Mail cap | 5 / rolling hour / user | Anti-spam toward other players |
-| Per-user ESI allowance | bucket 400, refill 2/s | §5.3 |
-| ESI concurrency | 8 in flight per user session | Politeness |
+| Per-character ESI allowance | bucket 400, refill 2/s | §5.3 |
+| ESI concurrency | 8 in flight per character | Politeness |
 | HTTP timeout | 30 s | — |
 | Write capabilities | all registered, always | Full API, consent per call |
 | Corp scopes | always requested | In-game roles are the only gate |
@@ -66,7 +67,10 @@ bridge, no host policy"):
 
 ## 3. Identity and auth
 
-Two OAuth layers, deliberately separate.
+Two OAuth layers, deliberately separate. The full channel-by-channel
+map — every secret, where it travels, where it rests, and the leak
+audit — is **[AUTH.md](AUTH.md)**; changing an auth flow means changing
+that file in the same commit.
 
 ### 3.1 MCP OAuth (this server is the authorization server)
 
@@ -83,10 +87,24 @@ Two OAuth layers, deliberately separate.
   human hint page.
 - `POST /oauth/token` — `authorization_code` (verify PKCE, one-time code,
   2 min TTL) and `refresh_token` grants.
-- Tokens: JWT HS256, key auto-generated on first boot and stored in
-  Postgres (`app_secrets`), shared by all replicas.
-  Access: `sub` = user id, `aud` = resource URL, `iss` = base, 1 h.
-  Refresh: `typ: refresh`, 30 days.
+- Tokens: JWT HS256, signed with the `HMAC_KEY` env secret (§2) — the
+  same value on all replicas, never stored in the database.
+  Access: `sub` = **character id**, `sid` = session id, `aud` = resource
+  URL, `iss` = base, 1 h. Refresh: `typ: refresh`, same `sub` + `sid`.
+- **Single active session per character.** The token exchange creates a
+  `sessions` row (which also carries the EVE grant of that sign-in) and
+  revokes the character's previous one, including its CCP refresh token
+  (best effort). Both grants verify that the token's `sid` is a live
+  session: `revoked_at IS NULL AND now() < valid_til` — the per-request
+  Postgres lookup already exists, this is the same query. A kicked or
+  expired client gets `401` / `invalid_grant` and shows Authentication
+  required. Moving a character from Cursor to Claude is just signing in
+  from Claude.
+- Sessions live 30 days (`valid_til`, no sliding renewal) — after that
+  the player re-logs via the browser.
+- Session metadata, captured once at creation: DCR `client_id` +
+  `client_name`, IP (`CF-Connecting-IP` behind the tunnel),
+  `created_at`. Nothing is updated per request.
 - Handshake state (MCP pending authorizations, EVE PKCE verifiers,
   one-time codes) lives in Postgres so the callback and the token
   exchange may land on any replica.
@@ -110,44 +128,43 @@ character (`SELECT … FOR UPDATE`): CCP may rotate the refresh token on
 every exchange, and two replicas racing the same token would otherwise
 invalidate the character's login.
 
-### 3.3 User model
+### 3.3 Identity model — the character is the user
 
-- A **user** = one browser sign-in group. Id: 16 hex chars, random.
-  Users have no credentials of their own: proof of identity is always a
-  successful EVE SSO login. A user is created only by a finished login —
-  abandoned authorize flows create nothing.
-- Storage: `users` and `characters` tables in Postgres (§8); a character
-  row carries the refresh token and belongs to its user by foreign key.
-- **Ownership invariant: a character belongs to exactly one user** —
-  enforced by a unique key on `character_id`.
-- On EVE callback for an MCP authorize flow: if the character already
-  belongs to a user, the login resolves to **that** user (dedupe by
-  `character_id`); otherwise a new user is created. The MCP code/tokens
-  then carry that user id in `sub`. Consequence: whoever can log into
-  the character's EVE account gets that user with all its characters —
-  the EVE account is the root of trust.
-- Alts: `eve_auth_login_url` from an authenticated session starts an EVE
-  login whose pending state lives in that user's SSO client; the callback
-  routes completion back to the same user (`SSOForState`). If the
-  finished character already belongs to a **different** user, the add is
-  refused with an actionable error ("log it out there first, or sign in
-  with that character from your client"). Re-adding your own character
-  just refreshes its token.
-- Separate sign-ins with unrelated characters intentionally make
-  separate users (the server cannot know they are one person). Manual
-  merge path: `eve_auth_logout` the character in the old user, then add
-  it as an alt in the new one.
-- Logout: `eve_auth_logout` revokes at CCP and deletes the token.
+- There is no `users` table and no invented user id. **The identity is
+  CCP's `character_id`** (PRD: "one connection, one character"); JWT
+  `sub` carries it directly. Re-login by the same character is the same
+  identity by construction — no dedupe logic exists.
+- Proof of identity is always a successful EVE SSO login. A `characters`
+  row appears on the first finished login (abandoned flows create
+  nothing) and is soft-deleted by logout; a later login revives it.
+- **The EVE grant belongs to the sign-in, not the character.** Each
+  browser login yields a fresh refresh token + scope set; they live on
+  the `sessions` row of that sign-in and are revoked with it. The
+  character row holds only identity (name, `owner_hash`).
+- `owner_hash` change on login = the character was sold to another EVE
+  account: previous sessions are revoked, the row is re-owned. Whoever
+  can log into the character's EVE account is the owner — the EVE
+  account is the root of trust.
+- **There is no alt flow.** No `eve_auth_login_url`, no tool-started
+  EVE logins, no `character` parameter anywhere: a session always reads
+  and acts as its one character. Another character = another MCP server
+  entry in the client, its own sign-in, its own identity.
+- Logout: `eve_auth_logout` (no arguments) revokes the session's refresh
+  token at CCP, revokes the session and soft-deletes the character row.
+  The connection is dead until a fresh sign-in.
 
 ### 3.4 Session resolution
 
-`ProtectMCP` middleware: bearer → verify JWT → user must exist in
-Postgres → per-user `session.Session` (cached in pod memory) injected
-into the request context. Tools call `session.From(ctx)`; a missing
-session is an auth error, never a fallback to another user. Sessions
-share one HTTP client and the Postgres-backed HTTP cache; token rows and
-rate-limit state are per user. EVE access tokens are cached in pod
-memory only (20 min lifetime, re-derivable from the refresh token).
+`ProtectMCP` middleware: bearer → verify JWT → `sid` must be a live
+session of `sub` in Postgres → per-character runtime (cached in pod
+memory) injected into the request context. Tools call
+`session.From(ctx)`; a missing session is an auth error, never a
+fallback to another character. Runtime state is keyed by `sub` only —
+the MCP client that presented the bearer never partitions anything.
+Runtimes share one HTTP client and the in-memory ESI cache; the EVE
+grant and rate-limit state are per character. EVE access tokens are
+cached in pod memory only (20 min lifetime, re-derivable from the
+session's refresh token under `FOR UPDATE`).
 
 ## 4. MCP surface
 
@@ -166,6 +183,8 @@ Tool contract (enforced by `evals/run.py lint`):
   "concise"|"detailed"`, concise default.
 - Results: JSON as `TextContent`, `nil` structured output. **Never** add
   typed output schemas (they drop undeclared keys).
+- No tool takes a `character` parameter: the session is bound to exactly
+  one character (§3.3) and always acts as it.
 - Every ESI-backed result carries `data_age`.
 - Errors are actionable sentences naming the next tool. Kinds:
 
@@ -175,7 +194,7 @@ Tool contract (enforced by `evals/run.py lint`):
 | `CharacterNotFound` | bad/ambiguous `character` | — |
 | `WriteBlocked` | confirm/budget refusal | — |
 | `EsiRateLimited` | CCP error-limit / 420 / 429 | `retry_at`, `retry_after_seconds`, `error_limit_*` |
-| `UserRateLimited` | per-user allowance spent (§5.3) | `retry_at`, `retry_after_seconds` |
+| `UserRateLimited` | per-character allowance spent (§5.3) | `retry_at`, `retry_after_seconds` |
 | `EsiError` | other ESI 4xx/5xx | `status` |
 | `Error` | anything else | — |
 
@@ -189,10 +208,14 @@ All tools are always registered; there is no host-side capability gate.
 Every mutating tool, no exceptions:
 
 1. `Guard.Authorize(tool, capability, args, preview, confirmToken, scopes)`
-   — checks scope grant, per-user mail cap, confirm cycle:
+   — checks scope grant, per-character mail cap, confirm cycle:
    - no token → returns `status: confirmation_required`, `will_do`
-     preview, single-use `confirm_token` (TTL 300 s);
-   - token → must match tool **and** exact args digest, single use.
+     preview, single-use `confirm_token` (TTL 300 s), bound to the
+     **session** that asked;
+   - token → must match tool, exact args digest **and** the caller's
+     `sid`, single use. Consent dies with the session: a sign-in that
+     replaces the session voids every pending confirmation, and the new
+     conversation starts from its own preview.
 2. Execute the ESI write.
 3. `Guard.Record(...)` — bump the mail counter.
 
@@ -271,8 +294,13 @@ Three independent layers, all per concern:
 
 ### 5.1 Upstream ESI protection
 
-- ETag + shared HTTP cache in Postgres; fresh cache hits never touch the
-  network. Cache TTL honours `Expires`/`Cache-Control`, capped at 24 h.
+- ETag + **in-memory** HTTP cache, bounded LRU per pod (no cache tables
+  in Postgres — DB.md "what is deliberately not in the database").
+  Fresh hits never touch the network; TTL honours
+  `Expires`/`Cache-Control`, capped at 24 h. Cold starts and
+  cross-replica misses are cheap: revalidation with the stored ETag
+  costs a 304, not an error. Id→name and reference prices are in-memory
+  the same way.
 - Error-limit accounting from `X-Esi-Error-Limit-Remain/Reset` on every
   response, kept per pod in memory (each pod re-learns the shared budget
   from the next response headers). When remain < 15 → fail fast with
@@ -282,18 +310,18 @@ Three independent layers, all per concern:
 - GET 5xx: up to 2 retries with jittered backoff, then serve stale cache
   if present.
 
-### 5.2 Mail cap (per user)
+### 5.2 Mail cap (per character)
 
 5 outgoing mails per rolling hour, counted at `Guard.Record` time,
 refused at `Guard.Authorize` time with `WriteBlocked`. Constant.
 
-### 5.3 Per-user ESI allowance (per user) — NEW
+### 5.3 Per-character ESI allowance
 
 Purpose (PRD): one looping assistant must not exhaust the shared CCP
 error budget / IP for the whole friend group. Not meant to be felt in
 normal use.
 
-- Token bucket per user id, counting **network requests to ESI only**
+- Token bucket per character, counting **network requests to ESI only**
   (cache hits and 304 revalidations that serve from cache are free).
 - Capacity 400, refill 2 requests/second (≈ 7200/h sustained). A worst
   case tool call (80-page corp assets) costs ~85 tokens; a heavy
@@ -301,7 +329,7 @@ normal use.
 - On empty bucket: the tool returns `kind: UserRateLimited` with
   `retry_after_seconds` computed from the deficit; the server instructions
   tell the model to wait, not loop.
-- Lives in the per-user ESI client next to the concurrency semaphore;
+- Lives in the per-character ESI client next to the concurrency semaphore;
   state is per pod in memory. With N replicas the effective allowance is
   up to N× — accepted at this scale rather than paying for a shared
   counter on every request.
@@ -321,7 +349,7 @@ cannot steal the route.
 |---|---|
 | `GET /` | Human status page |
 | `GET /auth/login` | Redirect to `/oauth/authorize` |
-| `GET /auth/callback` | EVE SSO callback (MCP flow → 302 back to client; alt flow → success page) |
+| `GET /auth/callback` | EVE SSO callback → 302 back to the MCP client |
 | `GET /.well-known/oauth-protected-resource` | PRM |
 | `GET /.well-known/oauth-authorization-server` | AS metadata |
 | `POST /oauth/register` | DCR |
@@ -340,21 +368,21 @@ cmd/eve-mcp/            package main: main.go (composition root),
                         config.go (env, no prefix), service.go (launchd/systemd)
 internal/
   adapter/              external systems; each package owns its Options
-    esi/                ESI HTTP: cache, error limit, pagination, per-user bucket
+    esi/                ESI HTTP: in-memory cache, error limit, pagination,
+                        per-character bucket
     sso/                EVE SSO: PKCE, token exchange, JWKS verify
-    store/              PostgreSQL (pgx): users, characters, oauth state,
-                        confirm tokens, http cache, names, secrets; embedded
-                        migrations applied at startup
-    names/              id→name resolution, reference prices
+    store/              PostgreSQL (pgx + goose migrations): characters,
+                        sessions, oauth state, confirm tokens, mail log,
+                        secrets — see DB.md
+    names/              id→name resolution, reference prices (memory-cached)
   domain/               pure model, no upward imports
     character/          Token, Corporation, roles
-    user/               User, NewID
     write/              capability catalog, Guard (confirm cycle, mail cap)
     universe/           reference constants (Jita, The Forge)
     j/                  map[string]any helpers
   usecase/              business logic
-    session/            per-user runtime (Session, ForUser, resolution)
-    oauth/              MCP authorization server + user attach/dedupe
+    session/            per-character runtime (Session, resolution)
+    oauth/              MCP authorization server + sessions
     eve/                all MCP tools + instructions
   service/              transport; depends on usecase only
     http/               generated OpenAPI + handlers + both listeners
@@ -367,30 +395,23 @@ Import direction: `service → usecase → adapter | domain`; domain imports
 nothing above stdlib. Process config maps to `Options` in `main` only.
 
 Dependencies: `modelcontextprotocol/go-sdk`, `golang-jwt/jwt/v5`,
-`jackc/pgx/v5`, `caarlos0/env`, `joho/godotenv`, `oapi-codegen`
-(tool + runtime).
+`jackc/pgx/v5`, `pressly/goose` (migrations), `caarlos0/env`,
+`joho/godotenv`, `oapi-codegen` (tool + runtime).
 
 ## 8. Data model (PostgreSQL)
 
-Embedded SQL migrations, applied at startup. Sketch:
+The full normative schema — every column, constraint, index, TTL and
+sweep rule — is **[DB.md](DB.md)**; a schema change lands in the same
+commit as its DB.md change and migration (goose, embedded SQL).
 
-| Table | Columns (key ones) | Notes |
-|---|---|---|
-| `users` | `id` pk, `created_at` | one browser sign-in group |
-| `characters` | `character_id` pk, `user_id` fk, `name`, `owner_hash`, `refresh_token`, `scopes`, `added_at` | pk enforces the ownership invariant; refresh takes `FOR UPDATE` |
-| `oauth_clients` | `client_id` pk, `redirect_uris`, `created_at` | DCR registrations |
-| `login_states` | `state` pk, `pkce_verifier`, `scopes`, `kind` (mcp/alt), `user_id` null, `mcp_client_id`, `redirect_uri`, `mcp_state`, `code_challenge`, `created_at` | one EVE handshake; TTL 15 min, any replica can finish it |
-| `auth_codes` | `code` pk, `user_id`, `mcp_client_id`, `redirect_uri`, `code_challenge`, `expires_at` | one-time, 2 min |
-| `confirm_tokens` | `token` pk, `user_id`, `tool`, `args_digest`, `created_at` | mutation consent, TTL 300 s |
-| `mail_log` | `user_id`, `sent_at` | rolling-hour mail cap |
-| `http_cache` | `key` pk, `etag`, `expires_at`, `stored_at`, `pages`, `body` | shared ESI cache |
-| `names`, `blobs` | id/name/category; key/value | resolution + reference data |
-| `app_secrets` | `name` pk, `value` | MCP JWT HMAC key, generated on first boot |
-
-Expired rows (`login_states`, `auth_codes`, `confirm_tokens`, stale
-`http_cache`) are purged opportunistically on access plus a periodic
-sweep. No migrations from the file-based layouts — old `DATA_DIR`
-content is ignored; players re-authenticate once.
+Shape in one breath: `characters` (identity = CCP id, soft-deleted) →
+`sessions` (one live per character; carries the sign-in's EVE grant,
+`valid_til` 30 d, `FOR UPDATE` around refresh) → consumables
+(`login_states`, `auth_codes`, `confirm_tokens` — deleted on use) +
+`oauth_clients`, `mail_log`. **No cache tables and no secrets tables**:
+ESI responses, names and reference prices live in pod memory (§5.1);
+the JWT key is the `HMAC_KEY` env. No migrations from earlier layouts —
+players re-authenticate once.
 
 ## 9. ESI usage rules
 
@@ -424,8 +445,8 @@ content is ignored; players re-authenticate once.
 - Now: `/healthz`, structured process logs to stdout/launchd log file.
 - Next (internal listener): Prometheus `/metrics` — ESI requests/errors
   by status, error-limit remain gauge, cache hit ratio, per-tool call
-  count + latency, per-user bucket rejections, mail-cap rejections,
-  active users.
+  count + latency, per-character bucket rejections, mail-cap rejections,
+  active sessions.
 
 ## 12. Deltas vs current code (implementation checklist)
 
@@ -439,10 +460,30 @@ content is ignored; players re-authenticate once.
 3. **Per-user ESI token bucket** (§5.3): **done (T09).** Capacity 400,
    refill 2/s on the per-user ESI client; cache hits and 304-from-cache
    are free; `kind: UserRateLimited` with `retry_at`.
-3a. Enforce the ownership invariant in the alt-add flow (§3.3): the EVE
-   callback for a tool-started login must check `ownerOf(character_id)`
-   and refuse storing a character that belongs to a different user
-   (today it bypasses the dedupe and can duplicate ownership).
+3a. **Alt-add ownership** (§3.3): **done (T10)** — and then superseded:
+   item 6 removes the alt flow entirely, so the refuse logic and its
+   tests go away with it.
 4. Update `.env.example`, README and `api/http.yaml` description to the
    reduced env set.
 5. Metrics endpoint (§11) — separate change, after this lands.
+6. **The character is the user** (§3.3, PRD §6.2, DB.md): drop the
+   `users` table and `domain/user`; JWT `sub` = `character_id`; drop
+   `eve_auth_login_url` and every tool-started EVE login
+   (`login_states.kind`, `SSOForState`, the T10 refuse path); remove
+   the `character` parameter from all tools and character resolution
+   from `usecase/session`; `eve_auth_status` reports the one character;
+   `eve_auth_logout` takes no arguments and revokes session + soft-
+   deletes the character; regenerate TOOLS.md (50 tools).
+7. **Sessions own the EVE grant** (§3.1, §8, DB.md): `sessions` table
+   (BIGINT identity ids, `refresh_token` + `scopes` on the session,
+   `valid_til` 30 d, creation-only metadata, partial unique "one live
+   per character"); `sid` claim in access + refresh tokens; token
+   exchange revokes the predecessor session and its CCP refresh token;
+   confirm tokens carry `session_id` (§4.1) — replacing the session
+   voids pending confirmations. `FOR UPDATE` moves from `characters`
+   to `sessions`.
+8. **Schema per DB.md**: migrate the migrator to goose; soft deletes on
+   entities; drop `http_cache`, `names`, `blobs` **and `app_secrets`**
+   tables — ESI cache, name cache and reference prices become bounded
+   in-memory structures in `adapter/esi` / `adapter/names` (§5.1); the
+   JWT key moves to the required `HMAC_KEY` env (§2).

@@ -1,6 +1,6 @@
 # T10 — Character ownership on alt-add
 
-- Status: `todo`
+- Status: `done`
 - Size: S
 - Depends on: T05, T06
 - SPEC: §3.3, §12.3a
@@ -62,11 +62,11 @@ Check **before** upsert. Unique PK is backup, not the UX.
 
 ## Acceptance
 
-- [ ] Test: character on user A, alt-add from user B → error, A still
+- [x] Test: character on user A, alt-add from user B → error, A still
       owns the row
-- [ ] Test: alt-add of own character → token updated, still one row
-- [ ] MCP login with a known character still maps to that user (`sub`)
-- [ ] No silent duplicate even if the application check is skipped
+- [x] Test: alt-add of own character → token updated, still one row
+- [x] MCP login with a known character still maps to that user (`sub`)
+- [x] No silent duplicate even if the application check is skipped
       (PK)
 
 ## Verify

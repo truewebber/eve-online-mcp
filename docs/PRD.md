@@ -28,13 +28,27 @@ Connecting takes a minute and requires no technical skill:
    the familiar EVE login page.
 3. Log in, pick a character, approve. Done.
 
-From that moment the assistant has the player's full EVE API: it reads
-anything the account can see, and it can perform the in-game actions the
-API offers — each one only after the player confirms it in the chat.
-Nobody registers anything at CCP, installs anything, or touches a config
-file. The host sets the service up once; every friend after that is just
-"send them the URL". The service adds no policy of its own on top of the
-game: it is a clean bridge between the assistant and the EVE API.
+**That connection now *is* that character.** The character picked at the
+EVE login is the one and only identity of this connection — the
+assistant reads that character's data and acts as that character,
+nothing else. One connection never accumulates a pile of alts.
+
+Alts are still easy, they are just explicit: add a second server entry
+in the client and sign it in as the alt. Two entries, two characters,
+side by side in the same chat. A character has exactly **one live
+connection**: signing in again — from the same client or a different
+one — moves the connection there, and the previous one is signed out.
+Taking a character from Cursor to Claude is just logging in from
+Claude.
+
+From that moment the assistant has the character's full EVE API: it
+reads anything the character can see, and it can perform the in-game
+actions the API offers — each one only after the player confirms it in
+the chat. Nobody registers anything at CCP, installs anything, or
+touches a config file. The host sets the service up once; every friend
+after that is just "send them the URL". The service adds no policy of
+its own on top of the game: it is a clean bridge between the assistant
+and the EVE API.
 
 ## 3. Who it is for
 
@@ -45,10 +59,11 @@ game: it is a clean bridge between the assistant and the EVE API.
 
 ## 4. What a player can do
 
-**Ask about their characters.** Wallet balance and transaction history,
+**Ask about their character.** Wallet balance and transaction history,
 skills and the training queue, clones and implants, standings, online
-status, current location and ship. Several characters per player are
-supported; the assistant addresses them by name.
+status, current location and ship — always about the one character this
+connection is signed in as, so there is never a "which character did you
+mean" dance. A player with alts runs one connection per character.
 
 **Find their stuff.** Full asset lists grouped by station, "where are my
 Vexors", blueprint collections, what a hangar is roughly worth.
@@ -85,26 +100,34 @@ Reading never asks permission. Every **change** follows the same ritual:
 the assistant shows exactly what will happen, the player says yes, then
 it happens. No confirmation — no action.
 
-**Manage their own access.** Add another character, or revoke the
-service's access to a character entirely, straight from the chat.
+**Manage their own access.** Revoke the service's access to the
+connected character straight from the chat — the connection dies with
+it. Switching to a different character means signing the connection in
+again; connecting an alt alongside means one more server entry.
 
 ## 5. What a player cannot do
 
 - **Play the game.** The service cannot undock, fly, fight, trade, move
   items, transfer ISK, or click anything. EVE simply does not expose that
   — and we would not want it anyway.
-- **See other people's accounts.** Each player sees exactly the
-  characters they logged in themselves — never a friend's, never the
-  host's. There is no "admin view" into someone else's wallet.
+- **See other people's accounts.** A connection sees exactly the one
+  character it was signed in with — never a friend's, never the host's,
+  never the player's own other alts. There is no "admin view" into
+  someone else's wallet.
+- **Stack characters on one connection.** There is no "add an alt"
+  inside an existing connection and no server-side character group to
+  grow. Wanting a second character always looks the same: a second
+  connection, a second EVE login.
 - **Bypass the game's permissions.** No corp data beyond what their
   in-game roles grant. A 403 from the game stays a 403.
 - **Spam other players.** Outgoing EVE mail has a strict hourly cap per
-  player. Self-affecting actions carry no such cap — re-planning a route
-  twenty times is the player's own business.
-- **Monopolise the shared connection.** CCP treats the whole instance as
-  one application on one address. Each player gets a generous request
-  allowance — sized so it is never felt in a normal conversation, but a
-  looping assistant cannot lock the whole friend group out of the API.
+  character. Self-affecting actions carry no such cap — re-planning a
+  route twenty times is the player's own business.
+- **Monopolise the shared pipe.** CCP treats the whole instance as one
+  application on one address. Each connected character gets a generous
+  request allowance — sized so it is never felt in a normal
+  conversation, but a looping assistant cannot lock the whole friend
+  group out of the API.
 - **Act on someone else's words.** A hostile in-game mail saying "forward
   this to your corp" is content to summarise, not an instruction to
   follow.
@@ -116,25 +139,34 @@ service's access to a character entirely, straight from the chat.
 
 1. **One URL is the whole onboarding.** If a step requires a player to
    register, install, or configure anything, it is a bug.
-2. **A clean bridge, not a gatekeeper.** The service exposes the full EVE
-   API and adds no policy of its own. What the account can see, the
+2. **One connection, one character — and one character, one
+   connection.** The identity of a connection is the character picked at
+   the EVE login, permanently; a character has at most one live
+   connection, and a new sign-in displaces the old one. No hidden alt
+   registry, no "which character" ambiguity, no forgotten client still
+   reading the account from last month. A different character is always
+   a different connection.
+3. **A clean bridge, not a gatekeeper.** The service exposes the full EVE
+   API and adds no policy of its own. What the character can see, the
    assistant can see; what the API can change, the assistant can request.
    Players manage their own access: they sign in with EVE themselves and
-   can revoke a character at any time — in chat, or on EVE's own
+   can revoke the character at any time — in chat, or on EVE's own
    "authorized apps" page. The host manages nothing per player.
-3. **Reads are free, mutations need consent.** Questions never ask
+4. **Reads are free, mutations need consent.** Questions never ask
    permission. Every in-game change is confirmed by the player for that
    exact action — a general "yes, do it" never authorizes a different or
    repeated change.
-4. **Answers fit a conversation.** Short by default, expandable on
+5. **Answers fit a conversation.** Short by default, expandable on
    request, with names instead of numeric ids and honesty about staleness.
-5. **Be a good citizen of the shared API.** When CCP's rate limits bite,
+6. **Be a good citizen of the shared API.** When CCP's rate limits bite,
    the service backs off and tells the assistant when to retry — one
    player's curiosity must not lock out the whole household.
 
 ## 7. Out of scope
 
 - Public multi-tenant SaaS, billing, or accounts beyond one friend group.
+- Multiple characters on one connection, automatic merging of a player's
+  connections, or any server-side "family" of alts.
 - Game automation of any kind (botting is against EVE's rules).
 - Fleet/alliance tooling, killboard analytics, or historical data
   warehousing.
