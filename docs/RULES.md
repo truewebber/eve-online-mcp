@@ -130,34 +130,14 @@ shape. It explains *why this rule is this shape*, never *what the next
 statement does*. If the comment is doing the work the names should do,
 delete the comment and rename.
 
-## 7. Logs go through gopkg, nowhere else
+## 7. Only gopkg/log writes to stdout and stderr
 
-Process logs are written only through
-[`github.com/truewebber/gopkg/log`](https://github.com/truewebber/gopkg).
-That is the only logger in this repository.
+[`github.com/truewebber/gopkg/log`](https://github.com/truewebber/gopkg)
+is the only writer to the process stdout and stderr. Help, fatals,
+CLI reports, debug prints — if it would appear on std, it goes through
+`log.Logger`. An HTTP response or a file is not std.
 
 The logger is a **dependency**, and nothing else. `main` constructs it
-with `log.NewLogger()`, holds it, `Close`s it on shutdown, and passes
-`log.Logger` into the types that emit lines. A type that logs has a
-`log.Logger` field, set at construction. Inner layers do not call
-`NewLogger`, do not look up a package-level logger, and do not pull
-one out of context.
-
-**Forbidden** as a log, including as a "just this once":
-
-- `log` from the standard library (`log.Printf`, `log.Fatal`,
-  `log.Println`, `log.SetPrefix`, …)
-- `log/slog`, `zap`, `zerolog`, `logrus`, or any other logger
-- `fmt.Print`, `fmt.Printf`, `fmt.Println`, `println`, and writing a
-  log line to `os.Stdout` / `os.Stderr` by hand
-- a global / package-level logger, a `log.Logger` hidden in `context`,
-  or constructing a logger inside a usecase, adapter, or domain type
-
-Do not import `go.uber.org/zap` (or any other backend) from this
-module. The wrapper is the API; the backend is gopkg's business.
-
-A CLI that *is* a report (`evals`, `eve-mcp help`) writes that report
-to stdout or stderr. That is the program's output, not a log. `t.Log`
-and `t.Fatal` in a test are the test harness, not a log. Everything
-the server process would have sent to `log.Printf` is a log, and it
-goes through a `log.Logger` that was injected.
+(`log.NewLogger()`), `Close`s it on shutdown, and passes `log.Logger`
+in. A type that logs has that field, set at construction. Nobody else
+creates a logger, looks one up, or pulls one from context.
