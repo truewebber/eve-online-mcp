@@ -18,9 +18,9 @@ import (
 	"sync"
 	"time"
 
-	"eve-mcp/internal/adapter/sso"
-	"eve-mcp/internal/adapter/store"
-	"eve-mcp/internal/domain/j"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
+	"github.com/truewebber/eve-online-mcp/internal/domain/j"
 )
 
 const DefaultBaseURL = "https://esi.evetech.net"

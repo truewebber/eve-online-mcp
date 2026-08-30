@@ -4,10 +4,10 @@ import (
 	"errors"
 	"time"
 
-	"eve-mcp/internal/adapter/esi"
-	"eve-mcp/internal/adapter/sso"
-	"eve-mcp/internal/domain/character"
-	"eve-mcp/internal/domain/write"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
+	"github.com/truewebber/eve-online-mcp/internal/domain/character"
+	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 )
 
 // MapError turns adapter/domain errors into the JSON the model already knows.

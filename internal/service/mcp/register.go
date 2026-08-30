@@ -2,8 +2,8 @@
 package mcp
 
 import (
-	"eve-mcp/internal/usecase/eve"
-	"eve-mcp/internal/usecase/session"
+	"github.com/truewebber/eve-online-mcp/internal/usecase/eve"
+	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )

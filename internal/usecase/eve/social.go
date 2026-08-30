@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"eve-mcp/internal/domain/j"
-	"eve-mcp/internal/usecase/session"
+	"github.com/truewebber/eve-online-mcp/internal/domain/j"
+	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )

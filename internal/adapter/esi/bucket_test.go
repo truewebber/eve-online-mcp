@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"eve-mcp/internal/adapter/store"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
 )
 
 func TestUserBucketExhausted(t *testing.T) {

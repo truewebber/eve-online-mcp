@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"eve-mcp/internal/adapter/store"
-	"eve-mcp/internal/domain/write"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
+	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 )
 
 func TestGuardMailCapUsesStore(t *testing.T) {

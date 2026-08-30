@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"eve-mcp/internal/adapter/esi"
-	"eve-mcp/internal/adapter/names"
-	"eve-mcp/internal/adapter/sso"
-	"eve-mcp/internal/adapter/store"
-	"eve-mcp/internal/domain/character"
-	"eve-mcp/internal/domain/j"
-	"eve-mcp/internal/domain/write"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/names"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
+	"github.com/truewebber/eve-online-mcp/internal/domain/character"
+	"github.com/truewebber/eve-online-mcp/internal/domain/j"
+	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 )
 
 // Options is assembled at the composition root from process config.

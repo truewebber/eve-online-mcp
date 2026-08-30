@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"eve-mcp/internal/adapter/store"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
 
 	"github.com/golang-jwt/jwt/v5"
 )

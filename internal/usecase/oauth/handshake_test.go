@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"eve-mcp/internal/adapter/sso"
-	"eve-mcp/internal/adapter/store"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
 )
 
 func TestHMACStableAcrossOpen(t *testing.T) {

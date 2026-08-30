@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"eve-mcp/internal/adapter/esi"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
 )
 
 func TestMapErrorUserRateLimited(t *testing.T) {

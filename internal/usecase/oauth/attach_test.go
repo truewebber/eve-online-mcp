@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"eve-mcp/internal/adapter/sso"
-	"eve-mcp/internal/adapter/store"
-	"eve-mcp/internal/usecase/session"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
+	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 )
 
 func openDB(t *testing.T) *store.Store {

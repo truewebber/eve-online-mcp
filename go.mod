@@ -1,4 +1,4 @@
-module eve-mcp
+module github.com/truewebber/eve-online-mcp
 
 go 1.26.5
 

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	domuser "eve-mcp/internal/domain/user"
+	domuser "github.com/truewebber/eve-online-mcp/internal/domain/user"
 
 	"github.com/jackc/pgx/v5"
 )

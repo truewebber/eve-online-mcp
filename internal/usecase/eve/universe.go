@@ -6,9 +6,9 @@ import (
 	"sort"
 	"strings"
 
-	"eve-mcp/internal/adapter/esi"
-	"eve-mcp/internal/domain/j"
-	"eve-mcp/internal/usecase/session"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
+	"github.com/truewebber/eve-online-mcp/internal/domain/j"
+	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )

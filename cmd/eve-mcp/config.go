@@ -87,7 +87,7 @@ func (c *config) validate() error {
 		c.CallbackURL = fmt.Sprintf("http://127.0.0.1:%s/auth/callback", port)
 	}
 
-	c.UserAgent = "eve-mcp/" + version
+	c.UserAgent = "github.com/truewebber/eve-online-mcp/" + version
 	if c.Contact != "" {
 		c.UserAgent += " " + c.Contact
 	}

@@ -7,7 +7,7 @@ import (
 	"html"
 	"net/http"
 
-	"eve-mcp/internal/usecase/oauth"
+	"github.com/truewebber/eve-online-mcp/internal/usecase/oauth"
 )
 
 // API implements the generated ServerInterface.

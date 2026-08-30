@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	svcmcp "eve-mcp/internal/service/mcp"
-	"eve-mcp/internal/usecase/session"
+	svcmcp "github.com/truewebber/eve-online-mcp/internal/service/mcp"
+	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )

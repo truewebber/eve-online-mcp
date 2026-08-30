@@ -6,13 +6,13 @@ import (
 	"log"
 	"os"
 
-	"eve-mcp/internal/adapter/esi"
-	"eve-mcp/internal/adapter/sso"
-	"eve-mcp/internal/adapter/store"
-	"eve-mcp/internal/domain/write"
-	httpsvc "eve-mcp/internal/service/http"
-	"eve-mcp/internal/usecase/oauth"
-	"eve-mcp/internal/usecase/session"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
+	"github.com/truewebber/eve-online-mcp/internal/domain/write"
+	httpsvc "github.com/truewebber/eve-online-mcp/internal/service/http"
+	"github.com/truewebber/eve-online-mcp/internal/usecase/oauth"
+	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 )
 
 func main() {
