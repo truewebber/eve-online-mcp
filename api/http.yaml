@@ -1,0 +1,249 @@
+openapi: 3.0.3
+info:
+  title: EVE MCP HTTP API
+  version: 0.3.0
+  description: |
+    Public HTTP surface: OAuth for MCP clients plus two human pages.
+    This is **not** the tool catalog.
+
+    The LLM never walks these paths to discover or call EVE tools.
+
+    Cursor / Claude open one URL from client config:
+
+        { "url": "http://127.0.0.1:8765/mcp" }
+
+    That is MCP over Streamable HTTP (JSON-RPC), mounted in
+    `internal/service/http` and registered in `internal/usecase/eve`.
+    After OAuth the client sends `initialize`, then `tools/list`, then
+    `tools/call` with `eve_<domain>_<action>`. Unauthenticated `/mcp`
+    returns 401 + RFC 9728 `WWW-Authenticate`.
+
+    `/mcp` is intentionally absent from `paths` below: oapi-codegen would
+    steal the route from the MCP handler.
+
+    The instance owns exactly one EVE application (`CLIENT_ID` env).
+    `/oauth/authorize` immediately redirects the player to EVE SSO, where
+    they log in and pick a character. Characters group under a server-side
+    user; the MCP bearer token carries that user id.
+
+    Liveness and metrics live on the internal listener (`INTERNAL_LISTEN`),
+    outside this contract, and must not be routed publicly.
+servers:
+  - url: /
+paths:
+  /:
+    get:
+      operationId: getIndex
+      summary: Human status page
+      tags: [pages]
+      responses:
+        "200":
+          description: HTML status
+          content:
+            text/html:
+              schema:
+                type: string
+  /auth/login:
+    get:
+      operationId: getAuthLogin
+      summary: Redirect to MCP authorize
+      tags: [auth]
+      responses:
+        "302":
+          description: Redirect to /oauth/authorize
+  /auth/callback:
+    get:
+      operationId: getAuthCallback
+      summary: EVE SSO callback
+      tags: [auth]
+      parameters:
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: error
+          in: query
+          schema:
+            type: string
+        - name: error_description
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Character authorized (tool-started login)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Back to the MCP client with an authorization code
+        "400":
+          description: Login failed
+          content:
+            text/html:
+              schema:
+                type: string
+  /.well-known/oauth-protected-resource:
+    get:
+      operationId: getProtectedResourceMetadata
+      summary: RFC 9728 protected resource metadata
+      tags: [oauth]
+      responses:
+        "200":
+          description: PRM
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /.well-known/oauth-authorization-server:
+    get:
+      operationId: getAuthorizationServerMetadata
+      summary: Authorization server metadata
+      tags: [oauth]
+      responses:
+        "200":
+          description: AS metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /oauth/register:
+    post:
+      operationId: postOAuthRegister
+      summary: Dynamic client registration
+      tags: [oauth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterClient"
+      responses:
+        "201":
+          description: Registered
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          description: Invalid metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthError"
+  /oauth/authorize:
+    get:
+      operationId: getOAuthAuthorize
+      summary: MCP authorize — redirects straight to EVE SSO
+      description: |
+        Validates the MCP client and redirect URI, then sends the browser to
+        EVE SSO with the instance application. Without OAuth parameters it
+        renders a human hint page.
+      tags: [oauth]
+      parameters:
+        - name: client_id
+          in: query
+          schema:
+            type: string
+        - name: redirect_uri
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: code_challenge
+          in: query
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to EVE SSO
+        "200":
+          description: Hint page (no OAuth parameters)
+          content:
+            text/html:
+              schema:
+                type: string
+        "400":
+          description: Unknown client or redirect_uri
+  /oauth/token:
+    post:
+      operationId: postOAuthToken
+      summary: Exchange code or refresh
+      tags: [oauth]
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/TokenRequest"
+      responses:
+        "200":
+          description: Tokens
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          description: Invalid grant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthError"
+components:
+  schemas:
+    RegisterClient:
+      type: object
+      required: [redirect_uris]
+      properties:
+        redirect_uris:
+          type: array
+          items:
+            type: string
+        client_name:
+          type: string
+    TokenRequest:
+      type: object
+      properties:
+        grant_type:
+          type: string
+        code:
+          type: string
+        code_verifier:
+          type: string
+        redirect_uri:
+          type: string
+        refresh_token:
+          type: string
+        client_id:
+          type: string
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        token_type:
+          type: string
+        expires_in:
+          type: integer
+        scope:
+          type: string
+    OAuthError:
+      type: object
+      properties:
+        error:
+          type: string
+        error_description:
+          type: string

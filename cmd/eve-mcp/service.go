@@ -69,6 +69,20 @@ func localBinDir() (string, error) {
 	return "", fmt.Errorf("cannot resolve home directory")
 }
 
+// serviceDataDir mirrors the DATA_DIR default in config.go and is the
+// working directory of the installed service, so ./.env lives there.
+func serviceDataDir() (string, error) {
+	if env := os.Getenv("DATA_DIR"); env != "" {
+		return env, nil
+	}
+	base, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(base, "eve-mcp")
+	return dir, os.MkdirAll(dir, 0o700)
+}
+
 func installLaunchd(bin string) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -76,12 +90,17 @@ func installLaunchd(bin string) error {
 	}
 	plistPath := filepath.Join(home, "Library", "LaunchAgents", "eve-mcp.plist")
 	logPath := filepath.Join(home, "Library", "Logs", "eve-mcp.log")
+	dataDir, err := serviceDataDir()
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(plistPath), 0o755); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 		return err
 	}
+	// WorkingDirectory is the data dir so the process picks up ./.env there.
 	plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -92,6 +111,8 @@ func installLaunchd(bin string) error {
   <array>
     <string>%s</string>
   </array>
+  <key>WorkingDirectory</key>
+  <string>%s</string>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
@@ -102,7 +123,7 @@ func installLaunchd(bin string) error {
   <string>%s</string>
 </dict>
 </plist>
-`, bin, logPath, logPath)
+`, bin, dataDir, logPath, logPath)
 	if err := os.WriteFile(plistPath, []byte(plist), 0o644); err != nil {
 		return err
 	}
@@ -143,17 +164,22 @@ func installSystemd(bin string) error {
 		return err
 	}
 	unitPath := filepath.Join(unitDir, "eve-mcp.service")
+	dataDir, err := serviceDataDir()
+	if err != nil {
+		return err
+	}
 	unit := fmt.Sprintf(`[Unit]
 Description=EVE Online MCP server
 After=network-online.target
 
 [Service]
 ExecStart=%s
+WorkingDirectory=%s
 Restart=on-failure
 
 [Install]
 WantedBy=default.target
-`, bin)
+`, bin, dataDir)
 	if err := os.WriteFile(unitPath, []byte(unit), 0o644); err != nil {
 		return err
 	}

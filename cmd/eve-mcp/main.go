@@ -1,14 +1,18 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
-	"eve-mcp/internal/app"
-	"eve-mcp/internal/config"
-	"eve-mcp/internal/server"
+	"eve-mcp/internal/adapter/esi"
+	"eve-mcp/internal/adapter/sso"
+	aduser "eve-mcp/internal/adapter/user"
+	"eve-mcp/internal/domain/write"
+	httpsvc "eve-mcp/internal/service/http"
+	"eve-mcp/internal/usecase/oauth"
+	"eve-mcp/internal/usecase/session"
 )
 
 func main() {
@@ -33,43 +37,106 @@ func main() {
 		}
 	}
 
-	configPath := flag.String("config", "", "path to config.toml (default: user config dir)")
-	listen := flag.String("listen", "", "override listen address, e.g. 127.0.0.1:8765 or 0.0.0.0:8765")
-	publicURL := flag.String("public-url", "", "public base URL when exposing over the network")
-	flag.Parse()
-
-	settings, tokenGenerated, err := config.Load(*configPath, *listen, *publicURL)
+	cfg, err := loadConfig()
 	if err != nil {
 		log.Fatal(err)
 	}
-	if tokenGenerated {
-		log.Printf("generated mcp_token and wrote it to %s — add it as Authorization: Bearer … on remote clients", settings.ConfigPath)
-	}
 
-	a, err := app.Open(settings)
+	allow, err := writeAllow(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer a.Close()
+	writeOpts := write.Options{
+		Mode:               cfg.WriteMode,
+		Allow:              allow,
+		WriteBudgetPerHour: cfg.WriteBudgetHour,
+		MailBudgetPerHour:  cfg.MailBudgetHour,
+		ConfirmTTLSeconds:  cfg.ConfirmTTL,
+		AuditFile:          filepath.Join(cfg.DataDir, "audit.jsonl"),
+	}
+	runtime, err := session.Open(session.Options{
+		DataDir:    cfg.DataDir,
+		UserAgent:  cfg.UserAgent,
+		CorpScopes: cfg.CorpScopes,
+		WriteMode:  cfg.WriteMode,
+		ESI: esi.Options{
+			UserAgent:  cfg.UserAgent,
+			CompatDate: cfg.CompatDate,
+		},
+		SSO: sso.Options{
+			ClientID:     cfg.ClientID,
+			ClientSecret: cfg.ClientSecret,
+			CallbackURL:  cfg.CallbackURL,
+			UserAgent:    cfg.UserAgent,
+			Scopes:       writeOpts.RequestedScopes(cfg.CorpScopes),
+		},
+		Write: writeOpts,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer runtime.Close()
 
-	if err := server.ListenAndServe(settings, a); err != nil {
+	users, err := aduser.Open(cfg.DataDir)
+	if err != nil {
+		log.Fatal(err)
+	}
+	host := oauth.Host{
+		DataDir:     cfg.DataDir,
+		Listen:      cfg.Listen,
+		PublicURL:   cfg.PublicURL,
+		MCPPath:     "/mcp",
+		CallbackURL: cfg.CallbackURL,
+		WriteMode:   cfg.WriteMode,
+	}
+	oauthServer, err := oauth.Open(host, runtime, users)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	h := httpsvc.New(oauthServer, host)
+	if err := httpsvc.ListenAndServe(h, runtime, httpsvc.ListenOptions{
+		Listen:         cfg.Listen,
+		InternalListen: cfg.InternalListen,
+		MCPPath:        host.MCPPath,
+		Version:        version,
+		CorpScopes:     cfg.CorpScopes,
+	}); err != nil {
 		log.Println(err)
 		os.Exit(1)
 	}
 }
 
-const usage = `eve-mcp — one-binary MCP server for a player's EVE Online account
+func writeAllow(cfg config) (map[string]struct{}, error) {
+	list := cfg.WriteAllowList
+	if len(list) == 1 && list[0] == "all" {
+		out := map[string]struct{}{}
+		for name := range write.Capabilities {
+			out[name] = struct{}{}
+		}
+		return out, nil
+	}
+	out := map[string]struct{}{}
+	if len(list) == 1 && (list[0] == "none" || list[0] == "") {
+		return out, nil
+	}
+	for _, name := range list {
+		if _, ok := write.Capabilities[name]; !ok {
+			return nil, fmt.Errorf("unknown WRITE_ALLOW entry %q", name)
+		}
+		out[name] = struct{}{}
+	}
+	return out, nil
+}
+
+const usage = `eve-mcp — MCP server that exposes EVE Online accounts to LLM clients
 
 Usage:
-  eve-mcp [flags]          run the server
+  eve-mcp                  run the server (config from env / ./.env)
   eve-mcp install          install a user service (launchd on macOS)
   eve-mcp uninstall        stop and remove the user service
 
-Flags:
-  -config string       path to config.toml (default: user config dir)
-  -listen string       listen address, e.g. 127.0.0.1:8765 or 0.0.0.0:8765
-  -public-url string   public base URL when exposing over the network
-
-Clients (Cursor, Claude Code) connect to http://127.0.0.1:8765/mcp
-Config and tokens live in the OS user config directory, not next to the binary.
+Required env: CLIENT_ID — the EVE application from developers.eveonline.com.
+See .env.example for the full list. Clients connect to http://127.0.0.1:8765/mcp
+and sign in with their EVE account in the browser.
 `

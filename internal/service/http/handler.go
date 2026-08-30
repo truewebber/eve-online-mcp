@@ -1,0 +1,102 @@
+// Package httpsvc is the OpenAPI HTTP surface. It depends only on usecase.
+package httpsvc
+
+import (
+	"fmt"
+	"html"
+	"net/http"
+
+	"eve-mcp/internal/usecase/oauth"
+)
+
+// API implements the generated ServerInterface.
+type API struct {
+	OAuth *oauth.Server
+	Host  oauth.Host
+}
+
+func New(oauthServer *oauth.Server, host oauth.Host) *API {
+	return &API{OAuth: oauthServer, Host: host}
+}
+
+func (h *API) GetIndex(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	body := fmt.Sprintf(`
+			<h1>EVE MCP</h1>
+			<p>Add this URL in Cursor or Claude Code. The client will show <b>Authentication required</b> and send you to the EVE login.</p>
+			<p>MCP endpoint: <code>%s</code></p>
+			<p class=dim>EVE callback must be exactly <code>%s</code>.</p>
+			<p class=dim>Writes: <code>%s</code></p>`,
+		html.EscapeString(h.OAuth.ResourceURL()),
+		html.EscapeString(h.Host.CallbackURL),
+		html.EscapeString(h.Host.WriteMode))
+	page(w, "EVE MCP", body)
+}
+
+func (h *API) GetAuthLogin(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, h.Host.BaseURL()+"/oauth/authorize", http.StatusFound)
+}
+
+func (h *API) GetAuthCallback(w http.ResponseWriter, r *http.Request, _ GetAuthCallbackParams) {
+	if errS := r.URL.Query().Get("error"); errS != "" {
+		detail := r.URL.Query().Get("error_description")
+		if detail == "" {
+			detail = errS
+		}
+		pageStatus(w, 400, "Login refused", `<p class=warn>`+html.EscapeString(detail)+`</p>`)
+		return
+	}
+	code, state := r.URL.Query().Get("code"), r.URL.Query().Get("state")
+	if code == "" || state == "" {
+		pageStatus(w, 400, "Bad callback", `<p class=warn>Missing code or state.</p>`)
+		return
+	}
+	sso := h.OAuth.SSOForState(state)
+	if sso == nil {
+		pageStatus(w, 400, "Login failed", `<p class=warn>Unknown or expired login state — start the login again.</p>`)
+		return
+	}
+	token, err := sso.CompleteLogin(code, state)
+	if err != nil {
+		pageStatus(w, 400, "Login failed", `<p class=warn>`+html.EscapeString(err.Error())+`</p>`)
+		return
+	}
+	loc, err := h.OAuth.FinishEVE(state, token)
+	if err != nil {
+		pageStatus(w, 400, "Login failed", `<p class=warn>`+html.EscapeString(err.Error())+`</p>`)
+		return
+	}
+	if loc != "" {
+		http.Redirect(w, r, loc, http.StatusFound)
+		return
+	}
+	page(w, "EVE MCP", fmt.Sprintf(`
+			<h1>%s is authorized</h1>
+			<p class=dim>%d scopes · character #%d</p>
+			<p>You can close this tab. Cursor and Claude Code can now read this character.</p>
+			<p><a class=btn href="/">Back to status</a></p>`,
+		html.EscapeString(token.CharacterName), len(token.Scopes), token.CharacterID))
+}
+
+func (h *API) GetProtectedResourceMetadata(w http.ResponseWriter, r *http.Request) {
+	h.OAuth.ProtectedResourceHandler().ServeHTTP(w, r)
+}
+
+func (h *API) GetAuthorizationServerMetadata(w http.ResponseWriter, r *http.Request) {
+	h.OAuth.ServeASMeta(w, r)
+}
+
+func (h *API) PostOAuthRegister(w http.ResponseWriter, r *http.Request) {
+	h.OAuth.ServeRegister(w, r)
+}
+
+func (h *API) GetOAuthAuthorize(w http.ResponseWriter, r *http.Request, _ GetOAuthAuthorizeParams) {
+	h.OAuth.ServeAuthorize(w, r)
+}
+
+func (h *API) PostOAuthToken(w http.ResponseWriter, r *http.Request) {
+	h.OAuth.ServeToken(w, r)
+}

@@ -1,7 +1,15 @@
 # eve_online
 
-A one-binary MCP server that exposes one player's EVE Online account to an
-LLM through CCP's ESI API, plus guarded write access back into the game.
+A one-binary MCP server that exposes EVE Online accounts to LLM clients
+through CCP's ESI API, plus guarded write access back into the game. The
+instance owns one EVE application; each player signs in with EVE in the
+browser.
+
+**Target vs current.** Product target is `docs/SPEC.md` (plus `TOOLS.md`
+and `ESI.md`). Remaining work is sliced in `docs/plan/README.md` — pick
+the first `todo` task and follow that file. Where this file disagrees
+with the spec (file-based `DATA_DIR`, write-capability gates, audit log,
+Python evals), the spec and the task file win.
 
 ## Two modes
 
@@ -30,9 +38,12 @@ go build -o eve-mcp ./cmd/eve-mcp
 python3 evals/run.py all          # lint + smoke against http://127.0.0.1:8765/mcp
 ```
 
-Config, refresh tokens, HTTP cache and the audit log live in the OS user
-config directory (`~/Library/Application Support/eve-mcp` on macOS). A
-repo-local `.env` is imported once if `client_id` is still empty.
+Config is env only (`CLIENT_ID` is required; see `.env.example`), read from
+the process environment or a `.env` in the working directory. The installed
+service runs with the data dir as its working directory, so its `.env` lives
+at `~/Library/Application Support/eve-mcp/.env` on macOS. Refresh tokens,
+HTTP cache, users and the audit logs live in the same data dir. There is no
+config file and nothing is written back to config at runtime.
 
 The process does not reload code or config in place. Rebuild, then restart
 (`launchctl kickstart -k gui/$(id -u)/eve-mcp` after `install`).
@@ -63,21 +74,26 @@ enforces most of this.
 `nil` structured output. A typed `Out` on `mcp.AddTool` would drop
 undeclared keys. Response shape is documented in each tool's `Returns:` line.
 
-**Every mutating tool goes through `a.Guard.Authorize()`** before it touches
-ESI, and `a.Guard.Record()` after. That is what enforces the capability gate,
+**Every mutating tool goes through `session.Guard.Authorize()`** before it
+touches ESI, and `Record()` after. That is what enforces the capability gate,
 the confirm-token cycle, the hourly budget and the audit log. A write path
 that skips it bypasses all four. Write tools are also registered only when
 their capability is enabled, so the tool list is itself a security boundary.
 
-**All ESI traffic goes through `esi.Client`.** It carries the identifying
-User-Agent, the pinned compatibility date, ETag caching and error-limit
-headers. On `420` / a spent `X-Esi-Error-Limit-Remain` the client must
-**not** sleep the tool call — return `esi.RateLimited` so the model sees
-`retry_at`. Never call ESI with a bare `http.Client` request.
+**All ESI traffic goes through `adapter/esi.Client`.** It carries the
+identifying User-Agent, the pinned compatibility date, ETag caching and
+error-limit headers. On `420` / a spent `X-Esi-Error-Limit-Remain` the
+client must **not** sleep the tool call — return `esi.RateLimited` so the
+model sees `retry_at`. Never call ESI with a bare `http.Client` request.
 
 `/mcp` is an OAuth resource (RFC 9728). Unauthenticated calls get `401` +
-`WWW-Authenticate`. Players bring their own EVE `client_id` on
-`/oauth/authorize`. Do not put CCP credentials in client `mcp.json`.
+`WWW-Authenticate`. `/oauth/authorize` redirects straight to EVE SSO with the
+instance application; the finished character attaches to the server-side user
+in the MCP token's `sub` (an existing user if the character is already known).
+Do not put CCP credentials in client `mcp.json`.
+
+`/healthz` (and Prometheus metrics when they land) are served on
+`INTERNAL_LISTEN`, a second HTTP server that must never be routed publicly.
 
 ## Things that will surprise you
 
@@ -86,28 +102,30 @@ headers. On `420` / a spent `X-Esi-Error-Limit-Remain` the client must
 - **`/universe/names` resolves ids in one shared space.** Group ids are not in
   it — resolving `group_id` there returns whatever inventory type shares the
   number. Use `Resolver.GroupName`.
-- **The compatibility date is pinned** to `2026-08-18` in `config.go`. ESI
-  moved from `/v1/` URLs to the `X-Compatibility-Date` header. Response shapes
-  for everything used here match the 2020-01-01 baseline; the newer date only
-  adds routes. Moving the pin means re-checking every response shape.
+- **The compatibility date is pinned** to `2026-08-18` in
+  `cmd/eve-mcp/config.go` (`defaultCompatDate`). ESI moved from `/v1/` URLs to
+  the `X-Compatibility-Date` header. Response shapes for everything used here
+  match the 2020-01-01 baseline; the newer date only adds routes. Moving the
+  pin means re-checking every response shape.
 - **`/route/` is POST on recent compatibility dates**, with `preference` in the
   body, not a `flag` query parameter.
 
 ## Layout
 
 ```
-cmd/eve-mcp/          binary: flags, launchd/systemd install
+api/                  OpenAPI source (http.yaml) + oapi-codegen config
+cmd/eve-mcp/          binary: main.go, config.go (env-tagged, package main),
+                      launchd/systemd install
 internal/
-  config/             scopes, write-capability model, config.toml
-  auth/               SSO PKCE, token storage and refresh
-  esi/                HTTP client: caching, error limit, pagination
-  cache/              SQLite: HTTP cache, names, blobs
-  names/              id -> name resolution, reference prices
-  safety/             the three write-guard layers
-  app/                shared context, character/corp resolution
-  server/             HTTP: /mcp, /auth, /setup, /health
-  tools/              account, character, assets, wallet, industry,
-                      market, social, universe, corp, writes
+  adapter/            external systems (ESI, EVE SSO, SQLite, user files)
+  domain/             internal model (character, user, write policy, j)
+  usecase/            business logic (session, oauth, eve tools)
+  service/            interaction: HTTP (generated OpenAPI) and MCP
 evals/                lint and smoke gates, agentic task definitions
 eve_mcp/              previous Python implementation (reference only)
 ```
+
+Import direction: `service → usecase → adapter|domain`. Process config lives
+only in `cmd/eve-mcp/config.go` (package main, no `EVE_` prefix on env names).
+Map it to `Options` / `New(...)` in `main`. Regenerate HTTP types with
+`make gen`; output is `internal/service/http/api.gen.go`.

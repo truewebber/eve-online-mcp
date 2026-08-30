@@ -1,0 +1,166 @@
+// Package write is the mutating-capability catalog and the confirm/budget guard.
+package write
+
+type Capability struct {
+	Name          string
+	Scopes        []string
+	Summary       string
+	OutwardFacing bool
+}
+
+var Capabilities = map[string]Capability{
+	"waypoint": {
+		Name: "waypoint", Scopes: []string{"esi-ui.write_waypoint.v1"},
+		Summary: "Set autopilot waypoints in the running game client.",
+	},
+	"openwindow": {
+		Name: "openwindow", Scopes: []string{"esi-ui.open_window.v1"},
+		Summary: "Open market / info / contract / new-mail windows in the client.",
+	},
+	"fittings": {
+		Name: "fittings", Scopes: []string{"esi-fittings.write_fittings.v1"},
+		Summary: "Save and delete saved ship fittings.",
+	},
+	"calendar": {
+		Name: "calendar", Scopes: []string{"esi-calendar.respond_calendar_events.v1"},
+		Summary: "Respond to calendar events (accept / decline / tentative).", OutwardFacing: true,
+	},
+	"mail_organize": {
+		Name: "mail_organize", Scopes: []string{"esi-mail.organize_mail.v1"},
+		Summary: "Mark mail read, manage labels, delete mail.",
+	},
+	"mail_send": {
+		Name: "mail_send", Scopes: []string{"esi-mail.send_mail.v1"},
+		Summary: "Send in-game EVE mail to other players. Off by default.", OutwardFacing: true,
+	},
+	"contacts": {
+		Name: "contacts", Scopes: []string{"esi-characters.write_contacts.v1"},
+		Summary: "Add, edit and delete character contacts and standings. Off by default.", OutwardFacing: true,
+	},
+}
+
+var DefaultAllow = []string{"waypoint", "openwindow", "fittings", "mail_organize"}
+
+var ReadScopes = []string{
+	"esi-assets.read_assets.v1",
+	"esi-calendar.read_calendar_events.v1",
+	"esi-characters.read_agents_research.v1",
+	"esi-characters.read_blueprints.v1",
+	"esi-characters.read_contacts.v1",
+	"esi-characters.read_corporation_roles.v1",
+	"esi-characters.read_fatigue.v1",
+	"esi-characters.read_fw_stats.v1",
+	"esi-characters.read_loyalty.v1",
+	"esi-characters.read_medals.v1",
+	"esi-characters.read_notifications.v1",
+	"esi-characters.read_standings.v1",
+	"esi-characters.read_titles.v1",
+	"esi-clones.read_clones.v1",
+	"esi-clones.read_implants.v1",
+	"esi-contracts.read_character_contracts.v1",
+	"esi-fittings.read_fittings.v1",
+	"esi-fleets.read_fleet.v1",
+	"esi-industry.read_character_jobs.v1",
+	"esi-industry.read_character_mining.v1",
+	"esi-killmails.read_killmails.v1",
+	"esi-location.read_location.v1",
+	"esi-location.read_online.v1",
+	"esi-location.read_ship_type.v1",
+	"esi-mail.read_mail.v1",
+	"esi-markets.read_character_orders.v1",
+	"esi-markets.structure_markets.v1",
+	"esi-planets.manage_planets.v1",
+	"esi-search.search_structures.v1",
+	"esi-skills.read_skillqueue.v1",
+	"esi-skills.read_skills.v1",
+	"esi-universe.read_structures.v1",
+	"esi-wallet.read_character_wallet.v1",
+}
+
+var CorpReadScopes = []string{
+	"esi-assets.read_corporation_assets.v1",
+	"esi-contracts.read_corporation_contracts.v1",
+	"esi-corporations.read_blueprints.v1",
+	"esi-corporations.read_corporation_membership.v1",
+	"esi-corporations.read_divisions.v1",
+	"esi-corporations.read_structures.v1",
+	"esi-industry.read_corporation_jobs.v1",
+	"esi-industry.read_corporation_mining.v1",
+	"esi-killmails.read_corporation_killmails.v1",
+	"esi-markets.read_corporation_orders.v1",
+	"esi-wallet.read_corporation_wallets.v1",
+}
+
+func AllWriteScopeSet() map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, cap := range Capabilities {
+		for _, s := range cap.Scopes {
+			out[s] = struct{}{}
+		}
+	}
+	return out
+}
+
+func CorpScopeSet() map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, s := range CorpReadScopes {
+		out[s] = struct{}{}
+	}
+	return out
+}
+
+// Options is the host write policy. Built at the composition root.
+type Options struct {
+	Mode               string
+	Allow              map[string]struct{}
+	WriteBudgetPerHour int
+	MailBudgetPerHour  int
+	ConfirmTTLSeconds  int
+	AuditFile          string
+}
+
+func (o Options) Enabled() bool {
+	return o.Mode != "off" && len(o.Allow) > 0
+}
+
+func (o Options) CapabilityEnabled(name string) bool {
+	if o.Mode == "off" {
+		return false
+	}
+	_, ok := o.Allow[name]
+	return ok
+}
+
+func (o Options) AllowedNames() []string {
+	out := make([]string, 0, len(o.Allow))
+	for name := range o.Allow {
+		out = append(out, name)
+	}
+	return out
+}
+
+func (o Options) RequestedScopes(corpScopes bool) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	add := func(scopes []string) {
+		for _, sc := range scopes {
+			if _, ok := seen[sc]; ok {
+				continue
+			}
+			seen[sc] = struct{}{}
+			out = append(out, sc)
+		}
+	}
+	add(ReadScopes)
+	if corpScopes {
+		add(CorpReadScopes)
+	}
+	if o.Mode != "off" {
+		for name := range o.Allow {
+			if cap, ok := Capabilities[name]; ok {
+				add(cap.Scopes)
+			}
+		}
+	}
+	return out
+}

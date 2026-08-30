@@ -1,7 +1,10 @@
-.PHONY: build install uninstall run lint
+.PHONY: build install uninstall run lint gen
+
+GO ?= go
+OAPI_CODEGEN ?= $(GO) tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 
 build:
-	go build -o eve-mcp ./cmd/eve-mcp
+	$(GO) build -o eve-mcp ./cmd/eve-mcp
 
 install: build
 	./eve-mcp install
@@ -14,3 +17,6 @@ run: build
 
 lint:
 	python3 evals/run.py lint
+
+gen:
+	$(OAPI_CODEGEN) -config api/http.cfg.yaml api/http.yaml
