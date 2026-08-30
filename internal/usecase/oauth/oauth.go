@@ -88,7 +88,7 @@ func (h Host) BaseURL() string {
 		host = "127.0.0.1"
 	}
 
-	return fmt.Sprintf("http://%s:%s", host, port)
+	return "http://" + net.JoinHostPort(host, port)
 }
 
 type Server struct {
