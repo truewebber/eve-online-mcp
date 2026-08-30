@@ -9,21 +9,21 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func (s *Store) CacheGet(ctx context.Context, key string) (*CachedResponse, error) {
+func (s *Store) CacheGet(ctx context.Context, key string) (*CachedResponse, bool, error) {
 	var c CachedResponse
 	var pages *int
 	err := s.pool.QueryRow(ctx, `
 		SELECT etag, expires_at, stored_at, pages, body FROM http_cache WHERE key = $1`, key,
 	).Scan(&c.ETag, &c.ExpiresAt, &c.StoredAt, &pages, &c.Body)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+		return nil, false, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	c.Pages = pages
 
-	return &c, nil
+	return &c, true, nil
 }
 
 func (s *Store) CachePut(ctx context.Context, key string, c CachedResponse) error {

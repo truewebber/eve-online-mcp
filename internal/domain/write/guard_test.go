@@ -27,13 +27,13 @@ func TestAuthorizePreviewAndConfirm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out["status"] != "confirmation_required" || out["will_do"] == nil || out["confirm_token"] == "" {
+	if out.Required["status"] != "confirmation_required" || out.Required["will_do"] == nil || out.Required["confirm_token"] == "" {
 		t.Fatalf("preview %+v", out)
 	}
-	token, _ := out["confirm_token"].(string)
+	token, _ := out.Required["confirm_token"].(string)
 
 	done, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, preview, token, scopes)
-	if err != nil || done != nil {
+	if err != nil || done.Required != nil {
 		t.Fatalf("confirm %v %v", done, err)
 	}
 	_, err = g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, preview, token, scopes)
@@ -52,14 +52,14 @@ func TestConfirmToolMismatchKeepsToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, _ := out["confirm_token"].(string)
+	token, _ := out.Required["confirm_token"].(string)
 	_, err = g.Authorize(ctx, "eve_mail_send", "mail_send", args, nil, token, scopes)
 	var blocked Blocked
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "eve_ui_set_waypoint") {
 		t.Fatalf("mismatch %v", err)
 	}
 	done, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, token, Capabilities["waypoint"].Scopes)
-	if err != nil || done != nil {
+	if err != nil || done.Required != nil {
 		t.Fatalf("token should still work: %v %v", done, err)
 	}
 }
@@ -72,7 +72,7 @@ func TestConfirmDigestMismatchDiscards(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, _ := out["confirm_token"].(string)
+	token, _ := out.Required["confirm_token"].(string)
 	_, err = g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", map[string]any{"d": "Amarr"}, nil, token, scopes)
 	var blocked Blocked
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "arguments changed") {

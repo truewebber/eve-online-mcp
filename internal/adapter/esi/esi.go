@@ -83,7 +83,7 @@ func (r Result) StaleNote() string {
 }
 
 type httpCache interface {
-	CacheGet(ctx context.Context, key string) (*store.CachedResponse, error)
+	CacheGet(ctx context.Context, key string) (*store.CachedResponse, bool, error)
 	CachePut(ctx context.Context, key string, c store.CachedResponse) error
 	CacheTouch(ctx context.Context, key string, expiresAt time.Time) error
 }
@@ -319,7 +319,7 @@ func (c *Client) cachedGet(path string, characterID *int, params map[string]any,
 	var cached *store.CachedResponse
 	if cache := c.cache(); cache != nil {
 		var err error
-		cached, err = cache.CacheGet(ctx, key)
+		cached, _, err = cache.CacheGet(ctx, key)
 		if err != nil {
 			return Result{}, err
 		}

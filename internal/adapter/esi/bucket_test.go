@@ -157,16 +157,16 @@ type memCache struct {
 	m  map[string]*store.CachedResponse
 }
 
-func (m *memCache) CacheGet(_ context.Context, key string) (*store.CachedResponse, error) {
+func (m *memCache) CacheGet(_ context.Context, key string) (*store.CachedResponse, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	c := m.m[key]
 	if c == nil {
-		return nil, nil
+		return nil, false, nil
 	}
 	cp := *c
 
-	return &cp, nil
+	return &cp, true, nil
 }
 
 func (m *memCache) CachePut(_ context.Context, key string, c store.CachedResponse) error {

@@ -270,9 +270,9 @@ func TestCacheAndNamesAndBlobs(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.CacheGet(ctx, "/status")
-	if err != nil || got == nil || !got.Fresh() || !jsonEqual(got.Body, body) || got.ETag != `"abc"` {
-		t.Fatalf("cache %+v err %v", got, err)
+	got, ok, err := s.CacheGet(ctx, "/status")
+	if err != nil || !ok || got == nil || !got.Fresh() || !jsonEqual(got.Body, body) || got.ETag != `"abc"` {
+		t.Fatalf("cache %+v ok %v err %v", got, ok, err)
 	}
 	if got.Pages == nil || *got.Pages != 2 {
 		t.Fatalf("pages %v", got.Pages)
@@ -286,9 +286,9 @@ func TestCacheAndNamesAndBlobs(t *testing.T) {
 	if err != nil || n < 1 {
 		t.Fatalf("purge %d %v", n, err)
 	}
-	miss, err := s.CacheGet(ctx, "/stale")
-	if err != nil || miss != nil {
-		t.Fatalf("stale still there %v %v", miss, err)
+	miss, ok, err := s.CacheGet(ctx, "/stale")
+	if err != nil || ok || miss != nil {
+		t.Fatalf("stale still there %v ok %v err %v", miss, ok, err)
 	}
 
 	if err := s.NamePut(ctx, []NameRow{{ID: 34, Name: "Tritanium", Category: "inventory_type"}}); err != nil {

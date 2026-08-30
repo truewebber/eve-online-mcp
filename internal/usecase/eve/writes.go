@@ -78,8 +78,8 @@ func registerWaypoint(s *mcp.Server) {
 			if err != nil {
 				return nil, err
 			}
-			if blocked != nil {
-				return blocked, nil
+			if blocked.Required != nil {
+				return blocked.Required, nil
 			}
 			if _, err := a.ESI.Post("/ui/autopilot/waypoint", &token.CharacterID, map[string]any{
 				"destination_id": target["id"], "clear_other_waypoints": clearOthers, "add_to_beginning": add,
@@ -132,8 +132,8 @@ func registerOpenWindow(s *mcp.Server) {
 			if err != nil {
 				return nil, err
 			}
-			if blocked != nil {
-				return blocked, nil
+			if blocked.Required != nil {
+				return blocked.Required, nil
 			}
 			if _, err := a.ESI.Post(path, &token.CharacterID, params, nil); err != nil {
 				return nil, err
@@ -230,8 +230,8 @@ func registerWriteFittings(s *mcp.Server) {
 			if err != nil {
 				return nil, err
 			}
-			if blocked != nil {
-				return blocked, nil
+			if blocked.Required != nil {
+				return blocked.Required, nil
 			}
 			result, err := a.ESI.Post(fmt.Sprintf("/characters/%d/fittings", token.CharacterID), &token.CharacterID, nil, body)
 			if err != nil {
@@ -281,8 +281,8 @@ func registerWriteFittings(s *mcp.Server) {
 			if err != nil {
 				return nil, err
 			}
-			if blocked != nil {
-				return blocked, nil
+			if blocked.Required != nil {
+				return blocked.Required, nil
 			}
 			if _, err := a.ESI.Delete(fmt.Sprintf("/characters/%d/fittings/%d", token.CharacterID, in.FittingID), &token.CharacterID, nil, nil); err != nil {
 				return nil, err
@@ -321,8 +321,8 @@ func registerMailOrganize(s *mcp.Server) {
 			if err != nil {
 				return nil, err
 			}
-			if blocked != nil {
-				return blocked, nil
+			if blocked.Required != nil {
+				return blocked.Required, nil
 			}
 			if _, err := a.ESI.Put(fmt.Sprintf("/characters/%d/mail/%d", token.CharacterID, in.MailID), &token.CharacterID, nil, map[string]any{"read": read}); err != nil {
 				return nil, err
@@ -362,8 +362,8 @@ func registerMailOrganize(s *mcp.Server) {
 			if err != nil {
 				return nil, err
 			}
-			if blocked != nil {
-				return blocked, nil
+			if blocked.Required != nil {
+				return blocked.Required, nil
 			}
 			if _, err := a.ESI.Delete(fmt.Sprintf("/characters/%d/mail/%d", token.CharacterID, in.MailID), &token.CharacterID, nil, nil); err != nil {
 				return nil, err
@@ -449,8 +449,8 @@ func registerMailSend(s *mcp.Server) {
 			if err != nil {
 				return nil, err
 			}
-			if blocked != nil {
-				return blocked, nil
+			if blocked.Required != nil {
+				return blocked.Required, nil
 			}
 			mailID, err := a.ESI.Post(fmt.Sprintf("/characters/%d/mail", token.CharacterID), &token.CharacterID, nil, payload)
 			if err != nil {
@@ -527,8 +527,8 @@ func registerContacts(s *mcp.Server) {
 			if err != nil {
 				return nil, err
 			}
-			if blocked != nil {
-				return blocked, nil
+			if blocked.Required != nil {
+				return blocked.Required, nil
 			}
 			appliedU, appliedA := []int{}, []int{}
 			path := fmt.Sprintf("/characters/%d/contacts", token.CharacterID)
@@ -650,8 +650,8 @@ func registerContacts(s *mcp.Server) {
 			if err != nil {
 				return nil, err
 			}
-			if blocked != nil {
-				return blocked, nil
+			if blocked.Required != nil {
+				return blocked.Required, nil
 			}
 			if _, err := a.ESI.Delete(fmt.Sprintf("/characters/%d/contacts", token.CharacterID), &token.CharacterID, map[string]any{"contact_ids": ids}, nil); err != nil {
 				return nil, err
@@ -694,8 +694,8 @@ func registerCalendar(s *mcp.Server) {
 			if err != nil {
 				return nil, err
 			}
-			if blocked != nil {
-				return blocked, nil
+			if blocked.Required != nil {
+				return blocked.Required, nil
 			}
 			if _, err := a.ESI.Put(fmt.Sprintf("/characters/%d/calendar/%d", token.CharacterID, in.EventID), &token.CharacterID, nil, map[string]any{"response": in.Response}); err != nil {
 				return nil, err

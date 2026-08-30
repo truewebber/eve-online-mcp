@@ -16,6 +16,10 @@ type Blocked struct{ Msg string }
 
 func (e Blocked) Error() string { return e.Msg }
 
+type Decision struct {
+	Required map[string]any
+}
+
 type Guard struct {
 	persist Persist
 	userID  string
@@ -67,29 +71,29 @@ func (g *Guard) checkMailCap(ctx context.Context) error {
 	return nil
 }
 
-func (g *Guard) Authorize(ctx context.Context, tool, capability string, args map[string]any, preview map[string]any, confirmToken string, granted []string) (map[string]any, error) {
+func (g *Guard) Authorize(ctx context.Context, tool, capability string, args map[string]any, preview map[string]any, confirmToken string, granted []string) (Decision, error) {
 	err := g.CheckCapability(capability)
 	if err != nil {
-		return nil, err
+		return Decision{}, err
 	}
 	err = g.CheckScope(capability, granted)
 	if err != nil {
-		return nil, err
+		return Decision{}, err
 	}
 	if capability == "mail_send" {
 		err := g.checkMailCap(ctx)
 		if err != nil {
-			return nil, err
+			return Decision{}, err
 		}
 	}
 	digest := digestArgs(args)
 	if confirmToken != "" {
 		err := g.consumeConfirm(ctx, tool, digest, confirmToken)
 		if err != nil {
-			return nil, err
+			return Decision{}, err
 		}
 
-		return nil, nil
+		return Decision{}, nil
 	}
 	token := randomToken()
 	if g.persist != nil {
@@ -98,17 +102,17 @@ func (g *Guard) Authorize(ctx context.Context, tool, capability string, args map
 			ArgsDigest: digest, CreatedAt: time.Now().UTC(),
 		})
 		if err != nil {
-			return nil, err
+			return Decision{}, err
 		}
 	}
 	ttlSec := int(ConfirmTTL / time.Second)
 
-	return map[string]any{
+	return Decision{Required: map[string]any{
 		"status": "confirmation_required", "tool": tool, "capability": capability,
 		"will_do": preview, "confirm_token": token,
 		"expires_in_seconds": ttlSec,
 		"next_step":          fmt.Sprintf("Show 'will_do' to the user and get their explicit go-ahead, then call %s again with identical arguments plus confirm_token='%s'.", tool, token),
-	}, nil
+	}}, nil
 }
 
 func (g *Guard) consumeConfirm(ctx context.Context, tool, digest, confirmToken string) error {
