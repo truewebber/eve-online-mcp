@@ -8,8 +8,8 @@ browser.
 **Target vs current.** Product target is `docs/SPEC.md` (plus `TOOLS.md`
 and `ESI.md`). Remaining work is sliced in `docs/plan/README.md` — pick
 the first `todo` task and follow that file. Where this file disagrees
-with the spec (file-based `DATA_DIR`, write-capability gates, audit log),
-the spec and the task file win.
+with the spec (write-capability gates, audit log), the spec and the
+task file win.
 
 ## Two modes
 
@@ -39,12 +39,13 @@ go build -o eve-mcp ./cmd/eve-mcp
 go run ./evals all                # lint + smoke against http://127.0.0.1:8765/mcp
 ```
 
-Config is env only (`CLIENT_ID` is required; see `.env.example`), read from
-the process environment or a `.env` in the working directory. The installed
-service runs with the data dir as its working directory, so its `.env` lives
-at `~/Library/Application Support/eve-mcp/.env` on macOS. Refresh tokens,
-HTTP cache, users and the audit logs live in the same data dir. There is no
-config file and nothing is written back to config at runtime.
+Config is env only (`CLIENT_ID` and `DATABASE_URL` are required; see
+`.env.example`), read from the process environment or a `.env` in the
+working directory. The installed service uses the OS user config dir as
+its working directory so `.env` lives at
+`~/Library/Application Support/eve-mcp/.env` on macOS. Durable state is
+Postgres. There is no config file and nothing is written back to config
+at runtime.
 
 The process does not reload code or config in place. Rebuild, then restart
 (`launchctl kickstart -k gui/$(id -u)/eve-mcp` after `install`).

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/caarlos0/env/v11"
@@ -36,7 +35,6 @@ type config struct {
 	Listen         string `env:"LISTEN"`
 	InternalListen string `env:"INTERNAL_LISTEN"`
 	PublicURL      string `env:"PUBLIC_URL"`
-	DataDir        string `env:"DATA_DIR"`
 	DatabaseURL    string `env:"DATABASE_URL"`
 
 	WriteMode       string `env:"WRITE_MODE"`
@@ -100,17 +98,6 @@ func (c *config) validate() error {
 	}
 	if _, _, err := net.SplitHostPort(c.InternalListen); err != nil {
 		return fmt.Errorf("INTERNAL_LISTEN must be host:port: %v", err)
-	}
-
-	if c.DataDir == "" {
-		base, err := os.UserConfigDir()
-		if err != nil {
-			return err
-		}
-		c.DataDir = filepath.Join(base, "eve-mcp")
-	}
-	if err := os.MkdirAll(c.DataDir, 0o700); err != nil {
-		return err
 	}
 
 	c.PublicURL = strings.TrimRight(c.PublicURL, "/")

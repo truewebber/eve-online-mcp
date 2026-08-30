@@ -1,6 +1,7 @@
 package write
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -18,25 +19,22 @@ type Blocked struct{ Msg string }
 
 func (e Blocked) Error() string { return e.Msg }
 
-type pendingWrite struct {
-	token      string
-	tool       string
-	capability string
-	argsDigest string
-	preview    map[string]any
-	createdAt  time.Time
-}
-
 type Guard struct {
 	opts         Options
-	pending      map[string]pendingWrite
+	persist      Persist
+	userID       string
 	recentWrites []time.Time
-	recentMail   []time.Time
 	mu           sync.Mutex
 }
 
-func NewGuard(opts Options) *Guard {
-	return &Guard{opts: opts, pending: map[string]pendingWrite{}}
+func NewGuard(opts Options, persist Persist, userID string) *Guard {
+	if opts.ConfirmTTLSeconds <= 0 {
+		opts.ConfirmTTLSeconds = 300
+	}
+	if opts.MailBudgetPerHour <= 0 {
+		opts.MailBudgetPerHour = 5
+	}
+	return &Guard{opts: opts, persist: persist, userID: userID}
 }
 
 func (g *Guard) CheckCapability(capability string) error {
@@ -76,59 +74,67 @@ func (g *Guard) CheckScope(capability string, granted []string) error {
 	return nil
 }
 
-func (g *Guard) checkBudget(capability string) error {
+func (g *Guard) checkWriteBudget() error {
 	now := time.Now()
 	g.recentWrites = trim(g.recentWrites, now, time.Hour)
-	if len(g.recentWrites) >= g.opts.WriteBudgetPerHour {
+	if g.opts.WriteBudgetPerHour > 0 && len(g.recentWrites) >= g.opts.WriteBudgetPerHour {
 		return Blocked{Msg: fmt.Sprintf("Write budget exhausted: %d writes in the last hour. This is a safety cap, not an ESI limit — wait, or raise write_budget_per_hour.", g.opts.WriteBudgetPerHour)}
-	}
-	if capability == "mail_send" {
-		g.recentMail = trim(g.recentMail, now, time.Hour)
-		if len(g.recentMail) >= g.opts.MailBudgetPerHour {
-			return Blocked{Msg: fmt.Sprintf("Mail budget exhausted: %d mails in the last hour.", g.opts.MailBudgetPerHour)}
-		}
 	}
 	return nil
 }
 
-func (g *Guard) Authorize(tool, capability string, args map[string]any, preview map[string]any, confirmToken string, granted []string) (map[string]any, error) {
+func (g *Guard) checkMailCap(ctx context.Context) error {
+	if g.persist == nil {
+		return nil
+	}
+	n, err := g.persist.CountMailSince(ctx, g.userID, time.Now().Add(-time.Hour))
+	if err != nil {
+		return err
+	}
+	if n >= g.opts.MailBudgetPerHour {
+		return Blocked{Msg: fmt.Sprintf("Mail budget exhausted: %d mails in the last hour. Wait until an earlier send drops out of the rolling hour, then try again.", g.opts.MailBudgetPerHour)}
+	}
+	return nil
+}
+
+func (g *Guard) Authorize(ctx context.Context, tool, capability string, args map[string]any, preview map[string]any, confirmToken string, granted []string) (map[string]any, error) {
 	if err := g.CheckCapability(capability); err != nil {
 		return nil, err
 	}
 	if err := g.CheckScope(capability, granted); err != nil {
 		return nil, err
 	}
+	if capability == "mail_send" {
+		if err := g.checkMailCap(ctx); err != nil {
+			return nil, err
+		}
+	}
 	g.mu.Lock()
-	defer g.mu.Unlock()
-	if err := g.checkBudget(capability); err != nil {
+	err := g.checkWriteBudget()
+	g.mu.Unlock()
+	if err != nil {
 		return nil, err
 	}
-	g.expirePending()
-	digest := digestArgs(args)
 	if g.opts.Mode == "on" {
 		return nil, nil
 	}
+	digest := digestArgs(args)
 	if confirmToken != "" {
-		pending, ok := g.pending[confirmToken]
-		if !ok {
-			return nil, Blocked{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
+		if err := g.consumeConfirm(ctx, tool, digest, confirmToken); err != nil {
+			return nil, err
 		}
-		if pending.tool != tool {
-			return nil, Blocked{Msg: fmt.Sprintf("confirm_token was issued for %q, not %q.", pending.tool, tool)}
-		}
-		if pending.argsDigest != digest {
-			delete(g.pending, confirmToken)
-			return nil, Blocked{Msg: "The arguments changed since the preview was generated, so the token was discarded. Request a new preview and confirm that one."}
-		}
-		delete(g.pending, confirmToken)
 		return nil, nil
 	}
 	token := randomToken()
-	g.pending[token] = pendingWrite{
-		token: token, tool: tool, capability: capability,
-		argsDigest: digest, preview: preview, createdAt: time.Now(),
+	if g.persist != nil {
+		if err := g.persist.PutConfirm(ctx, Confirm{
+			Token: token, UserID: g.userID, Tool: tool,
+			ArgsDigest: digest, CreatedAt: time.Now().UTC(),
+		}); err != nil {
+			return nil, err
+		}
 	}
-	g.auditLocked(map[string]any{"event": "preview", "tool": tool, "capability": capability, "preview": preview})
+	g.Audit(map[string]any{"event": "preview", "tool": tool, "capability": capability, "preview": preview})
 	return map[string]any{
 		"status": "confirmation_required", "tool": tool, "capability": capability,
 		"will_do": preview, "confirm_token": token,
@@ -137,15 +143,43 @@ func (g *Guard) Authorize(tool, capability string, args map[string]any, preview 
 	}, nil
 }
 
-func (g *Guard) Record(tool, capability string, args map[string]any, result any) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	now := time.Now()
-	g.recentWrites = append(g.recentWrites, now)
-	if capability == "mail_send" {
-		g.recentMail = append(g.recentMail, now)
+func (g *Guard) consumeConfirm(ctx context.Context, tool, digest, confirmToken string) error {
+	if g.persist == nil {
+		return Blocked{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
 	}
-	g.auditLocked(map[string]any{"event": "write", "tool": tool, "capability": capability, "args": args, "result": truncate(result)})
+	pending, ok, err := g.persist.GetConfirm(ctx, confirmToken)
+	if err != nil {
+		return err
+	}
+	if !ok || pending.UserID != g.userID {
+		return Blocked{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
+	}
+	ttl := time.Duration(g.opts.ConfirmTTLSeconds) * time.Second
+	if time.Since(pending.CreatedAt) > ttl {
+		_ = g.persist.DeleteConfirm(ctx, confirmToken)
+		return Blocked{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
+	}
+	if pending.Tool != tool {
+		return Blocked{Msg: fmt.Sprintf("confirm_token was issued for %q, not %q.", pending.Tool, tool)}
+	}
+	if pending.ArgsDigest != digest {
+		_ = g.persist.DeleteConfirm(ctx, confirmToken)
+		return Blocked{Msg: "The arguments changed since the preview was generated, so the token was discarded. Request a new preview and confirm that one."}
+	}
+	_ = g.persist.DeleteConfirm(ctx, confirmToken)
+	return nil
+}
+
+func (g *Guard) Record(ctx context.Context, tool, capability string, args map[string]any, result any) {
+	g.mu.Lock()
+	g.recentWrites = append(g.recentWrites, time.Now())
+	g.mu.Unlock()
+	if capability == "mail_send" && g.persist != nil {
+		if err := g.persist.InsertMail(ctx, g.userID, time.Now().UTC()); err != nil {
+			log.Printf("could not record mail_log: %v", err)
+		}
+	}
+	g.Audit(map[string]any{"event": "write", "tool": tool, "capability": capability, "args": args, "result": truncate(result)})
 }
 
 func (g *Guard) Audit(entry map[string]any) {
@@ -172,21 +206,12 @@ func (g *Guard) auditLocked(entry map[string]any) {
 	_ = f.Close()
 }
 
-func (g *Guard) expirePending() {
-	cutoff := time.Now().Add(-time.Duration(g.opts.ConfirmTTLSeconds) * time.Second)
-	for k, p := range g.pending {
-		if p.createdAt.Before(cutoff) {
-			delete(g.pending, k)
-		}
-	}
-}
-
-func (g *Guard) Status() map[string]any {
+func (g *Guard) Status(ctx context.Context) map[string]any {
 	g.mu.Lock()
-	defer g.mu.Unlock()
 	now := time.Now()
 	g.recentWrites = trim(g.recentWrites, now, time.Hour)
-	g.recentMail = trim(g.recentMail, now, time.Hour)
+	writes := len(g.recentWrites)
+	g.mu.Unlock()
 	enabled := g.opts.AllowedNames()
 	sort.Strings(enabled)
 	disabled := []string{}
@@ -200,16 +225,25 @@ func (g *Guard) Status() map[string]any {
 	for name, cap := range Capabilities {
 		ref[name] = cap.Summary
 	}
+	mails, pending := 0, 0
+	if g.persist != nil {
+		if n, err := g.persist.CountMailSince(ctx, g.userID, now.Add(-time.Hour)); err == nil {
+			mails = n
+		}
+		if n, err := g.persist.CountConfirm(ctx, g.userID); err == nil {
+			pending = n
+		}
+	}
 	return map[string]any{
 		"write_mode":            g.opts.Mode,
 		"enabled_capabilities":  enabled,
 		"disabled_capabilities": disabled,
 		"capability_reference":  ref,
-		"writes_last_hour":      len(g.recentWrites),
+		"writes_last_hour":      writes,
 		"write_budget_per_hour": g.opts.WriteBudgetPerHour,
-		"mails_last_hour":       len(g.recentMail),
+		"mails_last_hour":       mails,
 		"mail_budget_per_hour":  g.opts.MailBudgetPerHour,
-		"pending_confirmations": len(g.pending),
+		"pending_confirmations": pending,
 		"audit_log":             g.opts.AuditFile,
 	}
 }

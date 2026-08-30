@@ -31,8 +31,9 @@ Copy the **Client ID**. No Client Secret is needed — the server uses PKCE.
 
 ### 2. Configure
 
-Config is env only (see `.env.example`). Put a `.env` in the data dir —
-that is the working directory of the installed service:
+Config is env only (see `.env.example`). Put a `.env` in the working
+directory of the process (the installed service uses the OS user config
+dir):
 
 - macOS: `~/Library/Application Support/eve-mcp/.env`
 - Linux: `~/.config/eve-mcp/.env`
@@ -155,8 +156,7 @@ token.
 `WRITE_MODE=off` removes writes entirely; `on` executes immediately.
 
 Rolling one-hour window: `WRITE_BUDGET_PER_HOUR` (40) across all writes and
-`MAIL_BUDGET_PER_HOUR` (5) for outgoing mail. Every attempt is appended to
-the user's `audit.jsonl`.
+`MAIL_BUDGET_PER_HOUR` (5) for outgoing mail.
 
 The server cannot fly, shoot, click or trade. ESI grants no control over the
 game client. `waypoint` and `openwindow` work only while the EVE client is
@@ -167,7 +167,7 @@ logged in on that character.
 ## Configuration
 
 Env only — process environment, or a `.env` in the working directory
-(the data dir for an installed service). See `.env.example`.
+(the OS user config dir for an installed service). See `.env.example`.
 
 | Env | Default | Meaning |
 |---|---|---|
@@ -177,7 +177,7 @@ Env only — process environment, or a `.env` in the working directory
 | `LISTEN` | `127.0.0.1:8765` | public bind address (MCP + OAuth) |
 | `INTERNAL_LISTEN` | `127.0.0.1:8766` | healthz / metrics; never route publicly |
 | `PUBLIC_URL` | empty | public base URL (sets the SSO callback) |
-| `DATA_DIR` | OS user config dir | cache, users, OAuth key |
+| `DATABASE_URL` | — | **required**, Postgres DSN (`make postgres`) |
 | `WRITE_MODE` | `confirm` | `off` / `confirm` / `on` |
 | `WRITE_ALLOW` | waypoint, openwindow, fittings, mail_organize | list, or `all` / `none` |
 | `WRITE_BUDGET_PER_HOUR` | `40` | write ceiling per hour |
@@ -186,8 +186,8 @@ Env only — process environment, or a `.env` in the working directory
 | `CORP_SCOPES` | `true` | request corporation read scopes and register `eve_corp_*` |
 | `COMPAT_DATE` | `2026-08-18` | ESI compatibility date |
 
-Refresh tokens are access to the EVE account; they live per user under
-`DATA_DIR/users/{id}/tokens.json`. Default listen is loopback. Revoke access
+Refresh tokens are access to the EVE account; they live in Postgres.
+Default listen is loopback. Revoke access
 with `eve_auth_logout` or from
 [authorized-apps](https://developers.eveonline.com/authorized-apps).
 
@@ -196,7 +196,7 @@ with `eve_auth_logout` or from
 ## Development
 
 ```bash
-make postgres                     # local Postgres (loopback :5432); not required to boot yet
+make postgres                     # local Postgres (loopback :5432)
 go build -o eve-mcp ./cmd/eve-mcp
 ./eve-mcp                         # foreground, reads ./.env or the environment
 go run ./evals all                # lint + smoke; needs EVE_MCP_TOKEN

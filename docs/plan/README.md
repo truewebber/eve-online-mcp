@@ -41,7 +41,7 @@ Status values: `todo` · `done` · `later`.
 | [T04](T04-cache-postgres.md) | ESI cache + names on Postgres | done | M | T03 | §5.1, §8 |
 | [T05](T05-users-characters.md) | Users, characters, refresh `FOR UPDATE` | done | L | T03 | §3.3, §8 |
 | [T06](T06-oauth-postgres.md) | OAuth handshake + JWT key in Postgres | done | L | T05 | §3.1, §8 |
-| [T07](T07-guard-drop-datadir.md) | Confirm/mail in Postgres; drop `DATA_DIR` | todo | M | T04 T06 | §4.1, §8, §12.0 |
+| [T07](T07-guard-drop-datadir.md) | Confirm/mail in Postgres; drop `DATA_DIR` | done | M | T04 T06 | §4.1, §8, §12.0 |
 | [T08](T08-write-policy-constants.md) | Always-on writes; drop budget + audit | todo | M | T07 | §2, §12.1–2 |
 | [T09](T09-user-esi-bucket.md) | Per-user ESI token bucket | todo | M | T07 | §5.3, §12.3 |
 | [T10](T10-character-ownership.md) | Alt-add ownership refuse | todo | S | T05 T06 | §3.3, §12.3a |
@@ -67,12 +67,12 @@ Still true today, and the plan removes it:
 ```bash
 cp .env.example .env          # set CLIENT_ID and DATABASE_URL
 make postgres                 # docker compose up -d postgres
-make run                      # go build && ./eve-mcp
+make run                      # make postgres + go build && ./eve-mcp
 curl -s http://127.0.0.1:8766/healthz
 make lint                     # go run ./evals lint   (needs a bearer token)
 ```
 
-Until T07 lands, the binary still uses `DATA_DIR`; `make postgres` is for store tests (T03+) and for the cutover. After T07, `DATABASE_URL` is required and `DATA_DIR` is gone.
+Until T07 landed, the binary still used a data directory; `make postgres` was for store tests (T03+) and for the cutover. After T07, `DATABASE_URL` is required and durable state is Postgres only.
 
 Smoke (`make smoke`) needs an authorized character. Lint needs a bearer token because `/mcp` is an OAuth resource. Boot-without-login check is `GET /healthz`.
 

@@ -35,7 +35,7 @@ func registerAccount(s *mcp.Server, a *session.Session) {
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
 		return Call(ctx, func(a *session.Session) (any, error) {
 			tokens := a.SSO.Store.All()
-			policy := a.Guard.Status()
+			policy := a.Guard.Status(ctx)
 			var outward []string
 			for name, cap := range write.Capabilities {
 				if cap.OutwardFacing {

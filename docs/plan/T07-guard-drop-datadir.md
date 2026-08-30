@@ -1,6 +1,6 @@
 # T07 — Confirm tokens + mail cap in Postgres; drop `DATA_DIR`
 
-- Status: `todo`
+- Status: `done`
 - Size: M
 - Depends on: T04, T06
 - SPEC: §4.1 (confirm cycle), §5.2 (mail cap), §8, §12.0 (`DATABASE_URL`
@@ -69,12 +69,12 @@ dir **only** so `.env` is found — document that. `DATABASE_URL` in
 
 ## Acceptance
 
-- [ ] `rg DATA_DIR` is empty except maybe `docs/plan` / historical SPEC
+- [x] `rg DATA_DIR` is empty except maybe `docs/plan` / historical SPEC
       notes about the old layout
-- [ ] Confirm cycle still returns `confirmation_required` + `will_do`
-- [ ] Sixth mail in an hour is `WriteBlocked` with an actionable message
-- [ ] `make run` starts Postgres then the binary
-- [ ] Launchd/systemd unit no longer claims a data dir for tokens
+- [x] Confirm cycle still returns `confirmation_required` + `will_do`
+- [x] Sixth mail in an hour is `WriteBlocked` with an actionable message
+- [x] `make run` starts Postgres then the binary
+- [x] Launchd/systemd unit no longer claims a data dir for tokens
 
 ## Verify
 

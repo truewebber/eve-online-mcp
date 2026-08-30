@@ -87,7 +87,7 @@ func registerWaypoint(s *mcp.Server, a *session.Session) {
 			if amb := j.Str(target["ambiguity"]); amb != "" {
 				preview["ambiguous_name"] = amb + " — this routes to the first. Cancel and use eve_universe_search if the other one was meant."
 			}
-			blocked, err := a.Guard.Authorize("eve_ui_set_waypoint", "waypoint", args, preview, in.ConfirmToken, token.Scopes)
+			blocked, err := a.Guard.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, preview, in.ConfirmToken, token.Scopes)
 			if err != nil {
 				return nil, err
 			}
@@ -99,7 +99,7 @@ func registerWaypoint(s *mcp.Server, a *session.Session) {
 			}, nil); err != nil {
 				return nil, err
 			}
-			a.Guard.Record("eve_ui_set_waypoint", "waypoint", args, "ok")
+			a.Guard.Record(ctx, "eve_ui_set_waypoint", "waypoint", args, "ok")
 			return map[string]any{"status": "done", "waypoint_set_to": target["name"], "note": clientCaveat}, nil
 		})
 	})
@@ -160,7 +160,7 @@ func registerOpenWindow(s *mcp.Server, a *session.Session) {
 					preview["ambiguous_name"] = amb + " — this opens the first. Cancel and use eve_universe_search if the other one was meant."
 				}
 			}
-			blocked, err := a.Guard.Authorize("eve_ui_open_window", "openwindow", args, preview, in.ConfirmToken, token.Scopes)
+			blocked, err := a.Guard.Authorize(ctx, "eve_ui_open_window", "openwindow", args, preview, in.ConfirmToken, token.Scopes)
 			if err != nil {
 				return nil, err
 			}
@@ -170,7 +170,7 @@ func registerOpenWindow(s *mcp.Server, a *session.Session) {
 			if _, err := a.ESI.Post(path, &token.CharacterID, params, nil); err != nil {
 				return nil, err
 			}
-			a.Guard.Record("eve_ui_open_window", "openwindow", args, "ok")
+			a.Guard.Record(ctx, "eve_ui_open_window", "openwindow", args, "ok")
 			return map[string]any{"status": "done", "opened": label, "note": clientCaveat}, nil
 		})
 	})
@@ -256,7 +256,7 @@ func registerWriteFittings(s *mcp.Server, a *session.Session) {
 				"action":    "Save a new fitting to the in-game fitting list",
 				"character": token.CharacterName, "fitting_name": name, "hull": in.Ship, "modules": previewMods,
 			}
-			blocked, err := a.Guard.Authorize("eve_fitting_save", "fittings", args, preview, in.ConfirmToken, token.Scopes)
+			blocked, err := a.Guard.Authorize(ctx, "eve_fitting_save", "fittings", args, preview, in.ConfirmToken, token.Scopes)
 			if err != nil {
 				return nil, err
 			}
@@ -267,7 +267,7 @@ func registerWriteFittings(s *mcp.Server, a *session.Session) {
 			if err != nil {
 				return nil, err
 			}
-			a.Guard.Record("eve_fitting_save", "fittings", args, result)
+			a.Guard.Record(ctx, "eve_fitting_save", "fittings", args, result)
 			return map[string]any{"status": "done", "fitting_id": j.Map(result)["fitting_id"], "name": name}, nil
 		})
 	})
@@ -305,7 +305,7 @@ func registerWriteFittings(s *mcp.Server, a *session.Session) {
 				"action": "Permanently delete a saved fitting", "character": token.CharacterName,
 				"fitting_name": match["name"], "modules": len(j.Slice(match["items"])),
 			}
-			blocked, err := a.Guard.Authorize("eve_fitting_delete", "fittings", args, preview, in.ConfirmToken, token.Scopes)
+			blocked, err := a.Guard.Authorize(ctx, "eve_fitting_delete", "fittings", args, preview, in.ConfirmToken, token.Scopes)
 			if err != nil {
 				return nil, err
 			}
@@ -315,7 +315,7 @@ func registerWriteFittings(s *mcp.Server, a *session.Session) {
 			if _, err := a.ESI.Delete(fmt.Sprintf("/characters/%d/fittings/%d", token.CharacterID, in.FittingID), &token.CharacterID, nil, nil); err != nil {
 				return nil, err
 			}
-			a.Guard.Record("eve_fitting_delete", "fittings", args, "ok")
+			a.Guard.Record(ctx, "eve_fitting_delete", "fittings", args, "ok")
 			return map[string]any{"status": "done", "deleted": match["name"]}, nil
 		})
 	})
@@ -344,7 +344,7 @@ func registerMailOrganize(s *mcp.Server, a *session.Session) {
 				label = "read"
 			}
 			preview := map[string]any{"action": fmt.Sprintf("Mark mail #%d as %s", in.MailID, label), "character": token.CharacterName}
-			blocked, err := a.Guard.Authorize("eve_mail_mark", "mail_organize", args, preview, in.ConfirmToken, token.Scopes)
+			blocked, err := a.Guard.Authorize(ctx, "eve_mail_mark", "mail_organize", args, preview, in.ConfirmToken, token.Scopes)
 			if err != nil {
 				return nil, err
 			}
@@ -354,7 +354,7 @@ func registerMailOrganize(s *mcp.Server, a *session.Session) {
 			if _, err := a.ESI.Put(fmt.Sprintf("/characters/%d/mail/%d", token.CharacterID, in.MailID), &token.CharacterID, nil, map[string]any{"read": read}); err != nil {
 				return nil, err
 			}
-			a.Guard.Record("eve_mail_mark", "mail_organize", args, "ok")
+			a.Guard.Record(ctx, "eve_mail_mark", "mail_organize", args, "ok")
 			return map[string]any{"status": "done", "mail_id": in.MailID, "read": read}, nil
 		})
 	})
@@ -384,7 +384,7 @@ func registerMailOrganize(s *mcp.Server, a *session.Session) {
 				"action": "Permanently delete a mail", "character": token.CharacterName,
 				"subject": mail["subject"], "from": sender, "timestamp": mail["timestamp"],
 			}
-			blocked, err := a.Guard.Authorize("eve_mail_delete", "mail_organize", args, preview, in.ConfirmToken, token.Scopes)
+			blocked, err := a.Guard.Authorize(ctx, "eve_mail_delete", "mail_organize", args, preview, in.ConfirmToken, token.Scopes)
 			if err != nil {
 				return nil, err
 			}
@@ -394,7 +394,7 @@ func registerMailOrganize(s *mcp.Server, a *session.Session) {
 			if _, err := a.ESI.Delete(fmt.Sprintf("/characters/%d/mail/%d", token.CharacterID, in.MailID), &token.CharacterID, nil, nil); err != nil {
 				return nil, err
 			}
-			a.Guard.Record("eve_mail_delete", "mail_organize", args, "ok")
+			a.Guard.Record(ctx, "eve_mail_delete", "mail_organize", args, "ok")
 			return map[string]any{"status": "done", "deleted_subject": mail["subject"]}, nil
 		})
 	})
@@ -469,7 +469,7 @@ func registerMailSend(s *mcp.Server, a *session.Session) {
 				"from":   token.CharacterName, "to": resolvedNames, "subject": subj, "body": body,
 				"approved_cspa_cost_isk": in.ApprovedCost,
 			}
-			blocked, err := a.Guard.Authorize("eve_mail_send", "mail_send", args, preview, in.ConfirmToken, token.Scopes)
+			blocked, err := a.Guard.Authorize(ctx, "eve_mail_send", "mail_send", args, preview, in.ConfirmToken, token.Scopes)
 			if err != nil {
 				return nil, err
 			}
@@ -480,7 +480,7 @@ func registerMailSend(s *mcp.Server, a *session.Session) {
 			if err != nil {
 				return nil, err
 			}
-			a.Guard.Record("eve_mail_send", "mail_send", args, mailID)
+			a.Guard.Record(ctx, "eve_mail_send", "mail_send", args, mailID)
 			return map[string]any{"status": "sent", "mail_id": mailID, "to": resolvedNames}, nil
 		})
 	})
@@ -546,7 +546,7 @@ func registerContacts(s *mcp.Server, a *session.Session) {
 			if watched && len(watchable) != len(contactIDs) {
 				preview["watched_note"] = fmt.Sprintf("Only %d of %d are characters; the rest are corporations or alliances, which cannot be watched.", len(watchable), len(contactIDs))
 			}
-			blocked, err := a.Guard.Authorize("eve_contacts_set", "contacts", args, preview, in.ConfirmToken, token.Scopes)
+			blocked, err := a.Guard.Authorize(ctx, "eve_contacts_set", "contacts", args, preview, in.ConfirmToken, token.Scopes)
 			if err != nil {
 				return nil, err
 			}
@@ -570,7 +570,7 @@ func registerContacts(s *mcp.Server, a *session.Session) {
 				} else {
 					appliedA = append(appliedA, ids...)
 				}
-				a.Guard.Record("eve_contacts_set", "contacts", map[string]any{"contact_ids": ids, "standing": in.Standing, "watched": flag, "character_id": token.CharacterID, "phase": verb}, "ok")
+				a.Guard.Record(ctx, "eve_contacts_set", "contacts", map[string]any{"contact_ids": ids, "standing": in.Standing, "watched": flag, "character_id": token.CharacterID, "phase": verb}, "ok")
 				return nil
 			}
 			ops := []struct {
@@ -665,7 +665,7 @@ func registerContacts(s *mcp.Server, a *session.Session) {
 			}
 			args := map[string]any{"contact_ids": ids, "character_id": token.CharacterID}
 			preview := map[string]any{"action": "Delete contacts and the standings set on them", "character": token.CharacterName, "contacts": resolved}
-			blocked, err := a.Guard.Authorize("eve_contacts_delete", "contacts", args, preview, in.ConfirmToken, token.Scopes)
+			blocked, err := a.Guard.Authorize(ctx, "eve_contacts_delete", "contacts", args, preview, in.ConfirmToken, token.Scopes)
 			if err != nil {
 				return nil, err
 			}
@@ -675,7 +675,7 @@ func registerContacts(s *mcp.Server, a *session.Session) {
 			if _, err := a.ESI.Delete(fmt.Sprintf("/characters/%d/contacts", token.CharacterID), &token.CharacterID, map[string]any{"contact_ids": ids}, nil); err != nil {
 				return nil, err
 			}
-			a.Guard.Record("eve_contacts_delete", "contacts", args, "ok")
+			a.Guard.Record(ctx, "eve_contacts_delete", "contacts", args, "ok")
 			return map[string]any{"status": "done", "removed": resolved}, nil
 		})
 	})
@@ -708,7 +708,7 @@ func registerCalendar(s *mcp.Server, a *session.Session) {
 				"character": token.CharacterName, "event": event["title"], "date": event["date"],
 				"owner": event["owner_name"], "response": in.Response,
 			}
-			blocked, err := a.Guard.Authorize("eve_calendar_respond", "calendar", args, preview, in.ConfirmToken, token.Scopes)
+			blocked, err := a.Guard.Authorize(ctx, "eve_calendar_respond", "calendar", args, preview, in.ConfirmToken, token.Scopes)
 			if err != nil {
 				return nil, err
 			}
@@ -718,7 +718,7 @@ func registerCalendar(s *mcp.Server, a *session.Session) {
 			if _, err := a.ESI.Put(fmt.Sprintf("/characters/%d/calendar/%d", token.CharacterID, in.EventID), &token.CharacterID, nil, map[string]any{"response": in.Response}); err != nil {
 				return nil, err
 			}
-			a.Guard.Record("eve_calendar_respond", "calendar", args, "ok")
+			a.Guard.Record(ctx, "eve_calendar_respond", "calendar", args, "ok")
 			return map[string]any{"status": "done", "event": event["title"], "response": in.Response}, nil
 		})
 	})

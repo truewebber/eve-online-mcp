@@ -41,7 +41,6 @@ var ErrUnknownLogin = errors.New("Unknown or expired login state — start the l
 
 // Host is the public HTTP identity of this process. Built at the composition root.
 type Host struct {
-	DataDir     string
 	Listen      string
 	PublicURL   string
 	MCPPath     string

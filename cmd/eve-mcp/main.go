@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 
 	"eve-mcp/internal/adapter/esi"
 	"eve-mcp/internal/adapter/sso"
@@ -53,14 +52,12 @@ func main() {
 		WriteBudgetPerHour: cfg.WriteBudgetHour,
 		MailBudgetPerHour:  cfg.MailBudgetHour,
 		ConfirmTTLSeconds:  cfg.ConfirmTTL,
-		AuditFile:          filepath.Join(cfg.DataDir, "audit.jsonl"),
 	}
 	db, err := store.Open(context.Background(), cfg.DatabaseURL)
 	if err != nil {
 		log.Fatal(err)
 	}
 	runtime, err := session.Open(session.Options{
-		DataDir:    cfg.DataDir,
 		UserAgent:  cfg.UserAgent,
 		CorpScopes: cfg.CorpScopes,
 		WriteMode:  cfg.WriteMode,
@@ -84,7 +81,6 @@ func main() {
 	defer runtime.Close()
 
 	host := oauth.Host{
-		DataDir:     cfg.DataDir,
 		Listen:      cfg.Listen,
 		PublicURL:   cfg.PublicURL,
 		MCPPath:     "/mcp",

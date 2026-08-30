@@ -21,7 +21,6 @@ import (
 
 // Options is assembled at the composition root from process config.
 type Options struct {
-	DataDir           string
 	UserAgent         string
 	RequestTimeoutSec float64
 	MaxConcurrency    int
@@ -66,6 +65,7 @@ func Open(opts Options) (*Session, error) {
 	opts.SSO.DB = opts.Store
 	ssoClient := sso.New(opts.SSO, httpClient)
 	esiClient := esi.New(opts.ESI, httpClient, opts.Store, ssoClient)
+	persist := guardPersist{db: opts.Store}
 	return &Session{
 		Opts:     opts,
 		HTTP:     httpClient,
@@ -73,7 +73,7 @@ func Open(opts Options) (*Session, error) {
 		SSO:      ssoClient,
 		ESI:      esiClient,
 		Resolver: names.New(esiClient, opts.Store),
-		Guard:    write.NewGuard(opts.Write),
+		Guard:    write.NewGuard(opts.Write, persist, ""),
 	}, nil
 }
 
@@ -112,7 +112,7 @@ func (s *Session) ForUser(userID string) *Session {
 		SSO:      ssoClient,
 		ESI:      esiClient,
 		Resolver: names.New(esiClient, s.Store),
-		Guard:    write.NewGuard(opts.Write),
+		Guard:    write.NewGuard(opts.Write, guardPersist{db: s.Store}, userID),
 	}
 }
 

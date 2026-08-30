@@ -42,6 +42,35 @@ func (s *Store) TakeConfirmToken(ctx context.Context, token string) (*ConfirmTok
 	return &t, true, nil
 }
 
+func (s *Store) GetConfirmToken(ctx context.Context, token string) (*ConfirmToken, bool, error) {
+	var t ConfirmToken
+	err := s.pool.QueryRow(ctx, `
+		SELECT token, user_id, tool, args_digest, created_at
+		FROM confirm_tokens WHERE token = $1`, token,
+	).Scan(&t.Token, &t.UserID, &t.Tool, &t.ArgsDigest, &t.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return &t, true, nil
+}
+
+func (s *Store) DeleteConfirmToken(ctx context.Context, token string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM confirm_tokens WHERE token = $1`, token)
+	return err
+}
+
+func (s *Store) CountConfirmTokens(ctx context.Context, userID string) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM confirm_tokens
+		WHERE user_id = $1 AND created_at > now() - interval '300 seconds'`, userID,
+	).Scan(&n)
+	return n, err
+}
+
 func (s *Store) CountMailSince(ctx context.Context, userID string, since time.Time) (int, error) {
 	var n int
 	err := s.pool.QueryRow(ctx,

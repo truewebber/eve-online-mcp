@@ -230,6 +230,20 @@ func TestConfirmTTL(t *testing.T) {
 	if err != nil || !ok || got.Tool != tok.Tool {
 		t.Fatalf("fresh %v ok %v err %v", got, ok, err)
 	}
+	if err := s.PutConfirmToken(ctx, ConfirmToken{Token: "peek", UserID: "u", Tool: "eve_ui_set_waypoint", ArgsDigest: "ab"}); err != nil {
+		t.Fatal(err)
+	}
+	peek, ok, err := s.GetConfirmToken(ctx, "peek")
+	if err != nil || !ok || peek.Tool != "eve_ui_set_waypoint" {
+		t.Fatalf("get %+v ok %v err %v", peek, ok, err)
+	}
+	if err := s.DeleteConfirmToken(ctx, "peek"); err != nil {
+		t.Fatal(err)
+	}
+	_, ok, err = s.GetConfirmToken(ctx, "peek")
+	if err != nil || ok {
+		t.Fatalf("deleted still there ok=%v err=%v", ok, err)
+	}
 	expired := ConfirmToken{Token: "old", UserID: "u", Tool: "eve_mail_send", ArgsDigest: "x"}
 	if err := s.PutConfirmToken(ctx, expired); err != nil {
 		t.Fatal(err)
