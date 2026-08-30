@@ -34,7 +34,7 @@ secrets_inventory:
   login_states.state:   {holder: postgres,           transit: "browser URL (to CCP and back)",            ttl: 15m,      leak: "useless alone: consumed once, binds no tokens"}
   pkce_verifier_ours:   {holder: postgres,           transit: never,                                      ttl: 15m,      leak: "needs matching EVE code too"}
   eve_auth_code:        {holder: nobody,             transit: "eve_sso -> browser URL -> eve_mcp",        ttl: "5m, single use", leak: "unusable without pkce_verifier_ours (in PG)"}
-  eve_refresh_token:    {holder: "postgres (auth_codes -> sessions)", transit: "eve_sso -> eve_mcp (TLS)", ttl: "until revoked / session end", leak: "CROWN JEWELS: full account read. Never sent to client or browser"}
+  eve_refresh_token:    {holder: "postgres (auth_codes -> sessions)", transit: "eve_sso -> eve_mcp (TLS)", ttl: "revoked at CCP and cleared from the row when the session ends, including on expiry (DB.md sweeps)", leak: "CROWN JEWELS: full account read. Never sent to client or browser"}
   eve_access_token:     {holder: "eve_mcp process memory", transit: "eve_mcp -> esi header (TLS)",        ttl: 20m,      leak: "20 min of access; not persisted anywhere"}
   client_pkce_verifier: {holder: mcp_client,         transit: "mcp_client -> eve_mcp at token exchange",  ttl: minutes,  leak: "useless without our auth code"}
   our_auth_code:        {holder: postgres,           transit: "eve_mcp -> browser URL -> client callback",ttl: "2m, single use", leak: "unusable without client_pkce_verifier (in the app)"}
@@ -71,17 +71,23 @@ flows:
       carries: [eve_auth_code, login_states.state]
       server_does: "consume login_states; POST eve_sso /v2/oauth/token
                     (EVE_CODE + our pkce_verifier [+ CLIENT_SECRET]) -> eve tokens;
+                    CHECK granted scp covers the build's required set (SPEC §3.2);
                     upsert postgres.characters; park grant in postgres.auth_codes; mint OUR_CODE"
       result: "302 -> client redirect_uri?code=OUR_CODE&state=mcp_state"
       invariant: "EVE tokens NEVER enter this redirect — only our one-time code"
+      short_grant: "no code minted, no session; human page names the missing scopes
+                    and the instance application that has to list them"
     - step: token_exchange
       from: mcp_client
       to: eve_mcp
       via: "POST /oauth/token (code=OUR_CODE, code_verifier)"
       carries: [our_auth_code, client_pkce_verifier]
       server_does: "verify PKCE + redirect_uri; ONE TRANSACTION:
-                    delete code -> revoke EVERY session of this character with revoked_at IS NULL
+                    pg_advisory_xact_lock(character_id) -> delete code
+                    -> revoke EVERY session of this character with revoked_at IS NULL
                     -> insert sessions row (grant moves in) -> commit -> issue JWTs (sub=character, sid)"
+      why_the_lock: "two exchanges for one character would each revoke only the
+                     predecessors their snapshot sees, then collide on sessions_one_live"
       after_commit: "POST eve_sso /v2/oauth/revoke for the predecessor's refresh token,
                      best effort, failure logged only — never inside the transaction"
       result: "access + refresh JWT -> client storage"
@@ -100,7 +106,10 @@ flows:
     - trigger: "eve_sso returns invalid_grant on refresh (player revoked us at CCP, or CCP dropped the stream)"
     - trigger: "owner_hash at login differs -> character was sold"
     - trigger: "session.scopes no longer cover the build's required set"
+    - trigger: "valid_til passed and the expiry sweep reached the row (DB.md)"
     - server_does: "revoke the session; next /mcp call answers 401 + WWW-Authenticate"
+    - charged_to: "the sid of the request that produced the verdict, read from the verified
+                   JWT — never 'the character's live session' (SPEC §3.4)"
     - result: "client restarts the OAuth flow -> sign_in above. No tool can mint a login URL."
 
   mutation_confirm:
@@ -128,7 +137,13 @@ flows:
    claude.ai callbacks) yield nothing redeemable.
 4. **The MCP client holds only our JWTs.** A compromised player machine
    exposes one character for at most the session lifetime (30 d), and
-   dies with a session revoke.
+   dies with a session revoke. The 30 days bind the EVE grant too, not
+   just our JWTs: the sweep that catches an expired session clears its
+   refresh token from the row and tells CCP to drop it (DB.md). So a
+   player who signs in once and never returns leaves nothing usable in
+   this database, and one best-effort call at CCP behind that — the
+   difference between a lifetime that is stated and one that is
+   enforced.
 5. **Postgres is where account access rests** (refresh tokens); the JWT
    signing key lives separately, in the `HMAC_KEY` env secret. A
    database backup alone still exposes the EVE grants — DB.md's rule
@@ -151,13 +166,33 @@ above.
 3. The public listener is reachable only through the tunnel. Until that
    is true, `CF-Connecting-IP` is attacker-controlled and the socket
    address is used for `sessions.ip` instead (SPEC §10).
-4. Anonymous OAuth routes are rate-limited per IP and their rows are
+4. Anonymous public routes are rate-limited per IP and their rows are
    swept (SPEC §5.5, DB.md) — registration is unauthenticated by
    protocol design, so the only defence is that it cannot accumulate.
+   "Swept" has to mean deleted: a registration that is only
+   soft-deleted still occupies a row forever, and the defence would be
+   a comment rather than a bound (DB.md `oauth_clients`).
 5. Revoking at CCP never happens inside a database transaction, and
    never before the replacement session is committed.
+6. A login that came back with fewer scopes than the build requires
+   never becomes a session (SPEC §3.2). This is a usability rule with a
+   security shape: the alternative is a session whose grant is known to
+   be insufficient, kept alive long enough for someone to reason about
+   what it can still do.
 
 Known deliberate exposure: `confirm_token` enters the chat transcript
 (it is part of the model's context). Accepted: it is single-use,
-expires in 300 s, and is worthless without a live bearer of the same
-session.
+expires in 300 s, and is worthless to anyone without a live bearer of
+the same session.
+
+The party that *does* hold such a bearer is the model itself, and no
+cryptography changes that: the assistant can spend a token it was just
+handed without ever showing the preview to a human. So be exact about
+what the confirm cycle buys. It guarantees that a change was described
+before it happened, that the arguments executed are byte-for-byte the
+ones described, that one consent cannot be replayed or spent on a
+different call, and that a sign-in elsewhere voids everything pending.
+It does not, and cannot, prove a person said yes. The only mechanism
+that speaks to that is `mutations` (DB.md) — after the fact, which is
+why it is append-only and why the model-facing instructions carry the
+"show the preview and wait" rule (TOOLS.md).

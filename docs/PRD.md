@@ -79,9 +79,9 @@ market orders and contracts, wallet movements over time.
 **Track industry.** Manufacturing and research jobs with completion
 times, planetary colonies, mining ledger.
 
-**Stay social.** Read mail, notifications, recent killmails, saved ship
-fittings — with a hard rule: text written by other players is something
-the assistant reports on, never something it obeys.
+**Stay social.** Read mail, notifications, calendar invitations, recent
+killmails, saved ship fittings — with a hard rule: text written by other
+players is something the assistant reports on, never something it obeys.
 
 **Navigate the universe.** Search for items, systems and stations by
 name, plan routes (shortest / safest), spot dangerous systems along the
@@ -98,6 +98,9 @@ decides — a line member sees nothing the game would not show them.
 - save and delete ship fittings;
 - tidy the mailbox (mark read, labels, delete);
 - respond to calendar invitations;
+- hand the player a pre-written mail in their client's compose window —
+  the recipients, subject and body are filled in, the send button stays
+  theirs;
 - send EVE mail to other players — some recipients charge ISK to
   receive mail, so the confirmation names that charge and nothing is
   paid unless the player approves that exact amount;
@@ -191,7 +194,10 @@ again; connecting an alt alongside means one more server entry.
   with zero help from the host.
 - "How am I doing in EVE?" gets one useful paragraph instead of ten
   minutes of alt-tabbing.
-- Zero unintended in-game changes — nothing mutates without an explicit
-  player confirmation for that exact action. The server keeps an audit
-  log of every in-game change it attempted, so this is something the
-  host can check rather than hope for.
+- Zero unintended in-game changes. The server enforces the *shape* of
+  consent: a change needs a second call carrying a token minted for
+  those exact arguments, so a "yes" can never be spent on a different
+  or repeated action, and a stale one cannot be spent at all. What the
+  server cannot do is watch the player nod — the assistant is what
+  asks. So the server writes down every change it attempted, and that
+  log, not trust, is what the host checks.

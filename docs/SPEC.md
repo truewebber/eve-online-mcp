@@ -30,13 +30,20 @@ budget (§5). None of them is a correctness boundary; a character served
 by three pods gets up to three times its allowance and warms three
 copies of the cache.
 
-The fix, when N > 1 and that matters, is routing rather than shared
-state: hash the request onto a pod by the `Authorization` header (nginx
-ingress `upstream-hash-by: "$http_authorization"`). A bearer is stable
-for the life of a session, so a character keeps landing on the same pod
-and all three structures become exact again — with a warmer cache as a
-side effect. Pod churn reshuffles the mapping, which costs a cold cache
-and a reset counter, nothing more.
+The mitigation, when N > 1 and that matters, is routing rather than
+shared state: hash the request onto a pod by the `Authorization` header
+(nginx ingress `upstream-hash-by: "$http_authorization"`). Note what it
+does and does not buy. The access token lives one hour (§3.1), so the
+header is stable for an hour, not for the 30 days of the session: every
+rotation re-hashes that character onto a possibly different pod, and
+across the changeover two pods can each hold a bucket for them. So
+affinity turns "approximate always" into "exact within an hour, with a
+cache that is warm for the same hour" — worth the annotation, not a
+correctness fix. Exactness would mean hashing on `sid`, which is inside
+the JWT and therefore invisible to the ingress without parsing it
+there; at this size that is not worth the moving part. Pod churn
+reshuffles the mapping the same way, costing a cold cache and a reset
+counter, nothing more.
 
 Scaling caveat: replicas do not add ESI headroom when they share an
 egress IP. CCP's error limit is 100 errors per 60 s **per IP**, and
@@ -61,19 +68,21 @@ reach `/healthz` and the Service cannot reach `/mcp` (§10).
 ## 2. Configuration
 
 Env only. Read from the process environment, or from `./.env` in the
-working directory (godotenv; the file wins if present). No config file,
-nothing written back at runtime. Config lives in `cmd/eve-mcp/config.go`
+working directory (godotenv; the file wins if present) — which for a
+service installed with `eve-mcp install` is the OS user config dir,
+`~/Library/Application Support/eve-mcp` or `~/.config/eve-mcp`. No config
+file, nothing written back at runtime. Config lives in `cmd/eve-mcp/config.go`
 (`package main`) and is never imported by inner layers; `main` maps it
 into per-module `Options`.
 
 | Env | Required | Default | Meaning |
 |---|---|---|---|
-| `CLIENT_ID` | **yes** | — | The instance EVE application (developers.eveonline.com) |
+| `CLIENT_ID` | **yes** | — | The instance EVE application (developers.eveonline.com). Its registration must carry **every** scope in `RequestedScopes()` (§4.2): a scope the application does not list is a scope EVE will never grant, and §3.2 refuses such a login at the callback |
 | `CLIENT_SECRET` | no | empty | Only for confidential applications; PKCE is used either way |
 | `CONTACT` | no | empty | Operator email for the User-Agent; strongly recommended |
 | `LISTEN` | no | `127.0.0.1:8765` | Public bind address |
 | `INTERNAL_LISTEN` | no | `127.0.0.1:8766` | Internal bind address |
-| `PUBLIC_URL` | no | empty | Public base URL; also fixes the EVE callback to `{PUBLIC_URL}/auth/callback` |
+| `PUBLIC_URL` | when `LISTEN` is not loopback | empty | Public base URL; also fixes the EVE callback to `{PUBLIC_URL}/auth/callback` |
 | `EXTRA_REDIRECT_URIS` | no | empty | Comma-separated exact redirect URIs added to the built-in allowlist (§3.1), for an MCP client we do not ship support for |
 | `DATABASE_URL` | **yes** | — | PostgreSQL DSN; sole durable store (see DB.md) |
 | `HMAC_KEY` | **yes** | — | MCP JWT signing key, min 32 bytes (`openssl rand -hex 32`). Rotation = new secret + restart → all clients re-authenticate |
@@ -84,12 +93,19 @@ Validation at boot, fatal on failure:
 - `PUBLIC_URL`, when set, is an absolute URL and its scheme is `https`
   unless the host is loopback — authorization codes travel in browser
   URLs (AUTH.md, standing requirement 1);
+- `PUBLIC_URL` is **set** whenever `LISTEN` does not bind a loopback
+  address. It is the `iss` of every token we sign, the `resource` of the
+  PRM document and the EVE callback, and none of the three may vary
+  between requests;
 - every entry of `EXTRA_REDIRECT_URIS` is an absolute URL with no
   wildcard and no fragment;
 - `HMAC_KEY` decodes to at least 32 bytes.
 
-The callback URL defaults to `http://127.0.0.1:{port}/auth/callback`
-when `PUBLIC_URL` is empty. User-Agent is `eve-mcp/{version} {CONTACT}`.
+The base URL is `PUBLIC_URL` when set and `http://{LISTEN}` otherwise —
+**never** the request's `Host` header, which is attacker-controlled and
+would let a caller mint metadata pointing anywhere. The callback URL
+therefore defaults to `http://127.0.0.1:{port}/auth/callback`.
+User-Agent is `eve-mcp/{version} {CONTACT}`.
 
 **Deliberately not configurable** (constants in code, per PRD "clean
 bridge, no host policy"):
@@ -159,6 +175,15 @@ that file in the same commit.
   revoke inside the transaction would hold row locks for the length of
   an HTTP round trip and, on rollback, would leave a live session row
   whose grant is already dead.
+- **The exchange serialises on the character.** Its first statement is
+  `pg_advisory_xact_lock` keyed by `character_id`; logout takes the same
+  lock. Two exchanges for one character arriving together would
+  otherwise each revoke the predecessors *their* snapshot can see and
+  then both insert, so the second collides with the first's fresh row on
+  the partial unique index (DB.md) — a `500` on a sign-in, reachable by
+  double-clicking the browser button or signing in from two clients at
+  once. The lock makes the second exchange wait and then correctly
+  replace the first.
 - Sessions live 30 days (`valid_til`, no sliding renewal) — after that
   the player re-logs via the browser.
 - Session metadata, captured once at creation: DCR `client_id` +
@@ -186,13 +211,27 @@ Authorization-code + PKCE against `login.eveonline.com/v2/oauth/…` with
 the instance `CLIENT_ID`. Callback is exactly
 `{PUBLIC_URL|http://127.0.0.1:port}/auth/callback` and must match the CCP
 application registration. Access JWTs are verified against CCP JWKS
-(RS256/ES256, issuer + audience `EVE Online`); refresh handled per
-character with a 60 s expiry margin. Refreshing takes a row lock on the
-session (`SELECT … FOR UPDATE`): CCP may rotate the refresh token on
-every exchange, and two concurrent tool calls racing the same token — in
-one pod or two — would otherwise invalidate the character's login. After
-acquiring the lock the holder re-reads the row and skips the refresh if
-someone already rotated it.
+(RS256/ES256, issuer + audience `EVE Online`); refresh is handled per
+**session** with a 60 s expiry margin — the grant belongs to the sign-in
+(§3.3), so the request's `sid` says which row to refresh. Refreshing
+takes a row lock on that session (`SELECT … FOR UPDATE`): CCP may rotate
+the refresh token on every exchange, and two concurrent tool calls
+racing the same token — in one pod or two — would otherwise invalidate
+the character's login. After acquiring the lock the holder re-reads the
+row and skips the refresh if someone already rotated it.
+
+**The granted scope set is checked at the callback, before anything is
+written.** CCP returns the scopes it actually granted in the access
+token's `scp`; if that set does not cover what the build requires
+(`ReadScopes` ∪ `CorpReadScopes` ∪ write scopes, §4.2) the callback does
+not create an authorization code. It renders a page naming the missing
+scopes and the single place they are fixed — the instance application at
+developers.eveonline.com — and the sign-in ends there. Without this
+check the login would succeed, §3.5 would revoke the session on its
+first tool call, and the client would loop through the browser forever
+with no error a player could act on: a host who forgot one scope in the
+application registration would have a service that can never be signed
+into and never says why.
 
 Multiple refresh-token streams for one character are expected to
 coexist at CCP (a new sign-in does not invalidate the previous stream),
@@ -231,15 +270,39 @@ itself, and the fix is to stop revoking the predecessor at CCP.
 ### 3.4 Session resolution
 
 `ProtectMCP` middleware: bearer → verify JWT → `sid` must be a live
-session of `sub` in Postgres → per-character runtime (cached in pod
-memory) injected into the request context. Tools call
-`session.From(ctx)`; a missing session is an auth error, never a
-fallback to another character. Runtime state is keyed by `sub` only —
-the MCP client that presented the bearer never partitions anything.
-Runtimes share one HTTP client and the ESI cache; the EVE grant, the
-allowance and the error budget are per character. EVE access tokens are
-cached in process memory only (20 min lifetime, re-derivable from the
-session's refresh token under `FOR UPDATE`).
+session of `sub` in Postgres → runtime (cached in pod memory) injected
+into the request context. Tools call `session.From(ctx)`; a missing
+session is an auth error, never a fallback to another character. The MCP
+client that presented the bearer partitions nothing: two clients holding
+bearers of the same session share everything below.
+
+That runtime holds two kinds of state with two different lifetimes, and
+keying both the same way is the bug this paragraph exists to prevent:
+
+- **Per character** (`sub`): the request allowance and the error budget,
+  next to the pod-wide HTTP client and response cache every runtime
+  shares. They describe the character's traffic, not their
+  authorization, so they survive a re-sign-in — a new browser login must
+  not hand anybody a fresh allowance.
+- **Per sign-in** (`sid`): everything derived from the EVE grant — the
+  refresh token, the granted scope set, and the cached access token
+  (20 min, re-derived from the session's refresh token under `FOR
+  UPDATE`). The grant belongs to the sign-in (§3.3), so it is keyed by
+  `sid` and never by `sub`.
+
+The runtime therefore records the `sid` it was built from, and a request
+carrying a different one rebuilds the grant half before doing anything
+else. Skipping that is how a successful sign-in kills itself: the
+character signs in from Claude, a pod still holding Cursor's grant
+serves the next call, refreshes with the predecessor's refresh token —
+which the exchange already revoked at CCP (§3.1) — takes `invalid_grant`
+and, by §3.5, revokes a session. The player lands back in the browser,
+and the next pod does it again.
+
+Which session that revoke lands on is not a choice either: an
+authorization verdict is charged to the `sid` of the request that
+produced it, read from the verified JWT, never to "the character's live
+session".
 
 ### 3.5 Re-authentication — the only way back in
 
@@ -257,11 +320,20 @@ whenever:
   stream);
 - the login's `owner_hash` differs from the stored one (§3.3);
 - the session's stored `scopes` no longer cover the set the build
-  requires (`ReadScopes` ∪ `CorpReadScopes` ∪ write scopes, §4.2).
+  requires (`ReadScopes` ∪ `CorpReadScopes` ∪ write scopes, §4.2);
+- the session passed its `valid_til` and the expiry sweep reached it
+  (DB.md). Expiry is what ends a connection on day 30; the sweep is what
+  makes the EVE grant stop existing at the same time instead of resting
+  in the table until the player happens to come back.
 
 The scope rule means that adding a scope to the code signs everybody
 out once, at their next call. That is intended: the alternative is
-tools failing one by one with an error the player cannot act on.
+tools failing one by one with an error the player cannot act on. It only
+ever fires on a build change, because a login that came back short never
+becomes a session in the first place (§3.2) — the two checks are halves
+of one invariant, the set verified once where a human can still be told
+what to fix, and forever after where the only available answer is `401`.
+
 Transient ESI failures (5xx, timeouts, `420`) never revoke anything —
 only an authorization verdict does.
 
@@ -280,11 +352,38 @@ Tool contract (enforced by `go run ./evals lint`):
   patched onto the schema centrally in `patchBounds` (`limit` 1–500,
   `items` 1–200, `division` 1–7, `history_days` 0–365, `approved_cost`
   ≥ 0, `mail_id`/`event_id`/`fitting_id` ≥ 1, `min_value` ≥ 0,
-  `standing` −10–10 — the Bounds column of TOOLS.md is the list). A
-  `,minimum=` left in tag text is a lint failure: the model reads it as
-  prose.
+  `standing` −10–10, `page` ≥ 1, `offset` ≥ 0, every cursor ≥ 1 — the
+  Bounds column of TOOLS.md is the list). A `,minimum=` left in tag text
+  is a lint failure: the model reads it as prose.
 - List tools: small default `limit` + `response_format:
   "concise"|"detailed"`, concise default.
+- **Every enumerated parameter is validated against its list**, and an
+  unknown value is an error naming the accepted ones. Falling through to
+  a default branch is forbidden: `eve_ui_open_window` with an
+  unrecognised `window` used to open Show Info instead, which is a
+  mutation doing something the preview never described.
+- **Pagination mirrors ESI, one class per tool** (the Pagination column
+  of TOOLS.md is the assignment):
+  - the endpoint pages by **cursor** → the tool takes the same cursor
+    parameter under the same name and returns `next_cursor` when more
+    rows exist (`eve_mail_list` `last_mail_id`, wallet transactions
+    `from_id`, `eve_calendar_list` `from_event`);
+  - the endpoint pages by **number**, one endpoint row is one tool row,
+    and the tool keeps the endpoint's order → the tool takes `page` and
+    returns `total_pages`. Its header counts then describe the page it
+    returned, and the result says which page of how many;
+  - the tool **folds or re-sorts** many endpoint rows (assets grouped by
+    location, ore by type, a wallet summary over the whole window) → the
+    ESI page number describes nothing the caller asked for, so the tool
+    reads every page up to its cap (§4.2) and pages its own assembled,
+    sorted output with `offset`, returning `total`;
+  - the endpoint returns **everything in one response** → the tool grows
+    no pagination parameter at all, and completeness comes from filters.
+    Inventing one here would misplace the truncation.
+
+  `limit` bounds one page, never the query, and any truncated result
+  says so. A tool must never silently drop rows the caller has no
+  parameter to reach.
 - Results: JSON as `TextContent`, `nil` structured output. **Never** add
   typed output schemas (they drop undeclared keys).
 - No tool takes a `character` parameter: the session is bound to exactly
@@ -308,9 +407,13 @@ whose sentence points at `eve_universe_search`; there is no
 `CharacterNotFound` kind, because nothing takes a character any more.
 
 Domains: account/auth, character, assets, wallet, industry, market,
-social, universe, corp (unlocked by in-game roles), writes (waypoint,
-openwindow, fittings, mail_organize, calendar, mail_send, contacts).
-All tools are always registered; there is no host-side capability gate.
+social (mail, notifications, killmails, fittings, calendar), universe,
+corp (unlocked by in-game roles), writes (waypoint, openwindow,
+fittings, mail_organize, calendar, mail_send, contacts). All tools are
+always registered; there is no host-side capability gate. The
+`openwindow` capability covers `eve_mail_compose` as well: handing the
+player a pre-filled compose window is the same ESI scope and the same
+"nothing happens until they act" shape as opening market details.
 
 ### 4.1 Mutation flow
 
@@ -333,6 +436,17 @@ Every mutating tool, no exceptions:
 A mutation that never reached ESI (refused at step 1) is not recorded.
 A mutation that reached ESI and failed is recorded with its error: the
 question "did the assistant send that mail" must be answerable.
+
+**Previews that need their own ESI read fail as a whole.**
+`eve_mail_send` prices the CSPA charge (`/characters/{id}/cspa`),
+`eve_mail_delete` names the mail it would destroy, `eve_fitting_delete`
+names the fitting. When that read fails, no `confirm_token` is minted and
+the error says which read failed and that nothing was attempted. A
+preview that cannot state the cost is not a preview: assuming zero for a
+CSPA charge would put the player's ISK behind a confirmation that never
+mentioned it. For the same reason, when the priced charge exceeds
+`approved_cost` the preview refuses there — before consent — instead of
+letting the player approve a send that CCP will reject.
 
 ### 4.2 Functional reference
 
@@ -382,6 +496,13 @@ Director passes every check):
 | contracts | `esi-contracts.read_corporation_contracts.v1` | any member |
 | members | `esi-corporations.read_corporation_membership.v1` | any member (roles column: Director) |
 
+A character in an **NPC corporation** holds no roles at all, so every
+`eve_corp_*` endpoint answers `403` — and each of those costs that
+character error budget (§5.3), not the instance's. `eve_corp_overview` is
+therefore required to say so: it reports the corporation as NPC and
+returns an empty `available_tools`, which is the only thing that gives
+the model a reason not to try the other twelve tools one by one.
+
 **Resolution and market constants:**
 
 - `/universe/names` resolves ids in batches of 900; `/universe/ids`
@@ -392,9 +513,15 @@ Director passes every check):
 - Live quotes default to The Forge (region `10000002`) filtered to
   Jita 4-4 (station `60003760`) unless the caller widens the region.
 - Wallet transactions page by cursor (`from_id` / `transaction_id`),
-  2500 rows per page, ≤ 4 pages.
-- Paginated corp endpoints cap pages per call: assets 80, most others
-  40, wallet journal 10, mining observer detail 10.
+  2500 rows per page, ≤ 4 pages — internal to the fold, because
+  `eve_wallet_history` summarises the window it read (§4).
+- CSPA charges are priced with `/characters/{id}/cspa` (≤ 100 recipient
+  ids per call) at preview time, never assumed (§4.1).
+- **Page caps bound the folding tools**, the ones that read everything
+  before answering: assets 80, most others 40, wallet journal 10, mining
+  observer detail 10. A tool that passes `page` through fetches exactly
+  the page it was asked for, so the cap does not apply to it — the
+  caller's own page number is the bound.
 
 ### 4.3 Tool catalog — source of truth
 
@@ -496,24 +623,37 @@ what PRD §5 promises will not happen.
 
 Unlike everything else in §5 this one is exact, because it is a database
 count and not a memory counter — but only if the count and the insert
-happen under one lock on the character (`SELECT … FOR UPDATE` on the
-`characters` row, or an advisory lock keyed by character id). Two
-concurrent sends that both read "4 this hour" would otherwise both go
-out, and that is reachable with two goroutines in one pod, never mind
-two pods.
+happen under one lock. That lock is `pg_advisory_xact_lock` keyed by
+character id, the same primitive the sign-in exchange uses (§3.1) under
+a different key namespace. Not `FOR UPDATE` on `characters`: the row
+lock people reach for lives on `sessions` now (§3.2), and a second,
+differently-scoped row lock on the identity table is how two unrelated
+paths end up waiting on each other. Two concurrent sends that both read
+"4 this hour" would otherwise both go out, and that is reachable with
+two goroutines in one pod, never mind two pods.
 
 There is no general write budget: self-affecting mutations are limited
 only by confirmation and the request allowance (PRD §5).
 
 ### 5.5 Public endpoint protection
 
-`/oauth/register`, `/oauth/authorize`, `/oauth/token` and
-`/auth/callback` are unauthenticated by construction and two of them
-write rows. Each caller IP gets 60 requests per minute across those
-routes; over that, `429` with `Retry-After`. Combined with the sweeps in
-DB.md (`login_states` 15 min, `auth_codes` 2 min, registrations that
-never produced a session 30 days) this bounds what an anonymous caller
-can accumulate in the database.
+Every route on the public listener that a caller can reach without a
+bearer is covered: `/oauth/register`, `/oauth/authorize`, `/oauth/token`,
+`/auth/callback`, `/auth/login`, both `/.well-known/*` documents and `GET
+/`. Each caller IP gets 60 requests per minute across all of them; over
+that, `429` with `Retry-After`. Combined with the sweeps in DB.md
+(`login_states` 15 min, `auth_codes` 2 min, registrations that never
+produced a session 30 days) this bounds what an anonymous caller can
+accumulate in the database.
+
+Two of those routes write rows, which is the reason the limit exists.
+`GET /` is on the list for a different reason: it reports whether ESI is
+reachable, so it is the one unauthenticated route that can cause ESI
+traffic. That traffic is bounded anyway — the reachability answer comes
+from the same response cache as everything else (§5.1) and `/status` is
+cached by CCP for 30 s — but it belongs to no character, so neither the
+allowance nor the error budget (§5.2, §5.3) can meter it. The per-IP
+limit is the only thing that does.
 
 The caller IP is resolved exactly as in §3.1 — `CF-Connecting-IP` when
 the listener is only reachable through the tunnel, the socket address
@@ -546,8 +686,18 @@ cannot steal the route.
 | `POST /oauth/token` | Code / refresh exchange |
 | `POST\|GET /mcp` | MCP Streamable HTTP (outside OpenAPI) |
 
-Internal listener: `GET /healthz` → `{"status":"ok"}`; `GET /metrics`
-(Prometheus, future — see §11).
+Internal listener:
+
+| Route | Purpose |
+|---|---|
+| `GET /healthz` | Liveness: the process is up and serving. `{"status":"ok"}`, no dependency touched |
+| `GET /readyz` | Readiness: liveness plus a Postgres ping under a short timeout; `503` when the ping fails |
+| `GET /metrics` | Prometheus, future — see §11 |
+
+The split is what keeps a pod with an unreachable database out of the
+Service without restarting it in a loop: it can serve nothing, but
+killing it fixes nothing either. Readiness answers the first, liveness
+declines to answer the second.
 
 ## 7. Go layout
 
@@ -563,7 +713,8 @@ internal/
     store/              PostgreSQL (pgx + goose migrations): characters,
                         sessions, oauth state, confirm tokens, audit log
                         — see DB.md
-    names/              id→name resolution, reference prices (memory-cached)
+    names/              id→name resolution, reference prices and hub
+                        order-book quotes (memory-cached)
   domain/               pure model, no upward imports
     character/          Corporation, roles
     write/              capability catalog, Guard (confirm cycle, mail cap)
@@ -612,9 +763,18 @@ the mail cap counts from (§5.4). It stores no message bodies.
 
 - Every request: identifying `User-Agent` (with `CONTACT`, per CCP's
   developer guidelines — no contact means no warning before a ban) and
-  the pinned `X-Compatibility-Date`. Moving the pinned date requires
-  re-checking every response shape (baseline matches 2020-01-01; newer
-  dates add routes).
+  the pinned `X-Compatibility-Date`. A request without one is served the
+  oldest compatibility date CCP still keeps, which is not what any of
+  this is written against.
+- **Moving the pinned date is a re-verification, not a bump.** CCP
+  publishes a new compatibility date precisely for the changes that
+  break readers: removing response fields, changing their types,
+  dropping enum values, adding required parameters. So every response
+  shape this server parses has to be re-checked against
+  `esi.evetech.net/meta/openapi.json` on the new date — the endpoint
+  table in ESI.md is the checklist, and the diff is mechanical enough to
+  script. The `/route/` change (GET `flag` → POST `preference`) is what
+  this looks like when it happens.
 - `/route/` is POST with `preference` in the body.
 - ESI search is prefix-only; `eve_universe_search` shortens the prefix
   and retries.
@@ -630,14 +790,17 @@ the mail cap counts from (§5.4). It stores no message bodies.
 - **Kubernetes (primary):** Deployment, `replicas >= 1`, rolling
   updates, no volumes; env (`DATABASE_URL`, `CLIENT_ID`, `HMAC_KEY`, …)
   from a Secret; `LISTEN` and `INTERNAL_LISTEN` set to `0.0.0.0:{port}`
-  so the kubelet and the Service can reach them; liveness/readiness →
-  `GET /healthz` on the internal port; internal port has no Ingress
-  exposure. Postgres is a cluster service, provisioned separately.
+  so the kubelet and the Service can reach them; `PUBLIC_URL` set,
+  because the binds are not loopback (§2); liveness → `GET /healthz` and
+  readiness → `GET /readyz` on the internal port; internal port has no
+  Ingress exposure. Postgres is a cluster service, provisioned
+  separately.
 - **Above one replica:** hash `/mcp` onto pods by the `Authorization`
   header (nginx ingress `upstream-hash-by: "$http_authorization"`) so a
-  character keeps its cache and its counters (§1). Without it the
-  service still works, with each character's allowance multiplied by the
-  number of pods it lands on. Size the pool: every pod opens its own
+  character keeps its cache and its counters for as long as its access
+  token lives — an hour, not the session (§1). Without it the service
+  still works, with each character's allowance multiplied by the number
+  of pods it lands on. Size the pool: every pod opens its own
   pgx pool, so `pool_max_conns × replicas` must stay inside Postgres's
   `max_connections`, and past a few dozen pods that means PgBouncer.
 - **Reaching the public listener:** the Cloudflare tunnel is the only
@@ -668,6 +831,13 @@ the mail cap counts from (§5.4). It stores no message bodies.
   sessions, sweep run age. Everything except the database-derived series
   is per pod and must be summed across them; a cache hit ratio averaged
   over pods without weighting is a lie when replicas roll.
+- **Three of those counters are not garnish.** The constants in §5.2 and
+  §5.3 claim a bucket of 400 and 20 errors a minute are "never felt in
+  normal use", and that claim is unfalsifiable until something counts
+  allowance rejections, error-budget rejections and mail-cap rejections.
+  They ship with the limiters that produce them, not with the rest of
+  `/metrics`: a counter incremented in the same function as the refusal
+  is a line of code, while going back for it later means re-reading §5.
 
 ## 12. Deltas vs current code (implementation checklist)
 
@@ -679,6 +849,13 @@ is superseded by item 1 below and goes away with it.
 
 Remaining, in dependency order:
 
+0. **Something to accept these against.** Recorded ESI fixtures at the
+   pinned compatibility date, and a throwaway Postgres for the store and
+   the goose migrations (`internal/adapter/store/testdb.go` is the seed).
+   Every item below changes an auth lifetime, a lock, or a response
+   shape, and hand-checking those against Tranquility with one live
+   character is how exactly one of them ships broken and nobody notices
+   for a month.
 1. **The character is the user** (§3.3): drop the `users` table and
    `domain/user`; JWT `sub` = `character_id`; drop `eve_auth_login_url`
    and every tool-started EVE login (`login_states.kind`, `SSOForState`,
@@ -686,41 +863,87 @@ Remaining, in dependency order:
    tools and character resolution from `usecase/session`;
    `eve_auth_status` reports the one character; `eve_auth_logout` takes
    no arguments; drop the `CharacterNotFound` error kind (§4).
-2. **Sessions own the EVE grant** (§3.1, §8, DB.md): `sessions` table
-   (BIGINT identity ids, `refresh_token` + `scopes` on the session,
-   `valid_til` 30 d, creation-only metadata, partial unique "one live
-   per character"); `sid` claim in access + refresh tokens; the token
-   exchange revokes every predecessor with `revoked_at IS NULL` inside
-   the transaction and calls CCP's revoke after the commit; confirm
-   tokens carry `session_id` (§4.1). `FOR UPDATE` moves from
-   `characters` to `sessions`, with the post-lock re-read (§3.2).
-3. **Schema per DB.md**: migrate the migrator to goose with an advisory
-   lock; soft deletes on entities; drop `users`, `http_cache`, `names`,
+2. **Sessions own the EVE grant** (§3.1, §3.2, §8, DB.md): `sessions`
+   table (BIGINT identity ids, a nullable `refresh_token` and `scopes`
+   on the session, `valid_til` 30 d, creation-only metadata, partial
+   unique "one live per character"); `sid` claim in access + refresh
+   tokens; the exchange takes `pg_advisory_xact_lock` on the character
+   first, revokes every predecessor with `revoked_at IS NULL`, clears
+   their token, and calls CCP's revoke after the commit; confirm tokens
+   carry `session_id` with `ON DELETE CASCADE` (§4.1). `FOR UPDATE`
+   moves from `characters` to `sessions`, with the post-lock re-read.
+3. **The runtime is keyed by both** (§3.4): per-character state under
+   `sub` (response cache, allowance, error budget), per-sign-in state
+   under `sid` (refresh token, granted scopes, cached access token), and
+   a request whose `sid` differs from the cached one rebuilds the grant
+   half before doing anything. Every authorization verdict is charged to
+   the `sid` that produced it. Small, and the only thing standing between
+   items 1–2 and a sign-in that revokes itself on the next pod.
+4. **Schema per DB.md**: migrate the migrator to goose under an advisory
+   lock, with a first migration that creates the target schema outright
+   — nothing transforms the `users` era, that database is dropped once by
+   hand; soft deletes on entities; drop `users`, `http_cache`, `names`,
    `blobs` and `app_secrets`; add `sessions` and `mutations`; the JWT
    key moves to the required `HMAC_KEY` env (§2).
-4. **In-memory caches** (§5.1): ESI responses (256 MiB / 2000 entries /
+5. **In-memory caches** (§5.1): ESI responses (256 MiB / 2000 entries /
    8 MiB body cap), id→name (50 000), reference prices (1 h) become
    bounded structures in `adapter/esi` and `adapter/names`.
-5. **Re-authentication rule** (§3.5): revoke the session on
-   `invalid_grant`, on `owner_hash` change and on scope drift, so the
-   client is forced through `401` → OAuth. This is what makes the
-   product recoverable: items 1–4 without it leave connections whose
-   only cure is deleting the server entry in the client and adding it
-   again.
-6. **Audit log** (§8, §4.1, §5.4): `mutations` table, `Guard.Record`
-   writes outcome rows, the mail cap counts from it, `mail_log` goes
-   away, `eve_auth_status` reports remaining sends from it.
-7. **Per-character error budget** (§5.3): attribute every ≥ 400 ESI
-   response to its character, 20 per 60 s, `UserRateLimited`.
-8. **Config and edges** (§2, §5.5, §10): `EXTRA_REDIRECT_URIS`,
-   `PUBLIC_URL` HTTPS validation, `HMAC_KEY` length check, the per-IP
-   limit on public OAuth routes, the `CF-Connecting-IP` trust rule, the
-   sweep runner under its advisory lock (DB.md), the `0.0.0.0` binds and
-   — above one replica — the bearer-hash affinity annotation (§1).
-9. **Catalog conformance** (§4.3): implement TOOLS.md as written — 50
-   tools, no `character`, no bound syntax in descriptions — and extend
-   `evals lint` to diff the live `tools/list` against TOOLS.md.
-10. Update `.env.example` and the `api/http.yaml` description to the env
+6. **Both scope checks** (§3.2, §3.5): compare the granted `scp` against
+   the required set at the callback and end the sign-in there, with a
+   page naming what is missing and where to add it; and revoke the
+   session on `invalid_grant`, on `owner_hash` change and on scope
+   drift, so a client is forced through `401` → OAuth. The second is
+   what makes the product recoverable — items 1–5 without it leave
+   connections whose only cure is deleting the server entry in the
+   client. The first is what stops the second from becoming an endless
+   browser loop the day a host forgets one scope in the application
+   registration.
+7. **Audit log** (§8, §4.1, §5.4): `mutations` table, `Guard.Record`
+   writes outcome rows, the mail cap counts from it under an advisory
+   lock keyed by character, `mail_log` goes away, `eve_auth_status`
+   reports remaining sends from it. Ships with its rejection counter
+   (§11).
+8. **Per-character error budget** (§5.3): attribute every ≥ 400 ESI
+   response to its character, min(20, ⅕ of the shared remainder) per
+   60 s, `UserRateLimited`. Ships with its rejection counter, and the
+   allowance one from T09 alongside it (§11).
+9. **Sweeps** (DB.md): the runner under `pg_try_advisory_lock`, and the
+   three rules that did not exist before — expiring sessions past
+   `valid_til` (set `revoked_at`, clear the token, tell CCP), hard
+   deletion of long-soft-deleted `oauth_clients`, and revoking the
+   parked grant of an abandoned `auth_codes` row before deleting it.
+   Without the first, a player who signs in once leaves a usable EVE
+   grant in the database forever and the 30-day lifetime is a claim
+   about our JWTs only.
+10. **Config and edges** (§2, §5.5, §6, §10): `EXTRA_REDIRECT_URIS`;
+    `PUBLIC_URL` required off loopback, HTTPS-validated, and the base
+    URL never taken from `Host`; `HMAC_KEY` length check; the per-IP
+    limit widened to every unauthenticated public route, `GET /`
+    included; the `CF-Connecting-IP` trust rule; `/readyz` with its
+    Postgres ping; the `0.0.0.0` binds and — above one replica — the
+    bearer-hash affinity annotation (§1, hour-scale stickiness, not
+    exactness).
+11. **Catalog conformance** (§4, §4.2, §4.3): TOOLS.md as written — 52
+    tools, no `character`, no bound syntax in descriptions, enums
+    validated instead of falling through, `eve_calendar_list`,
+    `eve_mail_compose`, the CSPA-priced `eve_mail_send` preview, and
+    `eve_corp_overview` answering NPC corporations — plus the
+    `instructions` string as its Server instructions section spells it
+    out.
+12. **Pagination** (§4, TOOLS.md): the class per tool — cursor
+    passthrough, `page` passthrough, `offset` over a folded result, or
+    nothing — across 19 list tools, the matching `next_cursor` /
+    `total_pages` / `total` response fields, and `page`/`offset` in
+    `patchBounds`.
+13. **`evals lint` against the catalog** — its own item because it is a
+    parser, not a flag: read TOOLS.md's per-tool tables (names,
+    required/optional, types, descriptions, bounds, pagination
+    parameters) and diff them against a running server's `tools/list`;
+    then the same for `instructions`, and for ESI.md's call-site column
+    in both directions, so a row naming a call site that does not exist
+    fails the build.
+14. Update `.env.example` and the `api/http.yaml` description to the env
     set and topology above (`README.md` is already in step).
-11. Metrics endpoint (§11) — separate change, after everything else
-    lands.
+15. Metrics endpoint (§11) — the rest of `/metrics` after everything else
+    lands. The three rejection counters are not part of this item; they
+    ship with items 7 and 8.

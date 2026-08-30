@@ -19,7 +19,11 @@ readable by the pods still serving the previous image; anything that is
 not is split across two deploys.
 
 There are no migrations from earlier layouts (files, the `users`-table
-era) — players re-authenticate once.
+era) — players re-authenticate once. Concretely: the first goose
+migration creates the schema below outright, and does not transform
+anything. Deploying it onto a database from the `users` era means
+dropping that database first — a one-time operator step, written down
+here rather than expressed as a migration nobody will ever run twice.
 
 ## Design rules
 
@@ -84,7 +88,7 @@ of the authorization: our MCP side (`sid` in the JWTs) and the EVE grant
 |---|---|---|---|
 | `id` | BIGINT | PK, IDENTITY | JWT `sid` |
 | `character_id` | BIGINT | NOT NULL, FK → characters | owner |
-| `refresh_token` | TEXT | NOT NULL | EVE SSO refresh token of this sign-in — the crown jewels |
+| `refresh_token` | TEXT | NULL | EVE SSO refresh token of this sign-in — the crown jewels. Written at creation, cleared when the session is revoked (below) |
 | `scopes` | TEXT[] | NOT NULL | scopes granted at this sign-in; compared to the build's required set on every resolution (SPEC §3.5) |
 | `mcp_client_id` | TEXT | NOT NULL | DCR client that signed in |
 | `client_name` | TEXT | NOT NULL default '' | from DCR ("Cursor", …) |
@@ -110,6 +114,29 @@ about `valid_til`: an expired-but-unrevoked row still occupies the
 slot, so a sign-in that skipped it would fail on the unique constraint
 instead of replacing it. This is the failure that shows up on day 31,
 not on day 1.
+
+Revoking also **clears the grant**: the statement that sets `revoked_at`
+sets `refresh_token` to NULL in the same breath, and the value it read is
+what gets revoked at CCP after the commit (SPEC §3.1). A revoked row is
+history — who connected, from where, when — and history has no use for
+account access. The CCP call stays best effort: if it fails we have
+already stopped holding the token, which is the half that shows up in a
+database backup.
+
+**Expiry is not revocation until the sweep says so.** A row past
+`valid_til` is not live, so nothing authenticates against it, but it
+still holds a refresh token and still occupies the unique slot. The
+expiry sweep below revokes it on exactly the terms above, so a player who
+signs in once and never returns leaves nothing usable behind — the
+difference between a session lifetime that is stated and one that is
+enforced (AUTH.md, leak audit 4).
+
+**Sign-in serialises on the character.** The token exchange takes
+`pg_advisory_xact_lock` keyed by `character_id` as its first statement
+(SPEC §3.1). Two exchanges for one character arriving together would
+each revoke only the predecessors their own snapshot sees and then both
+insert, and the second would collide with the first's fresh row on
+`sessions_one_live`.
 
 **Locking rule.** The EVE token refresh runs `SELECT … FOR UPDATE` on
 the session row — CCP may rotate the refresh token on every exchange,
@@ -189,11 +216,16 @@ preview; consent dies with the session. Deleted on use; TTL 300 s.
 | Column | Type | Constraints | Meaning |
 |---|---|---|---|
 | `token` | TEXT | PK | random, is the secret |
-| `session_id` | BIGINT | NOT NULL, FK → sessions | issuing session |
+| `session_id` | BIGINT | NOT NULL, FK → sessions ON DELETE CASCADE | issuing session |
 | `tool` | TEXT | NOT NULL | must match at redemption |
 | `args_digest` | TEXT | NOT NULL | sha256 of the exact arguments |
 | `created_at` | TIMESTAMPTZ | NOT NULL default now() | — |
 | `expires_at` | TIMESTAMPTZ | NOT NULL | created_at + 300 s |
+
+`ON DELETE CASCADE` and not `SET NULL` because consent without an issuing
+session is not consent. It also keeps the session purge (below) from
+tripping over a foreign key: an unspent token whose session was purged
+ninety days later is not a row anybody wants to reason about.
 
 ### `mutations`
 
@@ -222,9 +254,10 @@ Indexes:
   `WHERE tool = 'eve_mail_send' AND outcome = 'ok'`: the rolling-hour
   count is a single index scan.
 
-The cap query and the row it authorises run under one lock on the
-character (SPEC §5.4). Counting outside a lock lets two concurrent sends
-both see the same "4 this hour" and both go out.
+The cap query and the row it authorises run under one advisory lock keyed
+by the character id (SPEC §5.4), in its own key namespace, separate from
+the sign-in lock. Counting outside a lock lets two concurrent sends both
+see the same "4 this hour" and both go out.
 
 **What it must not store.** No mail bodies, no contact lists, no fitting
 contents — the digest identifies the arguments, the summary describes
@@ -256,11 +289,29 @@ request path.
 | Table | Rule |
 |---|---|
 | `login_states` | delete where `expires_at < now()` |
-| `auth_codes` | delete where `expires_at < now()` |
+| `auth_codes` | where `expires_at < now()`: revoke the parked refresh token at CCP, then delete |
 | `confirm_tokens` | delete where `expires_at < now()` |
-| `sessions` | purge soft-deleted where `revoked_at < now() - 90 days` |
+| `sessions` — expire | where `revoked_at IS NULL AND valid_til < now()`: set `revoked_at`, clear `refresh_token`, revoke it at CCP |
+| `sessions` — purge | delete where `revoked_at < now() - 90 days` |
 | `mutations` | delete where `created_at < now() - 90 days` |
-| `oauth_clients` | soft-delete registrations older than 30 days that never produced a session |
+| `oauth_clients` | soft-delete registrations older than 30 days that never produced a session, **and delete rows soft-deleted more than 30 days ago** |
+
+Two of these talk to CCP, and both do it the same way: the row is
+revoked locally in one transaction, and the token read there is sent to
+`login.eveonline.com` afterwards, best effort, logged on failure and
+never retried — the column is already NULL, and re-holding a secret to
+enable a retry would undo the point. Both are batched per run so one
+sweep cannot turn into a thousand serial HTTP calls.
+
+An abandoned handshake is the reason `auth_codes` is on that list at
+all: a code nobody redeemed still parked a live grant, and deleting the
+row without telling CCP would leave a refresh token alive at CCP that
+nothing on this side can ever use or revoke.
+
+`oauth_clients` is the only table an unauthenticated caller can grow, so
+its sweep has to actually remove rows. A soft delete alone would leave
+the count monotonic and turn AUTH.md's standing requirement 4 ("it
+cannot accumulate") into a wish.
 
 `characters` is never swept: it is the identity, it holds no secret, and
 a returning player must keep the same `sub`.
@@ -269,12 +320,13 @@ a returning player must keep the same `sub`.
 
 | Sensitivity | Where |
 |---|---|
-| **Secret** (account access) | `sessions.refresh_token`, `auth_codes.refresh_token` |
+| **Secret** (account access) | `sessions.refresh_token` of live sessions only — revoked and expired rows hold NULL — and `auth_codes.refresh_token` for its two minutes |
 | Personal | `sessions` metadata (client, IP), `characters.name`, `mutations` |
 | Plumbing (short-lived secrets) | `login_states`, `auth_codes`, `confirm_tokens` |
 
 Backups of this database are backups of account access — treat them
 like the refresh tokens themselves. Restoring an old backup restores old
-refresh tokens: any session revoked since then comes back, so a restore
-is followed by revoking every session (one `UPDATE`) and letting players
+refresh tokens: any session revoked since then comes back, tokens and
+all, so a restore is followed by revoking every session — one `UPDATE`
+that sets `revoked_at` and nulls `refresh_token` — and letting players
 sign in again.

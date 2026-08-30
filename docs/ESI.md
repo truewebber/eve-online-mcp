@@ -7,7 +7,12 @@ anything else. Each row cites where the endpoint is used in this repo
 
 Provenance note: this list was extracted from the Go sources of this
 repository (every `ESI.Get/GetAllPages/GetCursorPages/Post/Put/Delete`
-call site) on 2026-08-30. Official documentation links point to CCP's
+call site) on 2026-08-30, then verified path-by-path and scope-by-scope
+against `esi.evetech.net/meta/openapi.json` at the pinned compatibility
+date. Like SPEC.md, it describes the target: four rows are ahead of the
+code and land with SPEC §12 — `POST /characters/{id}/cspa`,
+`GET /characters/{id}/calendar`, that route's `/attendees`, and
+`POST /ui/openwindow/newmail`. Official documentation links point to CCP's
 [API Explorer](https://developers.eveonline.com/api-explorer) — the
 canonical ESI reference (per [EVE Developer Docs](https://developers.eveonline.com/docs/services/esi/overview/),
 "You can find all the endpoints and try them out in the API Explorer").
@@ -39,7 +44,7 @@ Explorer links use the operation anchor:
 | `GET /universe/constellations/{constellation_id}` | region lookup | `eve_universe_system` — `usecase/eve/universe.go` | [GetUniverseConstellationsConstellationId](https://developers.eveonline.com/api-explorer#/operations/GetUniverseConstellationsConstellationId) |
 | `GET /universe/system_kills` | recent kills per system | `eve_universe_system`, `eve_universe_hotspots` — `usecase/eve/universe.go` | [GetUniverseSystemKills](https://developers.eveonline.com/api-explorer#/operations/GetUniverseSystemKills) |
 | `GET /universe/system_jumps` | traffic per system | `eve_universe_system` — `usecase/eve/universe.go` | [GetUniverseSystemJumps](https://developers.eveonline.com/api-explorer#/operations/GetUniverseSystemJumps) |
-| `POST /route/{origin}/{destination}` | route planning; `preference` in the JSON body (compat-date ≥ 2025 replaced the old GET `flag` param) | `eve_universe_route` — `usecase/eve/universe.go` | [API Explorer → Routes](https://developers.eveonline.com/api-explorer) |
+| `POST /route/{origin}/{destination}` | route planning. Body: `preference` — wire values are **`Shorter` \| `Safer` \| `LessSecure`**, not the tool's lowercase names, so `eve_universe_route` maps them; plus `avoid_systems`, `connections`, `security_penalty` (0–100, default 50). Compat-date ≥ 2025 replaced the old GET `flag` param | `eve_universe_route` — `usecase/eve/universe.go` | [PostRoute](https://developers.eveonline.com/api-explorer#/operations/PostRoute) |
 | `GET /markets/prices` | global average/adjusted prices | asset valuations — `adapter/names/names.go` | [GetMarketsPrices](https://developers.eveonline.com/api-explorer#/operations/GetMarketsPrices) |
 | `GET /markets/{region_id}/orders` | live order book (paged ≤ 10) | `eve_market_price` hub quotes — `adapter/names/names.go` | [GetMarketsRegionIdOrders](https://developers.eveonline.com/api-explorer#/operations/GetMarketsRegionIdOrders) |
 | `GET /markets/{region_id}/history` | daily price history | `eve_market_price` — `usecase/eve/market.go` | [GetMarketsRegionIdHistory](https://developers.eveonline.com/api-explorer#/operations/GetMarketsRegionIdHistory) |
@@ -49,6 +54,11 @@ Explorer links use the operation anchor:
 
 Scope names are the exact grant requested at EVE login
 (`internal/domain/write/policy.go`).
+
+`POST /characters/{id}/cspa` lives in this section rather than §4 because
+it changes nothing in game: it is a POST only because it takes a list of
+ids in a body, it is gated by a read scope, and it runs inside a preview
+rather than behind a confirm cycle.
 
 Seven requested read scopes have no row in this document, because no
 tool calls their endpoints yet: `read_agents_research`, `read_fatigue`,
@@ -75,20 +85,23 @@ an endpoint may not be called without a row here.
 | `GET /characters/{id}/loyalty/points` | `esi-characters.read_loyalty.v1` | `eve_character_standings` — `usecase/eve/character.go` | [GetCharactersCharacterIdLoyaltyPoints](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdLoyaltyPoints) |
 | `GET /characters/{id}/roles` | `esi-characters.read_corporation_roles.v1` | corp resolution — `usecase/session/session.go` | [GetCharactersCharacterIdRoles](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdRoles) |
 | `GET /characters/{id}/assets` | `esi-assets.read_assets.v1` | `eve_assets_list`, `eve_assets_find` (paged ≤ 40) — `usecase/eve/assets.go` | [GetCharactersCharacterIdAssets](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdAssets) |
-| `GET /characters/{id}/blueprints` | `esi-characters.read_blueprints.v1` | `eve_assets_blueprints` (paged ≤ 40) — `usecase/eve/assets.go` | [GetCharactersCharacterIdBlueprints](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdBlueprints) |
+| `GET /characters/{id}/blueprints` | `esi-characters.read_blueprints.v1` | `eve_assets_blueprints` (caller's `page`) — `usecase/eve/assets.go` | [GetCharactersCharacterIdBlueprints](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdBlueprints) |
 | `GET /characters/{id}/industry/jobs` | `esi-industry.read_character_jobs.v1` | `eve_industry_jobs` — `usecase/eve/industry.go` | [GetCharactersCharacterIdIndustryJobs](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdIndustryJobs) |
 | `GET /characters/{id}/planets` | `esi-planets.manage_planets.v1` | `eve_industry_planets` — `usecase/eve/industry.go` | [GetCharactersCharacterIdPlanets](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdPlanets) |
 | `GET /characters/{id}/planets/{planet_id}` | `esi-planets.manage_planets.v1` | `eve_industry_planets` (detailed) — `usecase/eve/industry.go` | [GetCharactersCharacterIdPlanetsPlanetId](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdPlanetsPlanetId) |
 | `GET /characters/{id}/mining` | `esi-industry.read_character_mining.v1` | `eve_industry_mining` (paged ≤ 40) — `usecase/eve/industry.go` | [GetCharactersCharacterIdMining](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdMining) |
 | `GET /characters/{id}/orders` | `esi-markets.read_character_orders.v1` | `eve_market_orders` — `usecase/eve/market.go` | [GetCharactersCharacterIdOrders](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdOrders) |
-| `GET /characters/{id}/contracts` | `esi-contracts.read_character_contracts.v1` | `eve_market_contracts` (paged ≤ 40) — `usecase/eve/market.go` | [GetCharactersCharacterIdContracts](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdContracts) |
-| `GET /characters/{id}/mail` | `esi-mail.read_mail.v1` | `eve_mail_list` — `usecase/eve/social.go` | [GetCharactersCharacterIdMail](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdMail) |
+| `GET /characters/{id}/contracts` | `esi-contracts.read_character_contracts.v1` | `eve_market_contracts` (caller's `page`) — `usecase/eve/market.go` | [GetCharactersCharacterIdContracts](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdContracts) |
+| `GET /characters/{id}/mail` | `esi-mail.read_mail.v1` | `eve_mail_list` (cursor `last_mail_id`) — `usecase/eve/social.go` | [GetCharactersCharacterIdMail](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdMail) |
 | `GET /characters/{id}/mail/{mail_id}` | `esi-mail.read_mail.v1` | `eve_mail_read`; delete preview — `usecase/eve/social.go`, `usecase/eve/writes.go` | [GetCharactersCharacterIdMailMailId](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdMailMailId) |
 | `GET /characters/{id}/notifications` | `esi-characters.read_notifications.v1` | `eve_social_notifications` — `usecase/eve/social.go` | [GetCharactersCharacterIdNotifications](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdNotifications) |
-| `GET /characters/{id}/killmails/recent` | `esi-killmails.read_killmails.v1` | `eve_social_killmails` — `usecase/eve/social.go` | [GetCharactersCharacterIdKillmailsRecent](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdKillmailsRecent) |
+| `GET /characters/{id}/killmails/recent` | `esi-killmails.read_killmails.v1` | `eve_social_killmails` (caller's `page`) — `usecase/eve/social.go` | [GetCharactersCharacterIdKillmailsRecent](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdKillmailsRecent) |
 | `GET /characters/{id}/fittings` | `esi-fittings.read_fittings.v1` | `eve_fitting_list`; save/delete previews — `usecase/eve/social.go`, `usecase/eve/writes.go` | [GetCharactersCharacterIdFittings](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdFittings) |
 | `GET /characters/{id}/search` | `esi-search.search_structures.v1` | `eve_universe_search`; waypoint/window name resolution — `usecase/eve/universe.go`, `usecase/eve/writes.go` | [GetCharactersCharacterIdSearch](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdSearch) |
-| `GET /characters/{id}/calendar/{event_id}` | `esi-calendar.read_calendar_events.v1` | `eve_calendar_respond` preview — `usecase/eve/writes.go` | [GetCharactersCharacterIdCalendarEventId](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdCalendarEventId) |
+| `GET /characters/{id}/calendar` | `esi-calendar.read_calendar_events.v1` | `eve_calendar_list` (cursor `from_event`, ≤ 50 events per call) — `usecase/eve/social.go` | [GetCharactersCharacterIdCalendar](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdCalendar) |
+| `GET /characters/{id}/calendar/{event_id}` | `esi-calendar.read_calendar_events.v1` | `eve_calendar_list` detail, `eve_calendar_respond` preview — `usecase/eve/social.go`, `usecase/eve/writes.go` | [GetCharactersCharacterIdCalendarEventId](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdCalendarEventId) |
+| `GET /characters/{id}/calendar/{event_id}/attendees` | `esi-calendar.read_calendar_events.v1` | `eve_calendar_list` with `attendees` — `usecase/eve/social.go` | [GetCharactersCharacterIdCalendarEventIdAttendees](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdCalendarEventIdAttendees) |
+| `POST /characters/{id}/cspa` | `esi-characters.read_contacts.v1` | `eve_mail_send` preview: prices the CSPA charge (≤ 100 recipient ids) — `usecase/eve/writes.go` | [PostCharactersCharacterIdCspa](https://developers.eveonline.com/api-explorer#/operations/PostCharactersCharacterIdCspa) |
 | `GET /characters/{id}/contacts` | `esi-characters.read_contacts.v1` | `eve_contacts_set`/`_delete` previews (paged ≤ 40) — `usecase/eve/writes.go` | [GetCharactersCharacterIdContacts](https://developers.eveonline.com/api-explorer#/operations/GetCharactersCharacterIdContacts) |
 | `GET /universe/structures/{structure_id}` | `esi-universe.read_structures.v1` | name resolver, ids ≥ 10¹² — `adapter/names/names.go` | [GetUniverseStructuresStructureId](https://developers.eveonline.com/api-explorer#/operations/GetUniverseStructuresStructureId) |
 
@@ -103,15 +116,15 @@ Role gates per SPEC §4.2. Note CCP's inconsistency: mining lives under
 | `GET /corporations/{id}/wallets/{division}/journal` | `esi-wallet.read_corporation_wallets.v1` | `eve_corp_wallet` (paged ≤ 10) — `usecase/eve/corp.go` | [GetCorporationsCorporationIdWalletsDivisionJournal](https://developers.eveonline.com/api-explorer#/operations/GetCorporationsCorporationIdWalletsDivisionJournal) |
 | `GET /corporations/{id}/wallets/{division}/transactions` | `esi-wallet.read_corporation_wallets.v1` | `eve_corp_wallet` — `usecase/eve/corp.go` | [GetCorporationsCorporationIdWalletsDivisionTransactions](https://developers.eveonline.com/api-explorer#/operations/GetCorporationsCorporationIdWalletsDivisionTransactions) |
 | `GET /corporations/{id}/assets` | `esi-assets.read_corporation_assets.v1` | `eve_corp_assets_list`, `eve_corp_assets_find` (paged ≤ 80) — `usecase/eve/corp.go` | [GetCorporationsCorporationIdAssets](https://developers.eveonline.com/api-explorer#/operations/GetCorporationsCorporationIdAssets) |
-| `GET /corporations/{id}/blueprints` | `esi-corporations.read_blueprints.v1` | `eve_corp_blueprints` (paged ≤ 40) — `usecase/eve/corp.go` | [GetCorporationsCorporationIdBlueprints](https://developers.eveonline.com/api-explorer#/operations/GetCorporationsCorporationIdBlueprints) |
-| `GET /corporations/{id}/industry/jobs` | `esi-industry.read_corporation_jobs.v1` | `eve_corp_industry_jobs` (paged ≤ 40) — `usecase/eve/corp.go` | [GetCorporationsCorporationIdIndustryJobs](https://developers.eveonline.com/api-explorer#/operations/GetCorporationsCorporationIdIndustryJobs) |
-| `GET /corporations/{id}/orders` | `esi-markets.read_corporation_orders.v1` | `eve_corp_orders` (paged ≤ 40) — `usecase/eve/corp.go` | [GetCorporationsCorporationIdOrders](https://developers.eveonline.com/api-explorer#/operations/GetCorporationsCorporationIdOrders) |
-| `GET /corporations/{id}/contracts` | `esi-contracts.read_corporation_contracts.v1` | `eve_corp_contracts` (paged ≤ 40) — `usecase/eve/corp.go` | [GetCorporationsCorporationIdContracts](https://developers.eveonline.com/api-explorer#/operations/GetCorporationsCorporationIdContracts) |
-| `GET /corporations/{id}/structures` | `esi-corporations.read_structures.v1` | `eve_corp_structures` (paged ≤ 40) — `usecase/eve/corp.go` | [GetCorporationsCorporationIdStructures](https://developers.eveonline.com/api-explorer#/operations/GetCorporationsCorporationIdStructures) |
+| `GET /corporations/{id}/blueprints` | `esi-corporations.read_blueprints.v1` | `eve_corp_blueprints` (caller's `page`) — `usecase/eve/corp.go` | [GetCorporationsCorporationIdBlueprints](https://developers.eveonline.com/api-explorer#/operations/GetCorporationsCorporationIdBlueprints) |
+| `GET /corporations/{id}/industry/jobs` | `esi-industry.read_corporation_jobs.v1` | `eve_corp_industry_jobs` (caller's `page`) — `usecase/eve/corp.go` | [GetCorporationsCorporationIdIndustryJobs](https://developers.eveonline.com/api-explorer#/operations/GetCorporationsCorporationIdIndustryJobs) |
+| `GET /corporations/{id}/orders` | `esi-markets.read_corporation_orders.v1` | `eve_corp_orders` (caller's `page`) — `usecase/eve/corp.go` | [GetCorporationsCorporationIdOrders](https://developers.eveonline.com/api-explorer#/operations/GetCorporationsCorporationIdOrders) |
+| `GET /corporations/{id}/contracts` | `esi-contracts.read_corporation_contracts.v1` | `eve_corp_contracts` (caller's `page`) — `usecase/eve/corp.go` | [GetCorporationsCorporationIdContracts](https://developers.eveonline.com/api-explorer#/operations/GetCorporationsCorporationIdContracts) |
+| `GET /corporations/{id}/structures` | `esi-corporations.read_structures.v1` | `eve_corp_structures` (caller's `page`) — `usecase/eve/corp.go` | [GetCorporationsCorporationIdStructures](https://developers.eveonline.com/api-explorer#/operations/GetCorporationsCorporationIdStructures) |
 | `GET /corporations/{id}/members` | `esi-corporations.read_corporation_membership.v1` | `eve_corp_members` (paged ≤ 40) — `usecase/eve/corp.go` | [GetCorporationsCorporationIdMembers](https://developers.eveonline.com/api-explorer#/operations/GetCorporationsCorporationIdMembers) |
-| `GET /corporations/{id}/roles` | `esi-characters.read_corporation_roles.v1` | `eve_corp_members` (detailed) — `usecase/eve/corp.go` | [GetCorporationsCorporationIdRoles](https://developers.eveonline.com/api-explorer#/operations/GetCorporationsCorporationIdRoles) |
+| `GET /corporations/{id}/roles` | `esi-corporations.read_corporation_membership.v1` | `eve_corp_members` (detailed) — `usecase/eve/corp.go` | [GetCorporationsCorporationIdRoles](https://developers.eveonline.com/api-explorer#/operations/GetCorporationsCorporationIdRoles) |
 | `GET /corporations/{id}/divisions` | `esi-corporations.read_divisions.v1` | `eve_corp_wallet`, `eve_corp_overview` — `usecase/eve/corp.go` | [GetCorporationsCorporationIdDivisions](https://developers.eveonline.com/api-explorer#/operations/GetCorporationsCorporationIdDivisions) |
-| `GET /corporations/{id}/killmails/recent` | `esi-killmails.read_corporation_killmails.v1` | `eve_corp_killmails` — `usecase/eve/corp.go` | [GetCorporationsCorporationIdKillmailsRecent](https://developers.eveonline.com/api-explorer#/operations/GetCorporationsCorporationIdKillmailsRecent) |
+| `GET /corporations/{id}/killmails/recent` | `esi-killmails.read_corporation_killmails.v1` | `eve_corp_killmails` (caller's `page`) — `usecase/eve/corp.go` | [GetCorporationsCorporationIdKillmailsRecent](https://developers.eveonline.com/api-explorer#/operations/GetCorporationsCorporationIdKillmailsRecent) |
 | `GET /corporation/{id}/mining/extractions` | `esi-industry.read_corporation_mining.v1` | `eve_corp_mining` — `usecase/eve/corp.go` | [GetCorporationCorporationIdMiningExtractions](https://developers.eveonline.com/api-explorer#/operations/GetCorporationCorporationIdMiningExtractions) |
 | `GET /corporation/{id}/mining/observers` | `esi-industry.read_corporation_mining.v1` | `eve_corp_mining` (paged ≤ 40) — `usecase/eve/corp.go` | [GetCorporationCorporationIdMiningObservers](https://developers.eveonline.com/api-explorer#/operations/GetCorporationCorporationIdMiningObservers) |
 | `GET /corporation/{id}/mining/observers/{observer_id}` | `esi-industry.read_corporation_mining.v1` | `eve_corp_mining` (paged ≤ 10) — `usecase/eve/corp.go` | [GetCorporationCorporationIdMiningObserversObserverId](https://developers.eveonline.com/api-explorer#/operations/GetCorporationCorporationIdMiningObserversObserverId) |
@@ -124,7 +137,7 @@ Role gates per SPEC §4.2. Note CCP's inconsistency: mining lives under
 | `POST /ui/openwindow/marketdetails` | `esi-ui.open_window.v1` | `eve_ui_open_window` — `usecase/eve/writes.go` | [PostUiOpenwindowMarketdetails](https://developers.eveonline.com/api-explorer#/operations/PostUiOpenwindowMarketdetails) |
 | `POST /ui/openwindow/information` | `esi-ui.open_window.v1` | `eve_ui_open_window` — `usecase/eve/writes.go` | [PostUiOpenwindowInformation](https://developers.eveonline.com/api-explorer#/operations/PostUiOpenwindowInformation) |
 | `POST /ui/openwindow/contract` | `esi-ui.open_window.v1` | `eve_ui_open_window` — `usecase/eve/writes.go` | [PostUiOpenwindowContract](https://developers.eveonline.com/api-explorer#/operations/PostUiOpenwindowContract) |
-| `POST /ui/openwindow/newmail` | `esi-ui.open_window.v1` | `eve_ui_open_window` — `usecase/eve/writes.go` | [PostUiOpenwindowNewmail](https://developers.eveonline.com/api-explorer#/operations/PostUiOpenwindowNewmail) |
+| `POST /ui/openwindow/newmail` | `esi-ui.open_window.v1` | `eve_mail_compose` — pre-fills the client's compose window (≤ 50 recipients, subject ≤ 1000, body ≤ 10000); the player presses Send — `usecase/eve/writes.go` | [PostUiOpenwindowNewmail](https://developers.eveonline.com/api-explorer#/operations/PostUiOpenwindowNewmail) |
 | `POST /characters/{id}/fittings` | `esi-fittings.write_fittings.v1` | `eve_fitting_save` — `usecase/eve/writes.go` | [PostCharactersCharacterIdFittings](https://developers.eveonline.com/api-explorer#/operations/PostCharactersCharacterIdFittings) |
 | `DELETE /characters/{id}/fittings/{fitting_id}` | `esi-fittings.write_fittings.v1` | `eve_fitting_delete` — `usecase/eve/writes.go` | [DeleteCharactersCharacterIdFittingsFittingId](https://developers.eveonline.com/api-explorer#/operations/DeleteCharactersCharacterIdFittingsFittingId) |
 | `PUT /characters/{id}/mail/{mail_id}` | `esi-mail.organize_mail.v1` | `eve_mail_mark` — `usecase/eve/writes.go` | [PutCharactersCharacterIdMailMailId](https://developers.eveonline.com/api-explorer#/operations/PutCharactersCharacterIdMailMailId) |
@@ -151,7 +164,13 @@ the SSO). Documented in the official SSO guide.
 
 - Anything not listed here is off-limits; adding an endpoint means
   adding a row **in the same commit** (with the repo source and the
-  API Explorer link).
+  API Explorer link). The reverse holds too, and it is the half that
+  rots: a row naming a call site that does not call it is a lie about
+  coverage. Both directions are mechanical to check — extract the call
+  sites, diff against this table — and `go run ./evals lint` does it.
+- Every documented path, method and scope is verifiable against
+  `esi.evetech.net/meta/openapi.json` at the pinned compatibility date;
+  that diff is what moving the date consists of (SPEC §9).
 - ESI search (`GET /characters/{id}/search`) matches on **prefix**, not
   fuzzily — the search tool compensates by shortening and retrying.
 - `/universe/names` is one shared id space; group ids must go through
@@ -162,6 +181,17 @@ the SSO). Documented in the official SSO guide.
   tool call produced it (SPEC §5.3). An endpoint that a character's
   in-game roles do not allow costs them their own error budget, not the
   instance's.
-- Page caps per call site are part of this contract (they bound the
-  worst-case cost of one tool call against the per-character allowance,
-  SPEC §5.2).
+- **Pagination is mirrored, not invented** (SPEC §4). Three notations
+  appear in the Used-by column and they mean different things:
+  - `(caller's page)` — the endpoint pages by number and the tool passes
+    that number through. One tool call is one ESI request, so no page cap
+    applies: the caller's own page number is the bound.
+  - `(cursor X)` — the endpoint pages by cursor and the tool exposes the
+    same cursor under the same name, returning `next_cursor`.
+  - `(paged ≤ N)` — the tool folds or re-sorts every page before
+    answering, so it reads up to N of them per call and paginates its own
+    output. These caps are part of this contract: they bound the
+    worst-case cost of one tool call against the per-character allowance
+    (SPEC §5.2).
+
+  An endpoint with no pagination gets no tool parameter for it.

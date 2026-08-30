@@ -9,10 +9,11 @@ sign in with their EVE account in the browser. A connection *is* the
 character picked at that login: it reads and acts as that character and
 nothing else. An alt is a second server entry with its own sign-in.
 
-50 tools: assets, wallet, skills, industry, PI, market, contracts, mail,
-killmails, routes, live hub prices. Plus guarded writes: waypoints, in-client
-windows, fittings, mail, contacts. Corporation hangars, wallets and jobs
-are always registered; in-game roles are the only gate.
+52 tools: assets, wallet, skills, industry, PI, market, contracts, mail,
+calendar, killmails, routes, live hub prices. Plus guarded writes:
+waypoints, in-client windows, fittings, mail — sent, or handed to the
+player pre-filled — calendar answers and contacts. Corporation hangars,
+wallets and jobs are always registered; in-game roles are the only gate.
 
 ---
 
@@ -26,7 +27,11 @@ https://developers.eveonline.com/applications → **Create New Application**.
 |---|---|
 | Connection Type | **Authentication & API Access** |
 | Callback URL | `http://127.0.0.1:8765/auth/callback` locally, or `{PUBLIC_URL}/auth/callback` — exactly |
-| Permissions | the `read` scopes you want, plus `esi-ui.write_waypoint.v1` and `esi-ui.open_window.v1` for waypoints |
+| Permissions | **every** scope the build asks for — all 51, listed in `internal/domain/write/policy.go` (`RequestedScopes`) |
+
+Permissions is not a place to pick and choose: EVE grants only what the
+application lists, and a login that comes back missing one is refused at
+the callback with the missing names spelled out. Copy the whole set.
 
 Copy the **Client ID**. No Client Secret is needed — the server uses PKCE.
 
@@ -101,14 +106,19 @@ The EVE application callback must then be exactly
 client and sign in with EVE — MCP OAuth binds each of them to their own
 characters.
 
-`/healthz` (and metrics, when added) are served on `INTERNAL_LISTEN`
-(default `127.0.0.1:8766`) — point k8s probes there, never route it
-publicly. Under Kubernetes both listeners need `0.0.0.0:{port}`, or the
-kubelet cannot reach the probe. Any number of replicas works — all
-durable state is in Postgres — but caches and rate counters live in each
-pod, so above one replica hash `/mcp` onto pods by the `Authorization`
-header to keep a character on one pod. Replicas buy failover and rolling
-updates, not ESI headroom: CCP's error limit is per IP.
+`/healthz`, `/readyz` (and metrics, when added) are served on
+`INTERNAL_LISTEN` (default `127.0.0.1:8766`) — point k8s probes there,
+never route it publicly. Liveness is `/healthz`; readiness is `/readyz`,
+which also pings Postgres, so a pod that cannot reach the database leaves
+the Service instead of being restarted forever. Under Kubernetes both
+listeners need `0.0.0.0:{port}`, or the kubelet cannot reach the probe,
+and `PUBLIC_URL` must be set once the bind is not loopback. Any number of
+replicas works — all durable state is in Postgres — but caches and rate
+counters live in each pod, so above one replica hash `/mcp` onto pods by
+the `Authorization` header. That keeps a character on one pod for as long
+as its access token lives, an hour, which is stickiness rather than a
+guarantee. Replicas buy failover and rolling updates, not ESI headroom:
+CCP's error limit is per IP.
 
 If ESI returns `420` / error-limit headers, tools answer
 `kind: EsiRateLimited` with `retry_at` and `retry_after_seconds`. Wait
@@ -131,14 +141,21 @@ training in a single call.
 | Wallet | `eve_wallet_history` |
 | Industry | `eve_industry_jobs` `eve_industry_planets` `eve_industry_mining` |
 | Market | `eve_market_price` `eve_market_orders` `eve_market_contracts` |
-| Social | `eve_mail_list` `eve_mail_read` `eve_social_notifications` `eve_social_killmails` `eve_fitting_list` |
+| Social | `eve_mail_list` `eve_mail_read` `eve_social_notifications` `eve_calendar_list` `eve_social_killmails` `eve_fitting_list` |
 | Universe | `eve_universe_search` `eve_universe_item` `eve_universe_system` `eve_universe_route` `eve_universe_hotspots` |
 | Corporation | `eve_corp_overview` `eve_corp_assets_list` `eve_corp_assets_find` `eve_corp_blueprints` `eve_corp_wallet` `eve_corp_industry_jobs` `eve_corp_mining` `eve_corp_orders` `eve_corp_contracts` `eve_corp_killmails` `eve_corp_structures` `eve_corp_members` |
-| Writes | `eve_ui_set_waypoint` `eve_ui_open_window` `eve_fitting_save` `eve_fitting_delete` `eve_mail_mark` `eve_mail_delete` `eve_mail_send` `eve_contacts_set` `eve_contacts_delete` `eve_calendar_respond` |
+| Writes | `eve_ui_set_waypoint` `eve_ui_open_window` `eve_fitting_save` `eve_fitting_delete` `eve_mail_mark` `eve_mail_delete` `eve_mail_compose` `eve_mail_send` `eve_contacts_set` `eve_contacts_delete` `eve_calendar_respond` |
 
 List tools return a few rows in concise form by default. Full data comes from
 `limit` and `response_format="detailed"`. Every response carries `data_age`:
 assets are cached for an hour, market for 5 minutes, location for 5 seconds.
+
+Long lists are walked the way ESI itself pages them: a `page` number where
+the endpoint has pages, the cursor back from `next_cursor` where it has a
+cursor, an `offset` over the assembled result where the tool groups or
+sums across pages, and nothing at all where ESI answers in one response.
+The Pagination table in [docs/TOOLS.md](docs/TOOLS.md) says which tool is
+which.
 
 ---
 
@@ -149,10 +166,17 @@ returns a preview plus a single-use `confirm_token`. Show `will_do` to the
 user, get an explicit yes, then call again with the same arguments plus the
 token.
 
-Outgoing mail is capped at 5 per rolling hour. There is no general write
-budget. Every attempted change — successful or not — is appended to an
-audit log in Postgres, so "what did the assistant actually do" is a SQL
-query, not a guess.
+Outgoing mail is capped at 5 per rolling hour, and its preview prices any
+CSPA charge the recipients levy, so nothing is paid that the confirmation
+did not name. `eve_mail_compose` is the version that sends nothing: it
+fills in the client's compose window and leaves Send to the player.
+
+There is no general write budget. Every attempted change — successful or
+not — is appended to an audit log in Postgres, so "what did the assistant
+actually do" is a SQL query, not a guess. That log is also the honest
+answer to "did a human agree": the server can prove a change was
+previewed and that its arguments match the preview, but the assistant is
+what asks the user.
 
 The server cannot fly, shoot, click or trade. ESI grants no control over the
 game client. `waypoint` and `openwindow` work only while the EVE client is
@@ -199,8 +223,6 @@ deletes the `eve-mcp-pg` volume. `make down` stops Postgres and keeps it.
 
 Nothing reloads in place. Rebuild, then restart — after `./eve-mcp
 install`, that is `launchctl kickstart -k gui/$(id -u)/eve-mcp`.
-
-The repo is local-only and has no git remote on purpose.
 
 ### Where the contracts live
 
