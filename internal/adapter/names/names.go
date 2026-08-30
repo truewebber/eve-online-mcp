@@ -1,6 +1,8 @@
 package names
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"sort"
@@ -8,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"eve-mcp/internal/adapter/cache"
 	"eve-mcp/internal/adapter/esi"
+	"eve-mcp/internal/adapter/store"
 	"eve-mcp/internal/domain/j"
 )
 
@@ -67,14 +69,14 @@ func article(kind string) string {
 
 type Resolver struct {
 	esi      *esi.Client
-	store    *cache.Store
+	store    *store.Store
 	prices   map[int]map[string]float64
 	pricesAt time.Time
 	priceMu  sync.Mutex
 }
 
-func New(e *esi.Client, store *cache.Store) *Resolver {
-	return &Resolver{esi: e, store: store}
+func New(e *esi.Client, db *store.Store) *Resolver {
+	return &Resolver{esi: e, store: db}
 }
 
 func (r *Resolver) Names(ids []int, characterID *int) (map[int]string, error) {
@@ -91,14 +93,18 @@ func (r *Resolver) Names(ids []int, characterID *int) (map[int]string, error) {
 	for id := range wanted {
 		list = append(list, id)
 	}
-	cached, err := r.store.GetNames(list)
+	id64s := make([]int64, len(list))
+	for i, id := range list {
+		id64s[i] = int64(id)
+	}
+	cached, err := r.store.NameGet(context.Background(), id64s)
 	if err != nil {
 		return nil, err
 	}
 	out := map[int]string{}
 	var missing []int
 	for id := range wanted {
-		if row, ok := cached[id]; ok {
+		if row, ok := cached[int64(id)]; ok {
 			out[id] = row.Name
 		} else {
 			missing = append(missing, id)
@@ -126,7 +132,7 @@ func (r *Resolver) Names(ids []int, characterID *int) (map[int]string, error) {
 			log.Printf("bulk name lookup failed for %d ids: %v", len(chunk), err)
 			continue
 		}
-		var entries [][3]any
+		var entries []store.NameRow
 		for _, row := range j.Maps(result) {
 			id := j.Int(row["id"])
 			name := j.Str(row["name"])
@@ -134,13 +140,13 @@ func (r *Resolver) Names(ids []int, characterID *int) (map[int]string, error) {
 				continue
 			}
 			cat := j.Str(row["category"])
-			entries = append(entries, [3]any{id, name, cat})
+			entries = append(entries, store.NameRow{ID: int64(id), Name: name, Category: cat})
 			out[id] = name
 		}
-		_ = r.store.PutNames(entries)
+		_ = r.store.NamePut(context.Background(), entries)
 	}
 	if len(structures) > 0 && characterID != nil {
-		var entries [][3]any
+		var entries []store.NameRow
 		type box struct {
 			id   int
 			name string
@@ -156,11 +162,11 @@ func (r *Resolver) Names(ids []int, characterID *int) (map[int]string, error) {
 		for range structures {
 			b := <-ch
 			if b.ok {
-				entries = append(entries, [3]any{b.id, b.name, "structure"})
+				entries = append(entries, store.NameRow{ID: int64(b.id), Name: b.name, Category: "structure"})
 				out[b.id] = b.name
 			}
 		}
-		_ = r.store.PutNames(entries)
+		_ = r.store.NamePut(context.Background(), entries)
 	}
 	for id := range wanted {
 		if _, ok := out[id]; !ok {
@@ -296,8 +302,8 @@ func (r *Resolver) ResolveNames(names []string, prefer, only []string) (map[stri
 
 func (r *Resolver) TypeInfo(typeID int) (map[string]any, error) {
 	key := fmt.Sprintf("type:%d", typeID)
-	maxAge := 30 * 86400.0
-	cached, err := r.store.GetBlob(key, &maxAge)
+	maxAge := 30 * 24 * time.Hour
+	cached, err := r.blob(key, &maxAge)
 	if err != nil {
 		return nil, err
 	}
@@ -309,7 +315,7 @@ func (r *Resolver) TypeInfo(typeID int) (map[string]any, error) {
 		return nil, err
 	}
 	data := j.Map(result.Data)
-	_ = r.store.PutBlob(key, data)
+	_ = r.putBlob(key, data)
 	return data, nil
 }
 
@@ -318,15 +324,15 @@ func (r *Resolver) GroupName(groupID int) string {
 		return "unknown"
 	}
 	key := fmt.Sprintf("group:%d", groupID)
-	maxAge := 30 * 86400.0
-	cached, _ := r.store.GetBlob(key, &maxAge)
+	maxAge := 30 * 24 * time.Hour
+	cached, _ := r.blob(key, &maxAge)
 	if cached == nil {
 		result, err := r.esi.Get(fmt.Sprintf("/universe/groups/%d", groupID), nil, nil, nil)
 		if err != nil {
 			return fmt.Sprintf("Group #%d", groupID)
 		}
 		cached = result.Data
-		_ = r.store.PutBlob(key, cached)
+		_ = r.putBlob(key, cached)
 	}
 	name := j.Str(j.Map(cached)["name"])
 	if name == "" {
@@ -379,8 +385,8 @@ func (r *Resolver) ReferencePrices() (map[int]map[string]float64, error) {
 	if r.prices != nil && time.Since(r.pricesAt) < time.Duration(priceTTL*float64(time.Second)) {
 		return r.prices, nil
 	}
-	ttl := priceTTL
-	cached, err := r.store.GetBlob("markets:prices", &ttl)
+	ttl := time.Duration(priceTTL * float64(time.Second))
+	cached, err := r.blob("markets:prices", &ttl)
 	if err != nil {
 		return nil, err
 	}
@@ -396,7 +402,7 @@ func (r *Resolver) ReferencePrices() (map[int]map[string]float64, error) {
 				"adjusted": j.Float(row["adjusted_price"]),
 			}
 		}
-		_ = r.store.PutBlob("markets:prices", blob)
+		_ = r.putBlob("markets:prices", blob)
 		cached = blob
 	}
 	prices := map[int]map[string]float64{}
@@ -477,4 +483,24 @@ func (r *Resolver) HubQuotes(typeID, regionID int, stationID *int) (map[string]a
 		out["best_buy"] = buys[0]
 	}
 	return out, nil
+}
+
+func (r *Resolver) blob(key string, maxAge *time.Duration) (any, error) {
+	raw, err := r.store.BlobGet(context.Background(), key, maxAge)
+	if err != nil || raw == nil {
+		return nil, err
+	}
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return nil, nil
+	}
+	return v, nil
+}
+
+func (r *Resolver) putBlob(key string, value any) error {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	return r.store.BlobPut(context.Background(), key, raw)
 }

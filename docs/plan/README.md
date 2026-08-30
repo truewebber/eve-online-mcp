@@ -38,9 +38,9 @@ Status values: `todo` · `done` · `later`.
 | [T01](T01-evals-go.md) | Rewrite evals in Go | done | M | — | §4 |
 | [T02](T02-python-out-local-postgres.md) | Remove Python; local Postgres | done | M | T01 | §10 |
 | [T03](T03-adapter-store.md) | `adapter/store` (pgx + migrations) | done | L | T02 | §8, §12.0 |
-| [T04](T04-cache-postgres.md) | ESI cache + names on Postgres | todo | M | T03 | §5.1, §8 |
-| [T05](T05-users-characters.md) | Users, characters, refresh `FOR UPDATE` | todo | L | T03 | §3.3, §8 |
-| [T06](T06-oauth-postgres.md) | OAuth handshake + JWT key in Postgres | todo | L | T05 | §3.1, §8 |
+| [T04](T04-cache-postgres.md) | ESI cache + names on Postgres | done | M | T03 | §5.1, §8 |
+| [T05](T05-users-characters.md) | Users, characters, refresh `FOR UPDATE` | done | L | T03 | §3.3, §8 |
+| [T06](T06-oauth-postgres.md) | OAuth handshake + JWT key in Postgres | done | L | T05 | §3.1, §8 |
 | [T07](T07-guard-drop-datadir.md) | Confirm/mail in Postgres; drop `DATA_DIR` | todo | M | T04 T06 | §4.1, §8, §12.0 |
 | [T08](T08-write-policy-constants.md) | Always-on writes; drop budget + audit | todo | M | T07 | §2, §12.1–2 |
 | [T09](T09-user-esi-bucket.md) | Per-user ESI token bucket | todo | M | T07 | §5.3, §12.3 |

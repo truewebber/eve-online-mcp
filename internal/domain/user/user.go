@@ -12,7 +12,6 @@ import (
 type User struct {
 	ID        string
 	CreatedAt string
-	Dir       string
 }
 
 // NewID returns a random 16-hex-char user id.

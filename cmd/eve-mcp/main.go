@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -8,7 +9,7 @@ import (
 
 	"eve-mcp/internal/adapter/esi"
 	"eve-mcp/internal/adapter/sso"
-	aduser "eve-mcp/internal/adapter/user"
+	"eve-mcp/internal/adapter/store"
 	"eve-mcp/internal/domain/write"
 	httpsvc "eve-mcp/internal/service/http"
 	"eve-mcp/internal/usecase/oauth"
@@ -54,11 +55,16 @@ func main() {
 		ConfirmTTLSeconds:  cfg.ConfirmTTL,
 		AuditFile:          filepath.Join(cfg.DataDir, "audit.jsonl"),
 	}
+	db, err := store.Open(context.Background(), cfg.DatabaseURL)
+	if err != nil {
+		log.Fatal(err)
+	}
 	runtime, err := session.Open(session.Options{
 		DataDir:    cfg.DataDir,
 		UserAgent:  cfg.UserAgent,
 		CorpScopes: cfg.CorpScopes,
 		WriteMode:  cfg.WriteMode,
+		Store:      db,
 		ESI: esi.Options{
 			UserAgent:  cfg.UserAgent,
 			CompatDate: cfg.CompatDate,
@@ -77,10 +83,6 @@ func main() {
 	}
 	defer runtime.Close()
 
-	users, err := aduser.Open(cfg.DataDir)
-	if err != nil {
-		log.Fatal(err)
-	}
 	host := oauth.Host{
 		DataDir:     cfg.DataDir,
 		Listen:      cfg.Listen,
@@ -89,7 +91,7 @@ func main() {
 		CallbackURL: cfg.CallbackURL,
 		WriteMode:   cfg.WriteMode,
 	}
-	oauthServer, err := oauth.Open(host, runtime, users)
+	oauthServer, err := oauth.Open(host, runtime, db)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -137,6 +139,7 @@ Usage:
   eve-mcp uninstall        stop and remove the user service
 
 Required env: CLIENT_ID — the EVE application from developers.eveonline.com.
+DATABASE_URL — Postgres DSN (make postgres). See .env.example.
 See .env.example for the full list. Clients connect to http://127.0.0.1:8765/mcp
 and sign in with their EVE account in the browser.
 `

@@ -76,6 +76,30 @@ func (c *CachedResponse) Fresh() bool {
 	return time.Now().Before(c.ExpiresAt)
 }
 
+func (c *CachedResponse) AgeSeconds() float64 {
+	age := time.Since(c.StoredAt).Seconds()
+	if age < 0 {
+		return 0
+	}
+	return age
+}
+
+func (c *CachedResponse) ExpiresUnix() float64 {
+	return float64(c.ExpiresAt.Unix())
+}
+
+// Data unmarshals Body into the map/slice shape ESI callers already expect.
+func (c *CachedResponse) Data() any {
+	if c == nil || len(c.Body) == 0 {
+		return nil
+	}
+	var v any
+	if err := json.Unmarshal(c.Body, &v); err != nil {
+		return nil
+	}
+	return v
+}
+
 type NameRow struct {
 	ID       int64
 	Name     string

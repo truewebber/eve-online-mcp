@@ -1,6 +1,6 @@
 # T05 — Users, characters, SSO refresh in Postgres
 
-- Status: `todo`
+- Status: `done`
 - Size: L
 - Depends on: T03 (store API). Can land with or after T04.
 - SPEC: §3.2 (refresh + `FOR UPDATE`), §3.3 (user model), §8
@@ -73,13 +73,13 @@ Target:
 
 ## Acceptance
 
-- [ ] No `user.toml` / `tokens.json` reads or writes
-- [ ] No `User.Dir`
-- [ ] Character PK uniqueness covered by a test
-- [ ] Refresh path uses `FOR UPDATE`
-- [ ] MCP login still attaches a character to a user (manual or a
+- [x] No `user.toml` / `tokens.json` reads or writes
+- [x] No `User.Dir`
+- [x] Character PK uniqueness covered by a test
+- [x] Refresh path uses `FOR UPDATE`
+- [x] MCP login still attaches a character to a user (manual or a
       focused test around `ownerOf` + upsert)
-- [ ] `go test ./...` passes
+- [x] `go test ./...` passes
 
 ## Verify
 

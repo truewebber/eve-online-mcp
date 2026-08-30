@@ -36,4 +36,4 @@ gen:
 	$(OAPI_CODEGEN) -config api/http.cfg.yaml api/http.yaml
 
 test-store: postgres
-	DATABASE_URL=$(DATABASE_URL) $(GO) test ./internal/adapter/store -count=1
+	DATABASE_URL=$(DATABASE_URL) $(GO) test ./internal/adapter/store ./internal/adapter/sso ./internal/usecase/oauth -count=1

@@ -54,17 +54,7 @@ func (h *API) GetAuthCallback(w http.ResponseWriter, r *http.Request, _ GetAuthC
 		pageStatus(w, 400, "Bad callback", `<p class=warn>Missing code or state.</p>`)
 		return
 	}
-	sso := h.OAuth.SSOForState(state)
-	if sso == nil {
-		pageStatus(w, 400, "Login failed", `<p class=warn>Unknown or expired login state — start the login again.</p>`)
-		return
-	}
-	token, err := sso.CompleteLogin(code, state)
-	if err != nil {
-		pageStatus(w, 400, "Login failed", `<p class=warn>`+html.EscapeString(err.Error())+`</p>`)
-		return
-	}
-	loc, err := h.OAuth.FinishEVE(state, token)
+	loc, token, err := h.OAuth.CompleteCallback(r.Context(), code, state)
 	if err != nil {
 		pageStatus(w, 400, "Login failed", `<p class=warn>`+html.EscapeString(err.Error())+`</p>`)
 		return

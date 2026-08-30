@@ -1,22 +1,24 @@
 package sso
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"math/big"
 	"net/http"
 	"net/url"
-	"os"
-	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"eve-mcp/internal/adapter/store"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -37,14 +39,14 @@ type Options struct {
 	ClientID     string
 	ClientSecret string
 	CallbackURL  string
-	TokenFile    string
 	UserAgent    string
 	Scopes       []string
+	DB           *store.Store
+	UserID       string // empty = in-memory broker (MCP authorize)
 }
 
 const (
 	refreshMargin = 60 * time.Second
-	loginTTL      = 15 * time.Minute
 )
 
 type Error struct{ Msg string }
@@ -64,171 +66,20 @@ type CharacterToken struct {
 	AccessExpiresAt time.Time
 }
 
-type pendingLogin struct {
-	state     string
-	verifier  string
-	scopes    []string
-	createdAt time.Time
-}
-
-type TokenStore struct {
-	path   string
-	tokens map[int]*CharacterToken
-	mu     sync.Mutex
-}
-
-// OpenStore opens the token file. An empty path keeps tokens in memory only —
-// used by the MCP OAuth login broker, which hands finished tokens to a user store.
-func OpenStore(path string) *TokenStore {
-	s := &TokenStore{path: path, tokens: map[int]*CharacterToken{}}
-	s.load()
-	return s
-}
-
-// ReadCharacterIDs lists character ids stored in a tokens.json without
-// opening a full store. Missing or malformed files yield an empty list.
-func ReadCharacterIDs(path string) []int {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	var payload struct {
-		Characters []struct {
-			CharacterID int `json:"character_id"`
-		} `json:"characters"`
-	}
-	if json.Unmarshal(raw, &payload) != nil {
-		return nil
-	}
-	out := make([]int, 0, len(payload.Characters))
-	for _, c := range payload.Characters {
-		if c.CharacterID != 0 {
-			out = append(out, c.CharacterID)
-		}
-	}
-	return out
-}
-
-func (s *TokenStore) load() {
-	if s.path == "" {
-		return
-	}
-	raw, err := os.ReadFile(s.path)
-	if err != nil {
-		return
-	}
-	var payload struct {
-		Characters []CharacterToken `json:"characters"`
-	}
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		log.Printf("could not read token file %s: %v", s.path, err)
-		return
-	}
-	for i := range payload.Characters {
-		t := payload.Characters[i]
-		if t.CharacterID == 0 || t.RefreshToken == "" {
-			continue
-		}
-		cp := t
-		s.tokens[t.CharacterID] = &cp
-	}
-}
-
-func (s *TokenStore) flush() error {
-	if s.path == "" {
-		return nil
-	}
-	chars := make([]CharacterToken, 0, len(s.tokens))
-	for _, t := range s.tokens {
-		chars = append(chars, CharacterToken{
-			CharacterID: t.CharacterID, CharacterName: t.CharacterName,
-			RefreshToken: t.RefreshToken, Scopes: t.Scopes,
-			OwnerHash: t.OwnerHash, AddedAt: t.AddedAt,
-		})
-	}
-	raw, err := json.MarshalIndent(map[string]any{"version": 1, "characters": chars}, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, s.path)
-}
-
-func (s *TokenStore) Upsert(token *CharacterToken) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if existing := s.tokens[token.CharacterID]; existing != nil {
-		if token.AccessToken == "" {
-			token.AccessToken = existing.AccessToken
-			token.AccessExpiresAt = existing.AccessExpiresAt
-		}
-		if token.AddedAt == 0 {
-			token.AddedAt = existing.AddedAt
-		}
-	}
-	if token.AddedAt == 0 {
-		token.AddedAt = float64(time.Now().Unix())
-	}
-	s.tokens[token.CharacterID] = token
-	return s.flush()
-}
-
-func (s *TokenStore) Remove(id int) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.tokens[id]; !ok {
-		return false
-	}
-	delete(s.tokens, id)
-	_ = s.flush()
-	return true
-}
-
-func (s *TokenStore) Get(id int) *CharacterToken {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.tokens[id]
-}
-
-func (s *TokenStore) All() []*CharacterToken {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := make([]*CharacterToken, 0, len(s.tokens))
-	for _, t := range s.tokens {
-		out = append(out, t)
-	}
-	sort.Slice(out, func(i, j int) bool {
-		return strings.ToLower(out[i].CharacterName) < strings.ToLower(out[j].CharacterName)
-	})
-	return out
-}
-
-func (s *TokenStore) FindByName(name string) *CharacterToken {
-	lowered := strings.ToLower(strings.TrimSpace(name))
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, t := range s.tokens {
-		if strings.ToLower(t.CharacterName) == lowered {
-			return t
-		}
-	}
-	for _, t := range s.tokens {
-		if lowered != "" && strings.Contains(strings.ToLower(t.CharacterName), lowered) {
-			return t
-		}
-	}
-	return nil
+// PreparedLogin is an EVE SSO authorize URL plus the PKCE verifier the
+// callback must present. The caller persists State + Verifier (login_states)
+// so any replica can finish the handshake.
+type PreparedLogin struct {
+	URL      string
+	State    string
+	Verifier string
+	Scopes   []string
 }
 
 type Client struct {
 	opts         Options
 	http         *http.Client
 	Store        *TokenStore
-	pending      map[string]pendingLogin
-	pendingMu    sync.Mutex
 	refreshLocks sync.Map
 	jwks         map[string]any
 	jwksAt       time.Time
@@ -237,18 +88,16 @@ type Client struct {
 
 func New(opts Options, httpClient *http.Client) *Client {
 	return &Client{
-		opts:    opts,
-		http:    httpClient,
-		Store:   OpenStore(opts.TokenFile),
-		pending: map[string]pendingLogin{},
+		opts:  opts,
+		http:  httpClient,
+		Store: newTokenStore(opts.DB, opts.UserID),
 	}
 }
 
-func (c *Client) BuildLogin(scopes []string) (string, string, error) {
+func (c *Client) PrepareLogin(scopes []string) (*PreparedLogin, error) {
 	if c.opts.ClientID == "" {
-		return "", "", Err("EVE CLIENT_ID is not configured on this server.")
+		return nil, Err("EVE CLIENT_ID is not configured on this server.")
 	}
-	c.expirePending()
 	if scopes == nil {
 		scopes = append([]string{}, c.opts.Scopes...)
 	}
@@ -256,11 +105,6 @@ func (c *Client) BuildLogin(scopes []string) (string, string, error) {
 	sum := sha256.Sum256([]byte(verifier))
 	challenge := b64url(sum[:])
 	state := b64url(random(16))
-	c.pendingMu.Lock()
-	c.pending[state] = pendingLogin{
-		state: state, verifier: verifier, scopes: scopes, createdAt: time.Now(),
-	}
-	c.pendingMu.Unlock()
 	q := url.Values{
 		"response_type":         {"code"},
 		"redirect_uri":          {c.opts.CallbackURL},
@@ -270,58 +114,29 @@ func (c *Client) BuildLogin(scopes []string) (string, string, error) {
 		"code_challenge":        {challenge},
 		"code_challenge_method": {"S256"},
 	}
-	return AuthorizeURL + "?" + q.Encode(), state, nil
+	return &PreparedLogin{
+		URL:      AuthorizeURL + "?" + q.Encode(),
+		State:    state,
+		Verifier: verifier,
+		Scopes:   scopes,
+	}, nil
 }
 
-// HasPending reports whether this client started the login with that state.
-func (c *Client) HasPending(state string) bool {
-	c.pendingMu.Lock()
-	defer c.pendingMu.Unlock()
-	_, ok := c.pending[state]
-	return ok
-}
-
-func (c *Client) expirePending() {
-	c.pendingMu.Lock()
-	defer c.pendingMu.Unlock()
-	cutoff := time.Now().Add(-loginTTL)
-	for k, p := range c.pending {
-		if p.createdAt.Before(cutoff) {
-			delete(c.pending, k)
-		}
-	}
-}
-
-func (c *Client) CompleteLogin(code, state string) (*CharacterToken, error) {
-	c.pendingMu.Lock()
-	pending, ok := c.pending[state]
-	if ok {
-		delete(c.pending, state)
-	}
-	c.pendingMu.Unlock()
-	if !ok {
-		return nil, Err("Unknown or expired login state — start the login again.")
-	}
+// ExchangeCode trades an EVE authorization code for tokens. The PKCE
+// verifier comes from the persisted login_states row, not process memory.
+func (c *Client) ExchangeCode(code, verifier string) (*CharacterToken, error) {
 	data := url.Values{
 		"grant_type":    {"authorization_code"},
 		"code":          {code},
 		"client_id":     {c.opts.ClientID},
-		"code_verifier": {pending.verifier},
+		"code_verifier": {verifier},
 		"redirect_uri":  {c.opts.CallbackURL},
 	}
 	payload, err := c.tokenRequest(data, c.opts.ClientID, c.opts.ClientSecret)
 	if err != nil {
 		return nil, err
 	}
-	token, err := c.tokenFromPayload(payload, nil)
-	if err != nil {
-		return nil, err
-	}
-	if err := c.Store.Upsert(token); err != nil {
-		return nil, err
-	}
-	log.Printf("authorized %s (%d) with %d scopes", token.CharacterName, token.CharacterID, len(token.Scopes))
-	return token, nil
+	return c.tokenFromPayload(payload, nil)
 }
 
 func (c *Client) AccessToken(characterID int) (*CharacterToken, error) {
@@ -347,12 +162,38 @@ func (c *Client) AccessToken(characterID int) (*CharacterToken, error) {
 }
 
 func (c *Client) refresh(token *CharacterToken) (*CharacterToken, error) {
-	data := url.Values{
-		"grant_type":    {"refresh_token"},
-		"refresh_token": {token.RefreshToken},
-		"client_id":     {c.opts.ClientID},
+	if c.Store.durable() {
+		return c.refreshLocked(token)
 	}
-	payload, err := c.tokenRequest(data, c.opts.ClientID, c.opts.ClientSecret)
+	return c.refreshMemory(token)
+}
+
+func (c *Client) refreshLocked(token *CharacterToken) (*CharacterToken, error) {
+	var out *CharacterToken
+	err := c.Store.db.WithCharacterForUpdate(context.Background(), int64(token.CharacterID), func(refreshToken string) (string, error) {
+		refreshed, err := c.exchangeRefresh(refreshToken, token)
+		if err != nil {
+			return "", err
+		}
+		out = refreshed
+		return refreshed.RefreshToken, nil
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "invalid_grant") {
+			c.Store.Remove(token.CharacterID)
+			return nil, Err(fmt.Sprintf("Refresh token for %s was revoked or expired. Log this character in again.", token.CharacterName))
+		}
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, Err(fmt.Sprintf("Character %d was removed during refresh.", token.CharacterID))
+		}
+		return nil, err
+	}
+	c.Store.setAccess(out)
+	return out, nil
+}
+
+func (c *Client) refreshMemory(token *CharacterToken) (*CharacterToken, error) {
+	refreshed, err := c.exchangeRefresh(token.RefreshToken, token)
 	if err != nil {
 		if strings.Contains(err.Error(), "invalid_grant") {
 			c.Store.Remove(token.CharacterID)
@@ -360,14 +201,23 @@ func (c *Client) refresh(token *CharacterToken) (*CharacterToken, error) {
 		}
 		return nil, err
 	}
-	refreshed, err := c.tokenFromPayload(payload, token)
-	if err != nil {
-		return nil, err
-	}
 	if err := c.Store.Upsert(refreshed); err != nil {
 		return nil, err
 	}
 	return refreshed, nil
+}
+
+func (c *Client) exchangeRefresh(refreshToken string, fallback *CharacterToken) (*CharacterToken, error) {
+	data := url.Values{
+		"grant_type":    {"refresh_token"},
+		"refresh_token": {refreshToken},
+		"client_id":     {c.opts.ClientID},
+	}
+	payload, err := c.tokenRequest(data, c.opts.ClientID, c.opts.ClientSecret)
+	if err != nil {
+		return nil, err
+	}
+	return c.tokenFromPayload(payload, fallback)
 }
 
 func (c *Client) Revoke(characterID int) {

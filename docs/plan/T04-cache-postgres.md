@@ -1,6 +1,6 @@
 # T04 — ESI HTTP cache + names on Postgres
 
-- Status: `todo`
+- Status: `done`
 - Size: M
 - Depends on: T03
 - SPEC: §5.1 (ETag cache), §8 (`http_cache`, `names`, `blobs`)
@@ -70,11 +70,11 @@ run. Full env cleanup is T07/T11.
 
 ## Acceptance
 
-- [ ] No `modernc.org/sqlite` in `go.mod` if unused
-- [ ] No `cache.sqlite3` path in the repo
-- [ ] Server refuses to start without `DATABASE_URL`
-- [ ] `go test ./internal/adapter/esi ./internal/adapter/store` pass
-- [ ] With Compose + `.env`, `./eve-mcp` boots and `GET /healthz` is ok
+- [x] No `modernc.org/sqlite` in `go.mod` if unused
+- [x] No `cache.sqlite3` path in the repo
+- [x] Server refuses to start without `DATABASE_URL`
+- [x] `go test ./internal/adapter/esi ./internal/adapter/store` pass
+- [x] With Compose + `.env`, `./eve-mcp` boots and `GET /healthz` is ok
 
 ## Verify
 

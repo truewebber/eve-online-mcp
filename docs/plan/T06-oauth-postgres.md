@@ -1,6 +1,6 @@
 # T06 — OAuth handshake state in Postgres
 
-- Status: `todo`
+- Status: `done`
 - Size: L
 - Depends on: T05
 - SPEC: §3.1 (handshake on any replica), §8 (`login_states`,
@@ -79,11 +79,11 @@ Keep JWT TTLs: access 1 h, refresh 30 d, HS256, `sub` = user id.
 
 ## Acceptance
 
-- [ ] No `oauth/hmac.key` or `oauth/clients.json` I/O
-- [ ] `login_states` + `auth_codes` used on authorize / callback / token
-- [ ] Redirect allowlist tests still pass
-- [ ] Alt login state includes `user_id` so a second process can finish it
-- [ ] `go test ./internal/usecase/oauth ./internal/adapter/store` pass
+- [x] No `oauth/hmac.key` or `oauth/clients.json` I/O
+- [x] `login_states` + `auth_codes` used on authorize / callback / token
+- [x] Redirect allowlist tests still pass
+- [x] Alt login state includes `user_id` so a second process can finish it
+- [x] `go test ./internal/usecase/oauth ./internal/adapter/store` pass
 
 ## Verify
 

@@ -21,6 +21,7 @@ const (
 var (
 	errWriteMode = errors.New("WRITE_MODE must be off, confirm or on")
 	errListen    = errors.New("LISTEN must be host:port")
+	errDatabase  = errors.New("DATABASE_URL is required (Postgres DSN; run make postgres)")
 )
 
 // config is the process config for cmd/eve-mcp only.
@@ -36,6 +37,7 @@ type config struct {
 	InternalListen string `env:"INTERNAL_LISTEN"`
 	PublicURL      string `env:"PUBLIC_URL"`
 	DataDir        string `env:"DATA_DIR"`
+	DatabaseURL    string `env:"DATABASE_URL"`
 
 	WriteMode       string `env:"WRITE_MODE"`
 	WriteAllow      string `env:"WRITE_ALLOW"`
@@ -86,6 +88,9 @@ func loadConfig() (config, error) {
 }
 
 func (c *config) validate() error {
+	if c.DatabaseURL == "" {
+		return errDatabase
+	}
 	if c.WriteMode != "off" && c.WriteMode != "confirm" && c.WriteMode != "on" {
 		return errWriteMode
 	}

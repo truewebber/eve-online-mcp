@@ -6,15 +6,14 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"eve-mcp/internal/adapter/cache"
 	"eve-mcp/internal/adapter/esi"
 	"eve-mcp/internal/adapter/names"
 	"eve-mcp/internal/adapter/sso"
+	"eve-mcp/internal/adapter/store"
 	"eve-mcp/internal/domain/character"
 	"eve-mcp/internal/domain/j"
 	"eve-mcp/internal/domain/write"
@@ -31,12 +30,13 @@ type Options struct {
 	ESI               esi.Options
 	SSO               sso.Options
 	Write             write.Options
+	Store             *store.Store
 }
 
 type Session struct {
 	Opts     Options
 	HTTP     *http.Client
-	Store    *cache.Store
+	Store    *store.Store
 	SSO      *sso.Client
 	ESI      *esi.Client
 	Resolver *names.Resolver
@@ -44,6 +44,9 @@ type Session struct {
 }
 
 func Open(opts Options) (*Session, error) {
+	if opts.Store == nil {
+		return nil, fmt.Errorf("session: postgres store is required")
+	}
 	if opts.RequestTimeoutSec <= 0 {
 		opts.RequestTimeoutSec = 30
 	}
@@ -57,29 +60,26 @@ func Open(opts Options) (*Session, error) {
 			MaxIdleConnsPerHost: opts.MaxConcurrency * 2,
 		},
 	}
-	store, err := cache.Open(filepath.Join(opts.DataDir, "cache.sqlite3"))
-	if err != nil {
-		return nil, err
+	if n, err := opts.Store.PurgeExpired(context.Background()); err == nil && n > 0 {
+		log.Printf("purged %d expired store rows", n)
 	}
-	if n, err := store.PurgeExpired(30); err == nil && n > 0 {
-		log.Printf("purged %d stale cache rows", n)
-	}
+	opts.SSO.DB = opts.Store
 	ssoClient := sso.New(opts.SSO, httpClient)
-	esiClient := esi.New(opts.ESI, httpClient, store, ssoClient)
+	esiClient := esi.New(opts.ESI, httpClient, opts.Store, ssoClient)
 	return &Session{
 		Opts:     opts,
 		HTTP:     httpClient,
-		Store:    store,
+		Store:    opts.Store,
 		SSO:      ssoClient,
 		ESI:      esiClient,
-		Resolver: names.New(esiClient, store),
+		Resolver: names.New(esiClient, opts.Store),
 		Guard:    write.NewGuard(opts.Write),
 	}, nil
 }
 
 func (s *Session) Close() {
 	if s.Store != nil {
-		_ = s.Store.Close()
+		s.Store.Close()
 	}
 }
 
@@ -97,14 +97,12 @@ func From(ctx context.Context) (*Session, error) {
 	return s, nil
 }
 
-// ForUser returns a Session bound to one user's directory. The EVE
-// application credentials stay the process ones; only the token store and
-// the audit log move under users/{id}/. HTTP cache is shared.
-func (s *Session) ForUser(dataDir string) *Session {
+// ForUser returns a Session bound to one user's character tokens. The EVE
+// application credentials stay the process ones; HTTP cache is shared.
+func (s *Session) ForUser(userID string) *Session {
 	opts := s.Opts
-	opts.DataDir = dataDir
-	opts.SSO.TokenFile = filepath.Join(dataDir, "tokens.json")
-	opts.Write.AuditFile = filepath.Join(dataDir, "audit.jsonl")
+	opts.SSO.DB = s.Store
+	opts.SSO.UserID = userID
 	ssoClient := sso.New(opts.SSO, s.HTTP)
 	esiClient := esi.New(opts.ESI, s.HTTP, s.Store, ssoClient)
 	return &Session{
@@ -116,6 +114,29 @@ func (s *Session) ForUser(dataDir string) *Session {
 		Resolver: names.New(esiClient, s.Store),
 		Guard:    write.NewGuard(opts.Write),
 	}
+}
+
+// StartAltLogin begins an EVE SSO handshake for an extra character on
+// this user. The PKCE verifier is stored in login_states with kind=alt
+// so any replica can finish the callback.
+func (s *Session) StartAltLogin(ctx context.Context) (loginURL, state string, err error) {
+	if s.Opts.SSO.UserID == "" {
+		return "", "", sso.Err("This request is not tied to an EVE login. Re-authenticate the MCP server (Authentication required) and try again.")
+	}
+	prep, err := s.SSO.PrepareLogin(nil)
+	if err != nil {
+		return "", "", err
+	}
+	if err := s.Store.PutLoginState(ctx, store.LoginState{
+		State:        prep.State,
+		PKCEVerifier: prep.Verifier,
+		Scopes:       prep.Scopes,
+		Kind:         store.LoginAlt,
+		UserID:       s.Opts.SSO.UserID,
+	}); err != nil {
+		return "", "", err
+	}
+	return prep.URL, prep.State, nil
 }
 
 func (s *Session) DomainToken(tok *sso.CharacterToken) *character.Token {

@@ -2,6 +2,7 @@ package esi
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -17,8 +18,8 @@ import (
 	"sync"
 	"time"
 
-	"eve-mcp/internal/adapter/cache"
 	"eve-mcp/internal/adapter/sso"
+	"eve-mcp/internal/adapter/store"
 	"eve-mcp/internal/domain/j"
 )
 
@@ -81,7 +82,7 @@ func (r Result) StaleNote() string {
 type Client struct {
 	opts         Options
 	http         *http.Client
-	store        *cache.Store
+	store        *store.Store
 	sso          *sso.Client
 	sem          chan struct{}
 	errorRemain  int
@@ -89,7 +90,7 @@ type Client struct {
 	errorMu      sync.Mutex
 }
 
-func New(opts Options, httpClient *http.Client, store *cache.Store, ssoClient *sso.Client) *Client {
+func New(opts Options, httpClient *http.Client, db *store.Store, ssoClient *sso.Client) *Client {
 	if opts.BaseURL == "" {
 		opts.BaseURL = DefaultBaseURL
 	}
@@ -99,7 +100,7 @@ func New(opts Options, httpClient *http.Client, store *cache.Store, ssoClient *s
 	return &Client{
 		opts:        opts,
 		http:        httpClient,
-		store:       store,
+		store:       db,
 		sso:         ssoClient,
 		sem:         make(chan struct{}, opts.MaxConcurrency),
 		errorRemain: 100,
@@ -284,13 +285,14 @@ func (c *Client) headers(characterID *int) (http.Header, error) {
 }
 
 func (c *Client) cachedGet(path string, characterID *int, params map[string]any, cacheTTL *float64) (Result, error) {
+	ctx := context.Background()
 	key := c.cacheKey(path, characterID, params)
-	cached, err := c.store.GetHTTP(key)
+	cached, err := c.store.CacheGet(ctx, key)
 	if err != nil {
 		return Result{}, err
 	}
 	if cached != nil && cached.Fresh() {
-		return Result{Data: cached.Body, FromCache: true, AgeSeconds: cached.AgeSeconds(), ExpiresAt: cached.ExpiresAt, Pages: cached.Pages}, nil
+		return Result{Data: cached.Data(), FromCache: true, AgeSeconds: cached.AgeSeconds(), ExpiresAt: cached.ExpiresUnix(), Pages: cached.Pages}, nil
 	}
 	h, err := c.headers(characterID)
 	if err != nil {
@@ -308,20 +310,26 @@ func (c *Client) cachedGet(path string, characterID *int, params map[string]any,
 
 	if resp.StatusCode == http.StatusNotModified && cached != nil {
 		expiresAt := expiresAt(resp, cacheTTL)
-		_ = c.store.TouchHTTP(key, expiresAt)
-		return Result{Data: cached.Body, FromCache: true, AgeSeconds: 0, ExpiresAt: expiresAt, Pages: cached.Pages}, nil
+		_ = c.store.CacheTouch(ctx, key, unixTime(expiresAt))
+		return Result{Data: cached.Data(), FromCache: true, AgeSeconds: 0, ExpiresAt: expiresAt, Pages: cached.Pages}, nil
 	}
 	if resp.StatusCode >= 400 {
 		if cached != nil && resp.StatusCode >= 500 && resp.StatusCode < 600 {
 			log.Printf("%s returned %d, serving stale cache", path, resp.StatusCode)
-			return Result{Data: cached.Body, FromCache: true, AgeSeconds: cached.AgeSeconds(), ExpiresAt: cached.ExpiresAt, Pages: cached.Pages}, nil
+			return Result{Data: cached.Data(), FromCache: true, AgeSeconds: cached.AgeSeconds(), ExpiresAt: cached.ExpiresUnix(), Pages: cached.Pages}, nil
 		}
 		return Result{}, httpError(resp.StatusCode, bodyBytes, path)
 	}
 	decoded := decode(resp.StatusCode, bodyBytes)
 	pages := intHeader(resp, "X-Pages")
 	expires := expiresAt(resp, cacheTTL)
-	_ = c.store.PutHTTP(key, decoded, resp.Header.Get("ETag"), expires, pages)
+	raw, err := json.Marshal(decoded)
+	if err != nil {
+		return Result{}, err
+	}
+	_ = c.store.CachePut(ctx, key, store.CachedResponse{
+		Body: raw, ETag: resp.Header.Get("ETag"), ExpiresAt: unixTime(expires), Pages: pages,
+	})
 	return Result{Data: decoded, FromCache: false, AgeSeconds: 0, ExpiresAt: expires, Pages: pages}, nil
 }
 
@@ -539,6 +547,10 @@ func expiresAt(resp *http.Response, fallback *float64) float64 {
 		*ttl = maxCacheTTL
 	}
 	return float64(time.Now().Unix()) + *ttl
+}
+
+func unixTime(unix float64) time.Time {
+	return time.Unix(int64(unix), 0).UTC()
 }
 
 func headerDate(resp *http.Response, name string) *time.Time {

@@ -21,20 +21,17 @@ func openTest(t *testing.T) *Store {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(s.Close)
-	reset(t, s)
-	return s
-}
-
-func reset(t *testing.T, s *Store) {
-	t.Helper()
-	_, err := s.pool.Exec(context.Background(), `
-		TRUNCATE mail_log, confirm_tokens, auth_codes, login_states,
-		         oauth_clients, http_cache, names, blobs, app_secrets,
-		         characters, users CASCADE`)
+	release, err := s.HoldTestLock(ctx)
 	if err != nil {
+		s.Close()
 		t.Fatal(err)
 	}
+	t.Cleanup(s.Close)
+	t.Cleanup(release)
+	if err := s.ResetTables(ctx); err != nil {
+		t.Fatal(err)
+	}
+	return s
 }
 
 func TestCreateUserAndGet(t *testing.T) {
@@ -44,7 +41,7 @@ func TestCreateUserAndGet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if u.ID == "" || u.Dir != "" {
+	if u.ID == "" {
 		t.Fatalf("user %+v", u)
 	}
 	got, err := s.GetUser(ctx, u.ID)
@@ -347,6 +344,19 @@ func TestLoginStateAndPurge(t *testing.T) {
 	_, ok, err = s.GetLoginState(ctx, "st")
 	if err != nil || ok {
 		t.Fatalf("expired login still visible")
+	}
+	if err := s.PutLoginState(ctx, LoginState{
+		State: "once", PKCEVerifier: "v2", Kind: LoginMCP,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err = s.TakeLoginState(ctx, "once")
+	if err != nil || !ok || got.Kind != LoginMCP {
+		t.Fatalf("take %+v ok %v err %v", got, ok, err)
+	}
+	_, ok, err = s.TakeLoginState(ctx, "once")
+	if err != nil || ok {
+		t.Fatalf("second take ok=%v err=%v", ok, err)
 	}
 	if err := s.PutAuthCode(ctx, AuthCode{
 		Code: "oldc", UserID: u.ID, MCPClientID: "c", RedirectURI: "r", CodeChallenge: "h",

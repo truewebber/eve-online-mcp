@@ -92,6 +92,25 @@ func (s *Store) DeleteLoginState(ctx context.Context, state string) error {
 	return err
 }
 
+// TakeLoginState deletes the row and returns it so a callback is one-shot
+// across replicas. Expired rows are discarded.
+func (s *Store) TakeLoginState(ctx context.Context, state string) (*LoginState, bool, error) {
+	st, err := scanLogin(s.pool.QueryRow(ctx, `
+		DELETE FROM login_states WHERE state = $1
+		RETURNING state, pkce_verifier, scopes, kind, user_id,
+		          mcp_client_id, redirect_uri, mcp_state, code_challenge, created_at`, state))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	if time.Since(st.CreatedAt) > LoginStateTTL {
+		return nil, false, nil
+	}
+	return st, true, nil
+}
+
 func (s *Store) PutAuthCode(ctx context.Context, c AuthCode) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO auth_codes (code, user_id, mcp_client_id, redirect_uri, code_challenge, expires_at)

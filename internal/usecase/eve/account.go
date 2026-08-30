@@ -84,7 +84,7 @@ func registerAccount(s *mcp.Server, a *session.Session) {
 		Description: "Generate an EVE SSO link the user must open to authorize a character.\n\nYou cannot complete this yourself — hand the URL to the user. They log in with their EVE account, approve the scope list, and the server stores the resulting token. One-time per character; several characters can be authorized by repeating it.\n\nReturns: login_url, scope_count, write_capabilities_requested, corporation_scopes_requested, instructions.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
 		return Call(ctx, func(a *session.Session) (any, error) {
-			url, state, err := a.SSO.BuildLogin(nil)
+			url, state, err := a.StartAltLogin(ctx)
 			if err != nil {
 				return nil, err
 			}
