@@ -37,7 +37,7 @@ func registerIndustry(s *mcp.Server) {
 				return nil, err
 			}
 
-			return industryJobsResult(a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, 20), concise(in.ResponseFormat), false)
+			return industryJobsResult(a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, 20), concise(in.ResponseFormat), false), nil
 		})
 	})
 
@@ -208,13 +208,13 @@ func registerIndustry(s *mcp.Server) {
 	})
 }
 
-func industryJobsResult(a *session.Session, character string, cid int, data any, stale string, limit int, conciseMode, withInstaller bool) (map[string]any, error) {
+func industryJobsResult(a *session.Session, character string, cid int, data any, stale string, limit int, conciseMode, withInstaller bool) map[string]any {
 	jobs := j.Maps(data)
 	if len(jobs) == 0 {
 		return map[string]any{
 			"character": character, "jobs": []any{},
 			"note": "No industry jobs. Pass include_completed=true to see finished ones.",
-		}, nil
+		}
 	}
 	idSet := map[int]struct{}{}
 	placeSet := map[int]struct{}{}
@@ -286,7 +286,7 @@ func industryJobsResult(a *session.Session, character string, cid int, data any,
 	return merge(map[string]any{
 		"character": character, "active_jobs": active, "ready_to_deliver": readyN,
 		"data_age": stale, "jobs": project(visible, keep, conciseMode),
-	}, meta), nil
+	}, meta)
 }
 
 func activityName(id int) string {

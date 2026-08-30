@@ -500,10 +500,7 @@ func registerCorp(s *mcp.Server) {
 			if err != nil {
 				return nil, err
 			}
-			out, err := industryJobsResult(a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), limitOr(in.Limit, 20), concise(in.ResponseFormat), true)
-			if err != nil {
-				return nil, err
-			}
+			out := industryJobsResult(a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), limitOr(in.Limit, 20), concise(in.ResponseFormat), true)
 
 			return merge(who(corp), out), nil
 		})
@@ -582,10 +579,7 @@ func registerCorp(s *mcp.Server) {
 				return nil, err
 			}
 			divs := corpDivisions(a, corp)
-			out, err := formatOrders(a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), limitOr(in.Limit, 25), concise(in.ResponseFormat), divs["wallet"])
-			if err != nil {
-				return nil, err
-			}
+			out := formatOrders(a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), limitOr(in.Limit, 25), concise(in.ResponseFormat), divs["wallet"])
 
 			return merge(who(corp), out), nil
 		})
@@ -610,10 +604,7 @@ func registerCorp(s *mcp.Server) {
 			if err != nil {
 				return nil, err
 			}
-			out, err := formatContracts(a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), limitOr(in.Limit, 15), concise(in.ResponseFormat), true)
-			if err != nil {
-				return nil, err
-			}
+			out := formatContracts(a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), limitOr(in.Limit, 15), concise(in.ResponseFormat), true)
 
 			return merge(who(corp), out), nil
 		})

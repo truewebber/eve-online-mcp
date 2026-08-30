@@ -128,7 +128,7 @@ func registerMarket(s *mcp.Server) {
 				return nil, err
 			}
 
-			return formatOrders(a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, 25), concise(in.ResponseFormat), nil)
+			return formatOrders(a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, 25), concise(in.ResponseFormat), nil), nil
 		})
 	})
 
@@ -156,7 +156,7 @@ func registerMarket(s *mcp.Server) {
 				return nil, err
 			}
 
-			return formatContracts(a, token.CharacterName, cid, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), limitOr(in.Limit, 15), concise(in.ResponseFormat), false)
+			return formatContracts(a, token.CharacterName, cid, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), limitOr(in.Limit, 15), concise(in.ResponseFormat), false), nil
 		})
 	})
 }
@@ -201,10 +201,10 @@ func marketHistory(a *session.Session, typeID, regionID, days int) (map[string]a
 	}, nil
 }
 
-func formatOrders(a *session.Session, character string, cid int, data any, stale string, limit int, conciseMode bool, walletNames map[int]string) (map[string]any, error) {
+func formatOrders(a *session.Session, character string, cid int, data any, stale string, limit int, conciseMode bool, walletNames map[int]string) map[string]any {
 	orders := j.Maps(data)
 	if len(orders) == 0 {
-		return map[string]any{"character": character, "orders": []any{}, "note": "No open market orders."}, nil
+		return map[string]any{"character": character, "orders": []any{}, "note": "No open market orders."}
 	}
 	typeSet, placeSet := map[int]struct{}{}, map[int]struct{}{}
 	for _, o := range orders {
@@ -269,10 +269,10 @@ func formatOrders(a *session.Session, character string, cid int, data any, stale
 		"character": character, "open_orders": len(rows),
 		"sell_side_value": isk(sellValue), "buy_escrow_locked": isk(buyEscrow),
 		"data_age": stale, "orders": project(visible, keep, conciseMode),
-	}, meta), nil
+	}, meta)
 }
 
-func formatContracts(a *session.Session, character string, cid int, data any, stale string, outstandingOnly bool, limit int, conciseMode, corp bool) (map[string]any, error) {
+func formatContracts(a *session.Session, character string, cid int, data any, stale string, outstandingOnly bool, limit int, conciseMode, corp bool) map[string]any {
 	contracts := j.Maps(data)
 	if outstandingOnly {
 		var filtered []map[string]any
@@ -292,7 +292,7 @@ func formatContracts(a *session.Session, character string, cid int, data any, st
 			note = "No outstanding corporation contracts. Pass outstanding_only=false to include finished and expired ones."
 		}
 
-		return map[string]any{"character": character, "contracts": []any{}, "note": note}, nil
+		return map[string]any{"character": character, "contracts": []any{}, "note": note}
 	}
 	idSet := map[int]struct{}{}
 	for _, c := range contracts {
@@ -335,7 +335,7 @@ func formatContracts(a *session.Session, character string, cid int, data any, st
 	return merge(map[string]any{
 		"character": character, "total": len(rows), "outstanding": outstanding,
 		"data_age": stale, "contracts": project(visible, keep, conciseMode),
-	}, meta), nil
+	}, meta)
 }
 
 func nilIfZero(v any) any {
