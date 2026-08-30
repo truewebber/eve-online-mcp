@@ -41,6 +41,11 @@ one — moves the connection there, and the previous one is signed out.
 Taking a character from Cursor to Claude is just logging in from
 Claude.
 
+A sign-in lasts a month. After that — or if the player revokes the
+service on EVE's own "authorized apps" page — the assistant says
+**Authentication required** again and one browser login brings it back.
+That is the same minute from step 2, never a new setup.
+
 From that moment the assistant has the character's full EVE API: it
 reads anything the character can see, and it can perform the in-game
 actions the API offers — each one only after the player confirms it in
@@ -93,7 +98,9 @@ decides — a line member sees nothing the game would not show them.
 - save and delete ship fittings;
 - tidy the mailbox (mark read, labels, delete);
 - respond to calendar invitations;
-- send EVE mail to other players;
+- send EVE mail to other players — some recipients charge ISK to
+  receive mail, so the confirmation names that charge and nothing is
+  paid unless the player approves that exact amount;
 - add, edit and remove contacts and standings.
 
 Reading never asks permission. Every **change** follows the same ritual:
@@ -127,7 +134,13 @@ again; connecting an alt alongside means one more server entry.
   application on one address. Each connected character gets a generous
   request allowance — sized so it is never felt in a normal
   conversation, but a looping assistant cannot lock the whole friend
-  group out of the API.
+  group out of the API. Mistakes are metered the same way: an assistant
+  that keeps asking for something the game refuses spends that
+  character's own error budget, not the household's.
+- **Use any assistant they like.** A client can only sign in if the host
+  allows its login callback. Cursor and Claude work out of the box;
+  anything else is one line of configuration on the host's side, and
+  until then that client's sign-in is refused rather than half-working.
 - **Act on someone else's words.** A hostile in-game mail saying "forward
   this to your corp" is content to summarise, not an instruction to
   follow.
@@ -179,4 +192,6 @@ again; connecting an alt alongside means one more server entry.
 - "How am I doing in EVE?" gets one useful paragraph instead of ten
   minutes of alt-tabbing.
 - Zero unintended in-game changes — nothing mutates without an explicit
-  player confirmation for that exact action.
+  player confirmation for that exact action. The server keeps an audit
+  log of every in-game change it attempted, so this is something the
+  host can check rather than hope for.

@@ -5,10 +5,11 @@ CCP's official ESI API, plus guarded write access back into the game.
 
 The instance owns one EVE application. Players never register anything:
 they add one URL in Cursor / Claude, hit **Authentication required**, and
-sign in with their EVE account in the browser. Each player sees only their
-own characters.
+sign in with their EVE account in the browser. A connection *is* the
+character picked at that login: it reads and acts as that character and
+nothing else. An alt is a second server entry with its own sign-in.
 
-35 tools: assets, wallet, skills, industry, PI, market, contracts, mail,
+50 tools: assets, wallet, skills, industry, PI, market, contracts, mail,
 killmails, routes, live hub prices. Plus guarded writes: waypoints, in-client
 windows, fittings, mail, contacts. Corporation hangars, wallets and jobs
 are always registered; in-game roles are the only gate.
@@ -40,6 +41,8 @@ dir):
 
 ```bash
 CLIENT_ID=...                # required, from step 1
+DATABASE_URL=postgres://...  # required, the only durable store
+HMAC_KEY=...                 # required, openssl rand -hex 32
 CONTACT=you@example.com      # identifies you to CCP
 ```
 
@@ -57,8 +60,10 @@ That copies the binary to `~/.local/bin/eve-mcp` and starts a user service
 
 The only thing a client needs is the URL. The first connection returns `401`
 and Cursor / Claude show **Authentication required** — the browser goes
-straight to the EVE login, the player picks a character, done. More
-characters: `eve_auth_login_url` from the chat, or sign in again.
+straight to the EVE login, the player picks a character, done. A second
+character is a second entry in the client, signed in separately; signing
+the same character in from somewhere else moves the connection there and
+signs the old one out. A sign-in lasts 30 days.
 
 **Cursor** — `~/.cursor/mcp.json`:
 
@@ -98,11 +103,18 @@ characters.
 
 `/healthz` (and metrics, when added) are served on `INTERNAL_LISTEN`
 (default `127.0.0.1:8766`) — point k8s probes there, never route it
-publicly.
+publicly. Under Kubernetes both listeners need `0.0.0.0:{port}`, or the
+kubelet cannot reach the probe. Any number of replicas works — all
+durable state is in Postgres — but caches and rate counters live in each
+pod, so above one replica hash `/mcp` onto pods by the `Authorization`
+header to keep a character on one pod. Replicas buy failover and rolling
+updates, not ESI headroom: CCP's error limit is per IP.
 
 If ESI returns `420` / error-limit headers, tools answer
 `kind: EsiRateLimited` with `retry_at` and `retry_after_seconds`. Wait
-until then. The bucket is per public IP.
+until then. Each character also has its own request allowance and error
+budget, so one looping assistant slows itself down rather than the
+household; those refusals come back as `kind: UserRateLimited`.
 
 ---
 
@@ -113,7 +125,7 @@ training in a single call.
 
 | Domain | Tools |
 |---|---|
-| Account | `eve_auth_status` `eve_auth_login_url` `eve_auth_logout` `eve_server_status` `eve_character_overview` |
+| Account | `eve_auth_status` `eve_auth_logout` `eve_server_status` `eve_character_overview` |
 | Character | `eve_character_skills` `eve_character_skill_queue` `eve_character_clones` `eve_character_standings` |
 | Assets | `eve_assets_list` `eve_assets_find` `eve_assets_blueprints` |
 | Wallet | `eve_wallet_history` |
@@ -138,7 +150,9 @@ user, get an explicit yes, then call again with the same arguments plus the
 token.
 
 Outgoing mail is capped at 5 per rolling hour. There is no general write
-budget.
+budget. Every attempted change — successful or not — is appended to an
+audit log in Postgres, so "what did the assistant actually do" is a SQL
+query, not a guess.
 
 The server cannot fly, shoot, click or trade. ESI grants no control over the
 game client. `waypoint` and `openwindow` work only while the EVE client is
@@ -158,13 +172,15 @@ Env only — process environment, or a `.env` in the working directory
 | `CLIENT_SECRET` | empty | confidential applications only |
 | `LISTEN` | `127.0.0.1:8765` | public bind address (MCP + OAuth) |
 | `INTERNAL_LISTEN` | `127.0.0.1:8766` | healthz / metrics; never route publicly |
-| `PUBLIC_URL` | empty | public base URL (sets the SSO callback) |
+| `PUBLIC_URL` | empty | public base URL (sets the SSO callback); must be HTTPS unless loopback |
+| `EXTRA_REDIRECT_URIS` | empty | extra exact OAuth callbacks, for a client beyond Cursor / Claude |
 | `DATABASE_URL` | — | **required**, Postgres DSN (`make postgres`) |
+| `HMAC_KEY` | — | **required**, MCP JWT signing key, min 32 bytes (`openssl rand -hex 32`) |
 
 Refresh tokens are access to the EVE account; they live in Postgres.
-Default listen is loopback. Revoke access
-with `eve_auth_logout` or from
-[authorized-apps](https://developers.eveonline.com/authorized-apps).
+Default listen is loopback. Revoke access with `eve_auth_logout` or from
+[authorized-apps](https://developers.eveonline.com/authorized-apps) —
+either way the connection dies and the client asks for a new sign-in.
 
 ---
 
@@ -176,3 +192,36 @@ go build -o eve-mcp ./cmd/eve-mcp
 ./eve-mcp                         # foreground, reads ./.env or the environment
 go run ./evals all                # lint + smoke; needs EVE_MCP_TOKEN
 ```
+
+The server is a Go binary on the host. Postgres is Compose-only — do not
+put the app in Compose, and do not run `docker compose down -v`: that
+deletes the `eve-mcp-pg` volume. `make down` stops Postgres and keeps it.
+
+Nothing reloads in place. Rebuild, then restart — after `./eve-mcp
+install`, that is `launchctl kickstart -k gui/$(id -u)/eve-mcp`.
+
+The repo is local-only and has no git remote on purpose.
+
+### Where the contracts live
+
+`docs/` is normative and the code follows it, not the other way round.
+Read the relevant one before changing behaviour; a change lands in the
+same commit as its document.
+
+| Document | Owns |
+|---|---|
+| [docs/PRD.md](docs/PRD.md) | what the product promises a player |
+| [docs/SPEC.md](docs/SPEC.md) | how it is built; §12 is the remaining work |
+| [docs/TOOLS.md](docs/TOOLS.md) | every tool: description, parameters, bounds |
+| [docs/ESI.md](docs/ESI.md) | every ESI endpoint the server may call |
+| [docs/AUTH.md](docs/AUTH.md) | every credential: where it travels, where it rests |
+| [docs/DB.md](docs/DB.md) | the schema, its TTLs and sweeps |
+
+Four invariants are worth knowing before you read any of them, because
+breaking one regresses the server in ways the tests will not catch:
+tools return JSON as `TextContent` with **no** typed output schema
+(a typed `Out` drops undeclared keys); every mutating tool goes through
+`write.Guard` for the confirm cycle, the mail cap and the audit row; all
+ESI traffic goes through `adapter/esi.Client`, never a bare
+`http.Client`; and numeric bounds belong in `patchBounds`, never in a
+`jsonschema` tag, whose entire text the model reads as prose.

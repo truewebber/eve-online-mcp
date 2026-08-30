@@ -1,5 +1,12 @@
 # Implementation plan
 
+> **Superseded — being re-sliced.** This board was written against an
+> earlier SPEC. The current remaining work is [SPEC.md](../SPEC.md) §12,
+> which supersedes T11 and T12 and adds items this board never had
+> (sessions, audit log, re-authentication, per-character error budget).
+> T01–T10 are done and stay done. Do not pick work from the table below
+> until it has been rebuilt from §12.
+
 Composer-sized slices that take the current Go binary to the target in
 [SPEC.md](../SPEC.md). Product intent is [PRD.md](../PRD.md). Tool and
 ESI contracts are [TOOLS.md](../TOOLS.md) and [ESI.md](../ESI.md).
@@ -20,8 +27,8 @@ Status values: `todo` · `done` · `later`.
 ## Composer rules (every task)
 
 - Code, comments, docs, commit messages: **English only**.
-- Follow [SPEC.md](../SPEC.md) and this task file, not stale comments in
-  `CLAUDE.md` / `README.md` (those catch up in T11).
+- Follow [SPEC.md](../SPEC.md) and this task file. `docs/` is normative;
+  `README.md` describes the repo, not the contract.
 - Import direction stays `service → usecase → adapter|domain`.
 - Process config lives only in `cmd/eve-mcp/config.go` (`package main`).
 - Do not add typed MCP output schemas.

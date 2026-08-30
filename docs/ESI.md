@@ -17,8 +17,9 @@ SSO endpoints are documented in the official
 
 Base URL: `https://esi.evetech.net`. Every request carries an
 identifying `User-Agent` and the pinned `X-Compatibility-Date`
-(SPEC §9). GETs go through the ETag/Postgres cache; all traffic goes
-through `internal/adapter/esi.Client` — never a bare `http.Client`.
+(SPEC §9). GETs go through the in-memory ETag cache (SPEC §5.1 — there
+are no cache tables in Postgres); all traffic goes through
+`internal/adapter/esi.Client` — never a bare `http.Client`.
 
 Explorer links use the operation anchor:
 `https://developers.eveonline.com/api-explorer#/operations/{OperationId}`.
@@ -48,6 +49,14 @@ Explorer links use the operation anchor:
 
 Scope names are the exact grant requested at EVE login
 (`internal/domain/write/policy.go`).
+
+Seven requested read scopes have no row in this document, because no
+tool calls their endpoints yet: `read_agents_research`, `read_fatigue`,
+`read_fw_stats`, `read_medals`, `read_titles`, `fleets.read_fleet`,
+`markets.structure_markets`. Asking for them up front is deliberate
+(SPEC §4.2): a scope added later signs every player out (SPEC §3.5).
+The rule below is about endpoints, not scopes — a scope may sit unused,
+an endpoint may not be called without a row here.
 
 | Method & path | Scope | Used by (tool / repo source) | Official docs |
 |---|---|---|---|
@@ -120,7 +129,7 @@ Role gates per SPEC §4.2. Note CCP's inconsistency: mining lives under
 | `DELETE /characters/{id}/fittings/{fitting_id}` | `esi-fittings.write_fittings.v1` | `eve_fitting_delete` — `usecase/eve/writes.go` | [DeleteCharactersCharacterIdFittingsFittingId](https://developers.eveonline.com/api-explorer#/operations/DeleteCharactersCharacterIdFittingsFittingId) |
 | `PUT /characters/{id}/mail/{mail_id}` | `esi-mail.organize_mail.v1` | `eve_mail_mark` — `usecase/eve/writes.go` | [PutCharactersCharacterIdMailMailId](https://developers.eveonline.com/api-explorer#/operations/PutCharactersCharacterIdMailMailId) |
 | `DELETE /characters/{id}/mail/{mail_id}` | `esi-mail.organize_mail.v1` | `eve_mail_delete` — `usecase/eve/writes.go` | [DeleteCharactersCharacterIdMailMailId](https://developers.eveonline.com/api-explorer#/operations/DeleteCharactersCharacterIdMailMailId) |
-| `POST /characters/{id}/mail` | `esi-mail.send_mail.v1` | `eve_mail_send` (per-user hourly cap) — `usecase/eve/writes.go` | [PostCharactersCharacterIdMail](https://developers.eveonline.com/api-explorer#/operations/PostCharactersCharacterIdMail) |
+| `POST /characters/{id}/mail` | `esi-mail.send_mail.v1` | `eve_mail_send` (per-character hourly cap) — `usecase/eve/writes.go` | [PostCharactersCharacterIdMail](https://developers.eveonline.com/api-explorer#/operations/PostCharactersCharacterIdMail) |
 | `POST /characters/{id}/contacts` | `esi-characters.write_contacts.v1` | `eve_contacts_set` (add) — `usecase/eve/writes.go` | [PostCharactersCharacterIdContacts](https://developers.eveonline.com/api-explorer#/operations/PostCharactersCharacterIdContacts) |
 | `PUT /characters/{id}/contacts` | `esi-characters.write_contacts.v1` | `eve_contacts_set` (update) — `usecase/eve/writes.go` | [PutCharactersCharacterIdContacts](https://developers.eveonline.com/api-explorer#/operations/PutCharactersCharacterIdContacts) |
 | `DELETE /characters/{id}/contacts` | `esi-characters.write_contacts.v1` | `eve_contacts_delete` — `usecase/eve/writes.go` | [DeleteCharactersCharacterIdContacts](https://developers.eveonline.com/api-explorer#/operations/DeleteCharactersCharacterIdContacts) |
@@ -149,5 +158,10 @@ the SSO). Documented in the official SSO guide.
   `GET /universe/groups/{group_id}`.
 - Error-limit headers (`X-Esi-Error-Limit-Remain/Reset`) are honoured on
   every response; `420`/`429` handling per SPEC §5.1.
-- Page caps per call site are part of this contract (they bound worst
-  case cost of one tool call against the per-user allowance).
+- Every response with status ≥ 400 is charged to the character whose
+  tool call produced it (SPEC §5.3). An endpoint that a character's
+  in-game roles do not allow costs them their own error budget, not the
+  instance's.
+- Page caps per call site are part of this contract (they bound the
+  worst-case cost of one tool call against the per-character allowance,
+  SPEC §5.2).
