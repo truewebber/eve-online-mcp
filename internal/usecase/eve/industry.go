@@ -81,59 +81,7 @@ func registerIndustry(s *mcp.Server) {
 				})
 			}
 			if boolDef(in.Detail, false) {
-				now := time.Now().UTC()
-				for i, c := range colonies {
-					layout, err := a.ESI.Get(fmt.Sprintf("/characters/%d/planets/%d", cid, j.Int(c["planet_id"])), &cid, nil, nil)
-					if err != nil {
-						continue
-					}
-					pins := j.Maps(j.Map(layout.Data)["pins"])
-					var expiries []time.Time
-					for _, p := range pins {
-						if t := parseTime(j.Str(p["expiry_time"])); t != nil {
-							expiries = append(expiries, *t)
-						}
-					}
-					if len(expiries) > 0 {
-						soonest := expiries[0]
-						for _, t := range expiries[1:] {
-							if t.Before(soonest) {
-								soonest = t
-							}
-						}
-						if !soonest.After(now) {
-							rows[i]["extractor_expires_in"] = "EXPIRED — producing nothing"
-						} else {
-							rows[i]["extractor_expires_in"] = humanDelta(soonest.Sub(now))
-						}
-					}
-					stored := map[int]int{}
-					for _, p := range pins {
-						for _, content := range j.Maps(p["contents"]) {
-							stored[j.Int(content["type_id"])] += j.Int(content["amount"])
-						}
-					}
-					if len(stored) > 0 {
-						pn, _ := a.Resolver.Names(keys(stored), nil)
-						type kv struct {
-							n string
-							q int
-						}
-						var list []kv
-						for t, q := range stored {
-							list = append(list, kv{pn[t], q})
-						}
-						sort.Slice(list, func(a, b int) bool { return list[a].q > list[b].q })
-						if len(list) > 8 {
-							list = list[:8]
-						}
-						m := map[string]int{}
-						for _, x := range list {
-							m[x.n] = x.q
-						}
-						rows[i]["stored"] = m
-					}
-				}
+				decorateColonyDetails(a, cid, colonies, rows)
 			}
 
 			return map[string]any{
@@ -287,6 +235,79 @@ func industryJobsResult(a *session.Session, character string, cid int, data any,
 		"character": character, "active_jobs": active, "ready_to_deliver": readyN,
 		"data_age": stale, "jobs": project(visible, keep, conciseMode),
 	}, meta)
+}
+
+func decorateColonyDetails(a *session.Session, cid int, colonies, rows []map[string]any) {
+	now := time.Now().UTC()
+	for i, c := range colonies {
+		decorateColonyDetail(a, cid, c, rows[i], now)
+	}
+}
+
+func decorateColonyDetail(a *session.Session, cid int, colony, row map[string]any, now time.Time) {
+	layout, err := a.ESI.Get(fmt.Sprintf("/characters/%d/planets/%d", cid, j.Int(colony["planet_id"])), &cid, nil, nil)
+	if err != nil {
+		return
+	}
+	pins := j.Maps(j.Map(layout.Data)["pins"])
+	if expiry := colonyExtractorExpiry(pins, now); expiry != "" {
+		row["extractor_expires_in"] = expiry
+	}
+	if stored := colonyStored(a, pins); len(stored) > 0 {
+		row["stored"] = stored
+	}
+}
+
+func colonyExtractorExpiry(pins []map[string]any, now time.Time) string {
+	var soonest *time.Time
+	for _, p := range pins {
+		t := parseTime(j.Str(p["expiry_time"]))
+		if t == nil {
+			continue
+		}
+		if soonest == nil || t.Before(*soonest) {
+			soonest = t
+		}
+	}
+	if soonest == nil {
+		return ""
+	}
+	if !soonest.After(now) {
+		return "EXPIRED — producing nothing"
+	}
+
+	return humanDelta(soonest.Sub(now))
+}
+
+func colonyStored(a *session.Session, pins []map[string]any) map[string]int {
+	stored := map[int]int{}
+	for _, p := range pins {
+		for _, content := range j.Maps(p["contents"]) {
+			stored[j.Int(content["type_id"])] += j.Int(content["amount"])
+		}
+	}
+	if len(stored) == 0 {
+		return nil
+	}
+	pn, _ := a.Resolver.Names(keys(stored), nil)
+	type kv struct {
+		n string
+		q int
+	}
+	list := make([]kv, 0, len(stored))
+	for t, q := range stored {
+		list = append(list, kv{pn[t], q})
+	}
+	sort.Slice(list, func(i, k int) bool { return list[i].q > list[k].q })
+	if len(list) > 8 {
+		list = list[:8]
+	}
+	out := map[string]int{}
+	for _, x := range list {
+		out[x.n] = x.q
+	}
+
+	return out
 }
 
 func activityName(id int) string {

@@ -110,35 +110,14 @@ func registerOpenWindow(s *mcp.Server) {
 				return nil, err
 			}
 			kind := strings.ToLower(strings.TrimSpace(in.Window))
-			var path string
-			var params map[string]any
-			var label string
-			var resolved map[string]any
-			if kind == "contract" {
-				id, ok := parseContractID(in.Target)
-				if !ok {
-					return map[string]any{"error": "For window='contract', `target` must be the numeric contract_id from eve_market_contracts (run it with response_format='detailed' to get the id)."}, nil
-				}
-				path, params = "/ui/openwindow/contract", map[string]any{"contract_id": id}
-				label = "contract #" + strings.TrimSpace(in.Target)
-			} else {
-				resolved, err = resolveEntity(a, in.Target, token.CharacterID, kind)
-				if err != nil {
-					return nil, err
-				}
-				if _, ok := resolved["error"]; ok {
-					return resolved, nil
-				}
-				if kind == "market" {
-					path, params = "/ui/openwindow/marketdetails", map[string]any{"type_id": resolved["id"]}
-				} else {
-					path, params = "/ui/openwindow/information", map[string]any{"target_id": resolved["id"]}
-				}
-				label = j.Str(resolved["name"])
-				if k := j.Str(resolved["kind"]); k != "" && k != "id" {
-					label = fmt.Sprintf("%s (%s)", label, k)
-				}
+			plan, err := planOpenWindow(a, kind, in.Target, token.CharacterID)
+			if err != nil {
+				return nil, err
 			}
+			if plan.refuse != nil {
+				return plan.refuse, nil
+			}
+			path, params, label, resolved := plan.path, plan.params, plan.label, plan.resolved
 			args := map[string]any{"window": kind, "params": params, "character_id": token.CharacterID}
 			preview := map[string]any{
 				"action":    fmt.Sprintf("Open the %s window in the game client", kind),
@@ -825,6 +804,49 @@ func resolveEntity(a *session.Session, name string, characterID int, kind string
 	}
 
 	return map[string]any{"error": fmt.Sprintf("Could not resolve %q for the %s window. Check the exact name with eve_universe_search.", name, kind)}, nil
+}
+
+type windowPlan struct {
+	path     string
+	params   map[string]any
+	label    string
+	resolved map[string]any
+	refuse   map[string]any
+}
+
+func planOpenWindow(a *session.Session, kind, target string, characterID int) (windowPlan, error) {
+	if kind == "contract" {
+		id, ok := parseContractID(target)
+		if !ok {
+			return windowPlan{refuse: map[string]any{"error": "For window='contract', `target` must be the numeric contract_id from eve_market_contracts (run it with response_format='detailed' to get the id)."}}, nil
+		}
+
+		return windowPlan{
+			path:   "/ui/openwindow/contract",
+			params: map[string]any{"contract_id": id},
+			label:  "contract #" + strings.TrimSpace(target),
+		}, nil
+	}
+	resolved, err := resolveEntity(a, target, characterID, kind)
+	if err != nil {
+		return windowPlan{}, err
+	}
+	if _, ok := resolved["error"]; ok {
+		return windowPlan{refuse: resolved}, nil
+	}
+	plan := windowPlan{resolved: resolved, label: j.Str(resolved["name"])}
+	if kind == "market" {
+		plan.path = "/ui/openwindow/marketdetails"
+		plan.params = map[string]any{"type_id": resolved["id"]}
+	} else {
+		plan.path = "/ui/openwindow/information"
+		plan.params = map[string]any{"target_id": resolved["id"]}
+	}
+	if k := j.Str(resolved["kind"]); k != "" && k != "id" {
+		plan.label = fmt.Sprintf("%s (%s)", plan.label, k)
+	}
+
+	return plan, nil
 }
 
 func parseContractID(s string) (int, bool) {

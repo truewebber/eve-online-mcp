@@ -464,25 +464,8 @@ func rsaFromJWK(k map[string]any) (*rsa.PublicKey, error) {
 }
 
 func ssoDetail(contentType string, body []byte) string {
-	if strings.Contains(contentType, "json") {
-		var payload map[string]any
-		if json.Unmarshal(body, &payload) == nil {
-			errS, _ := payload["error"].(string)
-			if errS == "" {
-				errS, _ = payload["message"].(string)
-			}
-			desc, _ := payload["error_description"].(string)
-			parts := []string{}
-			if errS != "" {
-				parts = append(parts, errS)
-			}
-			if desc != "" {
-				parts = append(parts, desc)
-			}
-			if len(parts) > 0 {
-				return strings.Join(parts, " - ")
-			}
-		}
+	if d := ssoJSONDetail(contentType, body); d != "" {
+		return d
 	}
 	if strings.Contains(contentType, "html") {
 		return "the SSO rejected the request (bad client_id, wrong callback URL, or a refresh token that is no longer valid)"
@@ -492,6 +475,30 @@ func ssoDetail(contentType string, body []byte) string {
 	}
 
 	return string(body)
+}
+
+func ssoJSONDetail(contentType string, body []byte) string {
+	if !strings.Contains(contentType, "json") {
+		return ""
+	}
+	var payload map[string]any
+	if json.Unmarshal(body, &payload) != nil {
+		return ""
+	}
+	errS, _ := payload["error"].(string)
+	if errS == "" {
+		errS, _ = payload["message"].(string)
+	}
+	desc, _ := payload["error_description"].(string)
+	parts := make([]string, 0, 2)
+	if errS != "" {
+		parts = append(parts, errS)
+	}
+	if desc != "" {
+		parts = append(parts, desc)
+	}
+
+	return strings.Join(parts, " - ")
 }
 
 func b64url(raw []byte) string {
