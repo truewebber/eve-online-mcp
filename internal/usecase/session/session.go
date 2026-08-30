@@ -95,7 +95,7 @@ func With(ctx context.Context, s *Session) context.Context {
 func From(ctx context.Context) (*Session, error) {
 	s, _ := ctx.Value(ctxKey{}).(*Session)
 	if s == nil {
-		return nil, character.NotFound{Msg: "This request is not tied to an EVE login. Re-authenticate the MCP server (Authentication required) and try again."}
+		return nil, character.NotFoundError{Msg: "This request is not tied to an EVE login. Re-authenticate the MCP server (Authentication required) and try again."}
 	}
 
 	return s, nil
@@ -159,7 +159,7 @@ func (s *Session) DomainToken(tok *sso.CharacterToken) *character.Token {
 func (s *Session) ResolveCharacter(spec string) (*sso.CharacterToken, error) {
 	tokens := s.SSO.Store.All()
 	if len(tokens) == 0 {
-		return nil, character.NotFound{Msg: "No characters are authorized yet. Call eve_auth_login_url and open the link in a browser to authorize one."}
+		return nil, character.NotFoundError{Msg: "No characters are authorized yet. Call eve_auth_login_url and open the link in a browser to authorize one."}
 	}
 	spec = strings.TrimSpace(spec)
 	if spec == "" {
@@ -171,12 +171,12 @@ func (s *Session) ResolveCharacter(spec string) (*sso.CharacterToken, error) {
 			names = append(names, fmt.Sprintf("%s (%d)", t.CharacterName, t.CharacterID))
 		}
 
-		return nil, character.NotFound{Msg: "Several characters are authorized, so 'character' is required. Available: " + strings.Join(names, ", ")}
+		return nil, character.NotFoundError{Msg: "Several characters are authorized, so 'character' is required. Available: " + strings.Join(names, ", ")}
 	}
 	if id, err := strconv.Atoi(spec); err == nil {
 		token := s.SSO.Store.Get(id)
 		if token == nil {
-			return nil, character.NotFound{Msg: fmt.Sprintf("Character id %s is not authorized.", spec)}
+			return nil, character.NotFoundError{Msg: fmt.Sprintf("Character id %s is not authorized.", spec)}
 		}
 
 		return token, nil
@@ -188,7 +188,7 @@ func (s *Session) ResolveCharacter(spec string) (*sso.CharacterToken, error) {
 			have = append(have, t.CharacterName)
 		}
 
-		return nil, character.NotFound{Msg: fmt.Sprintf("No authorized character matches %q. Have: %s", spec, strings.Join(have, ", "))}
+		return nil, character.NotFoundError{Msg: fmt.Sprintf("No authorized character matches %q. Have: %s", spec, strings.Join(have, ", "))}
 	}
 
 	return token, nil

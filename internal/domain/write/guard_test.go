@@ -37,8 +37,8 @@ func TestAuthorizePreviewAndConfirm(t *testing.T) {
 		t.Fatalf("confirm %v %v", done, err)
 	}
 	_, err = g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, preview, token, scopes)
-	if _, ok := errors.AsType[Blocked](err); !ok {
-		t.Fatalf("replay want Blocked, got %v", err)
+	if _, ok := errors.AsType[BlockedError](err); !ok {
+		t.Fatalf("replay want BlockedError, got %v", err)
 	}
 }
 
@@ -54,7 +54,7 @@ func TestConfirmToolMismatchKeepsToken(t *testing.T) {
 	}
 	token, _ := out.Required["confirm_token"].(string)
 	_, err = g.Authorize(ctx, "eve_mail_send", "mail_send", args, nil, token, scopes)
-	var blocked Blocked
+	var blocked BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "eve_ui_set_waypoint") {
 		t.Fatalf("mismatch %v", err)
 	}
@@ -74,7 +74,7 @@ func TestConfirmDigestMismatchDiscards(t *testing.T) {
 	}
 	token, _ := out.Required["confirm_token"].(string)
 	_, err = g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", map[string]any{"d": "Amarr"}, nil, token, scopes)
-	var blocked Blocked
+	var blocked BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "arguments changed") {
 		t.Fatalf("digest %v", err)
 	}
@@ -95,7 +95,7 @@ func TestConfirmExpiry(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, "stale", Capabilities["waypoint"].Scopes)
-	var blocked Blocked
+	var blocked BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "expired") {
 		t.Fatalf("expiry %v", err)
 	}
@@ -109,7 +109,7 @@ func TestSixthMailIsBlocked(t *testing.T) {
 		g.Record(ctx, "eve_mail_send", "mail_send", nil, "ok")
 	}
 	_, err := g.Authorize(ctx, "eve_mail_send", "mail_send", nil, nil, "", scopes)
-	var blocked Blocked
+	var blocked BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "Mail budget exhausted") {
 		t.Fatalf("sixth mail %v", err)
 	}
@@ -124,7 +124,7 @@ func TestCheckCapabilityUnknownOnly(t *testing.T) {
 		t.Fatalf("known capability: %v", err)
 	}
 	err := g.CheckCapability("teleport")
-	var blocked Blocked
+	var blocked BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "Unknown") {
 		t.Fatalf("unknown %v", err)
 	}

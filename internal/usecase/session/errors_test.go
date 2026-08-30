@@ -9,7 +9,7 @@ import (
 
 func TestMapErrorUserRateLimited(t *testing.T) {
 	retryAt := time.Date(2026, 8, 30, 12, 0, 1, 0, time.UTC)
-	out := MapError(esi.UserLimited{
+	out := MapError(esi.UserLimitedError{
 		Msg: "spent", RetryAt: retryAt, RetrySec: 1,
 	})
 	if out["kind"] != "UserRateLimited" {
@@ -27,7 +27,7 @@ func TestMapErrorUserRateLimited(t *testing.T) {
 }
 
 func TestMapErrorEsiRateLimitedUnchanged(t *testing.T) {
-	out := MapError(esi.RateLimited{Msg: "ccp", Status: 420, RetrySec: 8, RetryAt: time.Unix(0, 0).UTC()})
+	out := MapError(esi.RateLimitedError{Msg: "ccp", Status: 420, RetrySec: 8, RetryAt: time.Unix(0, 0).UTC()})
 	if out["kind"] != "EsiRateLimited" {
 		t.Fatalf("kind %v", out["kind"])
 	}

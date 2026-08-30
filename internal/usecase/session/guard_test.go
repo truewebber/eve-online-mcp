@@ -46,7 +46,7 @@ func TestGuardMailCapUsesStore(t *testing.T) {
 		sess.Guard.Record(ctx, "eve_mail_send", "mail_send", nil, "ok")
 	}
 	_, err = sess.Guard.Authorize(ctx, "eve_mail_send", "mail_send", nil, nil, "", scopes)
-	var blocked write.Blocked
+	var blocked write.BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "Mail budget exhausted") {
 		t.Fatalf("sixth %v", err)
 	}

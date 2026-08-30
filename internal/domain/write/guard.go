@@ -12,9 +12,9 @@ import (
 	"time"
 )
 
-type Blocked struct{ Msg string }
+type BlockedError struct{ Msg string }
 
-func (e Blocked) Error() string { return e.Msg }
+func (e BlockedError) Error() string { return e.Msg }
 
 type Decision struct {
 	Required map[string]any
@@ -31,7 +31,7 @@ func NewGuard(persist Persist, userID string) *Guard {
 
 func (g *Guard) CheckCapability(capability string) error {
 	if _, ok := Capabilities[capability]; !ok {
-		return Blocked{Msg: fmt.Sprintf("Unknown write capability %q.", capability)}
+		return BlockedError{Msg: fmt.Sprintf("Unknown write capability %q.", capability)}
 	}
 
 	return nil
@@ -50,7 +50,7 @@ func (g *Guard) CheckScope(capability string, granted []string) error {
 		}
 	}
 	if len(missing) > 0 {
-		return Blocked{Msg: fmt.Sprintf("This character was not authorized with %s. Re-run the login for this character with eve_auth_login_url.", strings.Join(missing, ", "))}
+		return BlockedError{Msg: fmt.Sprintf("This character was not authorized with %s. Re-run the login for this character with eve_auth_login_url.", strings.Join(missing, ", "))}
 	}
 
 	return nil
@@ -65,7 +65,7 @@ func (g *Guard) checkMailCap(ctx context.Context) error {
 		return err
 	}
 	if n >= MailCap {
-		return Blocked{Msg: fmt.Sprintf("Mail budget exhausted: %d mails in the last hour. Wait until an earlier send drops out of the rolling hour, then try again.", MailCap)}
+		return BlockedError{Msg: fmt.Sprintf("Mail budget exhausted: %d mails in the last hour. Wait until an earlier send drops out of the rolling hour, then try again.", MailCap)}
 	}
 
 	return nil
@@ -117,27 +117,27 @@ func (g *Guard) Authorize(ctx context.Context, tool, capability string, args map
 
 func (g *Guard) consumeConfirm(ctx context.Context, tool, digest, confirmToken string) error {
 	if g.persist == nil {
-		return Blocked{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
+		return BlockedError{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
 	}
 	pending, ok, err := g.persist.GetConfirm(ctx, confirmToken)
 	if err != nil {
 		return err
 	}
 	if !ok || pending.UserID != g.userID {
-		return Blocked{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
+		return BlockedError{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
 	}
 	if time.Since(pending.CreatedAt) > ConfirmTTL {
 		_ = g.persist.DeleteConfirm(ctx, confirmToken)
 
-		return Blocked{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
+		return BlockedError{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
 	}
 	if pending.Tool != tool {
-		return Blocked{Msg: fmt.Sprintf("confirm_token was issued for %q, not %q.", pending.Tool, tool)}
+		return BlockedError{Msg: fmt.Sprintf("confirm_token was issued for %q, not %q.", pending.Tool, tool)}
 	}
 	if pending.ArgsDigest != digest {
 		_ = g.persist.DeleteConfirm(ctx, confirmToken)
 
-		return Blocked{Msg: "The arguments changed since the preview was generated, so the token was discarded. Request a new preview and confirm that one."}
+		return BlockedError{Msg: "The arguments changed since the preview was generated, so the token was discarded. Request a new preview and confirm that one."}
 	}
 	_ = g.persist.DeleteConfirm(ctx, confirmToken)
 

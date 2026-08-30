@@ -14,15 +14,15 @@ const (
 	UserBucketRefill = 2.0
 )
 
-// UserLimited is this user's ESI request allowance. Do not retry
+// UserLimitedError is this user's ESI request allowance. Do not retry
 // before RetryAt — looping would burn the shared CCP error-limit.
-type UserLimited struct {
+type UserLimitedError struct {
 	Msg      string
 	RetryAt  time.Time
 	RetrySec int
 }
 
-func (e UserLimited) Error() string { return e.Msg }
+func (e UserLimitedError) Error() string { return e.Msg }
 
 type userBucket struct {
 	mu     sync.Mutex
@@ -57,7 +57,7 @@ func (b *userBucket) take() error {
 		retrySec := max(int(math.Ceil(wait)), 1)
 		retryAt := now.Add(time.Duration(wait * float64(time.Second)))
 
-		return UserLimited{
+		return UserLimitedError{
 			Msg: fmt.Sprintf(
 				"This user's ESI request allowance is spent (refills at %.0f/s). Wait until %s, then call the same tool once. Do not retry in a loop.",
 				UserBucketRefill, retryAt.UTC().Format(time.RFC3339),

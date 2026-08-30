@@ -49,9 +49,9 @@ type Error struct {
 
 func (e Error) Error() string { return e.Msg }
 
-// RateLimited is CCP's ESI error-limit (420) or HTTP 429. Do not retry
+// RateLimitedError is CCP's ESI error-limit (420) or HTTP 429. Do not retry
 // before RetryAt — the bucket is shared for this server's public IP.
-type RateLimited struct {
+type RateLimitedError struct {
 	Msg      string
 	Status   int
 	RetryAt  time.Time
@@ -60,7 +60,7 @@ type RateLimited struct {
 	ResetSec *int
 }
 
-func (e RateLimited) Error() string { return e.Msg }
+func (e RateLimitedError) Error() string { return e.Msg }
 
 type Result struct {
 	Data       any
@@ -501,7 +501,7 @@ func (c *Client) awaitErrorBudget() error {
 	resetSec := max(int(wait.Seconds()+0.5), 1)
 	retryAt := c.errorResetAt
 
-	return RateLimited{
+	return RateLimitedError{
 		Msg: fmt.Sprintf(
 			"ESI error limit is nearly spent (%d errors left, resets in %ds). This server shares one public IP, so further calls now would lock out everyone. Wait until %s, then retry the same tool. Do not retry sooner.",
 			remain, resetSec, retryAt.UTC().Format(time.RFC3339),
@@ -758,7 +758,7 @@ func httpError(status int, body []byte, path string) Error {
 	return Error{Msg: msg, Status: status, Body: decoded}
 }
 
-func limitError(resp *http.Response, path string) RateLimited {
+func limitError(resp *http.Response, path string) RateLimitedError {
 	retry := retryAfter(resp)
 	remain := intHeader(resp, "X-Esi-Error-Limit-Remain")
 	reset := intHeader(resp, "X-Esi-Error-Limit-Reset")
@@ -782,7 +782,7 @@ func limitError(resp *http.Response, path string) RateLimited {
 		resetN = *reset
 	}
 
-	return RateLimited{
+	return RateLimitedError{
 		Msg: fmt.Sprintf(
 			"ESI %d on %s: error limit exceeded (%d remaining, reset in %ds). Wait until %s, then retry the same tool. Do not retry sooner — this IP is shared.",
 			resp.StatusCode, path, remainN, resetN, retryAt.UTC().Format(time.RFC3339),

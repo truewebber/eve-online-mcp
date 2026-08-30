@@ -24,9 +24,9 @@ func TestUserBucketExhausted(t *testing.T) {
 		}
 	}
 	err := b.take()
-	var limited UserLimited
+	var limited UserLimitedError
 	if !errors.As(err, &limited) {
-		t.Fatalf("401st want UserLimited, got %v", err)
+		t.Fatalf("401st want UserLimitedError, got %v", err)
 	}
 	if limited.RetrySec < 1 {
 		t.Fatalf("retry_sec %d", limited.RetrySec)
@@ -116,7 +116,7 @@ func TestNetworkGetTakesToken(t *testing.T) {
 		}
 	}
 	_, err := c.Get("/status", nil, nil, nil)
-	if _, ok := errors.AsType[UserLimited](err); !ok {
+	if _, ok := errors.AsType[UserLimitedError](err); !ok {
 		t.Fatalf("empty bucket Get: %v", err)
 	}
 }

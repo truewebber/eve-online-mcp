@@ -13,10 +13,10 @@ import (
 // MapError turns adapter/domain errors into the JSON the model already knows.
 func MapError(err error) map[string]any {
 	var ae sso.Error
-	var nf character.NotFound
-	var wb write.Blocked
-	var ul esi.UserLimited
-	var rl esi.RateLimited
+	var nf character.NotFoundError
+	var wb write.BlockedError
+	var ul esi.UserLimitedError
+	var rl esi.RateLimitedError
 	var ee esi.Error
 	switch {
 	case errors.As(err, &ae):

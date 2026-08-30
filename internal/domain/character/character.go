@@ -3,10 +3,10 @@ package character
 
 const PlayerCorpIDFloor = 98_000_000
 
-// NotFound means the requested character is missing or ambiguous.
-type NotFound struct{ Msg string }
+// NotFoundError means the requested character is missing or ambiguous.
+type NotFoundError struct{ Msg string }
 
-func (e NotFound) Error() string { return e.Msg }
+func (e NotFoundError) Error() string { return e.Msg }
 
 // Token is the authorized character as the rest of the domain sees it.
 // Refresh material stays in the SSO adapter; this is the identity + grants.
