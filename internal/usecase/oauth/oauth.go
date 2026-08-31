@@ -52,13 +52,9 @@ const (
 )
 
 var (
-	// ErrUnknownLogin is returned when the EVE callback state is missing or expired.
-	ErrUnknownLogin = errors.New("unknown or expired login state")
-	// ErrStoreRequired is returned when Open is called without a Postgres store.
-	ErrStoreRequired = errors.New("oauth: postgres store is required")
-	// ErrHMACTooShort is returned when the persisted JWT HMAC is shorter than 32 bytes.
-	ErrHMACTooShort = errors.New("oauth: mcp_jwt_hmac is too short")
-	// ErrUnknownLoginKind is returned when a login_states row has an unexpected kind.
+	ErrUnknownLogin     = errors.New("unknown or expired login state")
+	ErrStoreRequired    = errors.New("oauth: postgres store is required")
+	ErrHMACTooShort     = errors.New("oauth: mcp_jwt_hmac is too short")
 	ErrUnknownLoginKind = errors.New("unknown login kind")
 	errAltMissingUser   = errors.New("alt login is missing user_id")
 	errBadAlg           = errors.New("alg")
@@ -67,8 +63,6 @@ var (
 	errNoSub            = errors.New("no sub")
 )
 
-// CharacterOwnedError is an alt-add refused because the character already
-// belongs to a different user. The HTML callback page shows Error().
 type CharacterOwnedError struct {
 	CharacterName string
 }
@@ -82,7 +76,6 @@ func (e CharacterOwnedError) Error() string {
 	return name + " already belongs to another user on this server. Call eve_auth_logout on that other session first, or sign in from your MCP client as this character (Authentication required) to use that account."
 }
 
-// Host is the public HTTP identity of this process. Built at the composition root.
 type Host struct {
 	Listen      string
 	PublicURL   string
@@ -243,9 +236,8 @@ func (s *Server) ServeRegister(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ServeAuthorize validates the MCP client and immediately redirects the
-// browser to EVE SSO with the process application. No form: the instance
-// owns the one EVE application, the player only picks a character at CCP.
+// No form: the instance owns the one EVE application; the player only
+// picks a character at CCP.
 func (s *Server) ServeAuthorize(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	mcpClient := q.Get(paramClientID)
@@ -356,7 +348,6 @@ func (s *Server) VerifyAccess(_ context.Context, token string, _ *http.Request) 
 	return s.verifyAccess(token)
 }
 
-// SessionFor returns the cached per-user session, creating it on first use.
 func (s *Server) SessionFor(userID string) *session.Session {
 	if v, ok := s.sessions.Load(userID); ok {
 		if sess, ok := v.(*session.Session); ok {

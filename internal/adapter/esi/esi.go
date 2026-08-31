@@ -28,7 +28,6 @@ import (
 
 const DefaultBaseURL = "https://esi.evetech.net"
 
-// Options is the ESI client config. Built at the composition root.
 type Options struct {
 	BaseURL        string
 	UserAgent      string

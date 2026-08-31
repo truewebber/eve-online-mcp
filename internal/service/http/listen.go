@@ -27,8 +27,7 @@ type ListenOptions struct {
 	Version        string
 }
 
-// ListenAndServe runs two HTTP servers: the public one (MCP + OAuth + pages)
-// and the internal one (healthz, later metrics) that must never be exposed.
+// The internal listener (healthz, later metrics) must never be exposed.
 func ListenAndServe(h *API, opts ListenOptions) error {
 	mux := http.NewServeMux()
 	HandlerFromMux(h, mux)
@@ -89,8 +88,7 @@ func serve(addr string, h http.Handler) error {
 	return nil
 }
 
-// internalMux is the k8s-facing surface: /healthz now, /metrics when
-// Prometheus lands. Not part of the OpenAPI contract, never routed publicly.
+// Not on the public mux — k8s probes only.
 func internalMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {

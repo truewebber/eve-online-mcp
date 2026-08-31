@@ -1,4 +1,3 @@
-// Package j is a thin helper over encoding/json's map[string]any shapes.
 package j
 
 import (

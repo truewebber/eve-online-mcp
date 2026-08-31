@@ -89,7 +89,6 @@ func (c *CachedResponse) ExpiresUnix() float64 {
 	return float64(c.ExpiresAt.Unix())
 }
 
-// Data unmarshals Body into the map/slice shape ESI callers already expect.
 func (c *CachedResponse) Data() any {
 	if c == nil || len(c.Body) == 0 {
 		return nil

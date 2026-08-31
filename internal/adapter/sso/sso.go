@@ -42,7 +42,6 @@ func knownIssuer(iss string) bool {
 	}
 }
 
-// Options is the EVE SSO client config. Built at the composition root.
 type Options struct {
 	ClientID     string
 	ClientSecret string
@@ -89,9 +88,7 @@ type CharacterToken struct {
 	AccessExpiresAt time.Time
 }
 
-// PreparedLogin is an EVE SSO authorize URL plus the PKCE verifier the
-// callback must present. The caller persists State + Verifier (login_states)
-// so any replica can finish the handshake.
+// Persist State + Verifier in login_states so any replica can finish the handshake.
 type PreparedLogin struct {
 	URL      string
 	State    string
@@ -146,8 +143,8 @@ func (c *Client) PrepareLogin(scopes []string) (*PreparedLogin, error) {
 	}, nil
 }
 
-// ExchangeCode trades an EVE authorization code for tokens. The PKCE
-// verifier comes from the persisted login_states row, not process memory.
+// ExchangeCode takes the PKCE verifier from the persisted login_states row,
+// not process memory — any replica can finish the handshake.
 func (c *Client) ExchangeCode(ctx context.Context, code, verifier string) (*CharacterToken, error) {
 	data := url.Values{
 		"grant_type":    {"authorization_code"},

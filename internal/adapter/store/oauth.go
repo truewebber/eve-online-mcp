@@ -100,8 +100,7 @@ func (s *Store) DeleteLoginState(ctx context.Context, state string) error {
 	return wrap("DeleteLoginState", err)
 }
 
-// TakeLoginState deletes the row and returns it so a callback is one-shot
-// across replicas. Expired rows are discarded.
+// One-shot across replicas: delete the row in the same statement that reads it.
 func (s *Store) TakeLoginState(ctx context.Context, state string) (*LoginState, bool, error) {
 	st, err := scanLogin(s.pool.QueryRow(ctx, `
 		DELETE FROM login_states WHERE state = $1

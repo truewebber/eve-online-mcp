@@ -95,8 +95,7 @@ func (s *Store) OwnerOf(ctx context.Context, characterID int64) (string, bool, e
 	return userID, true, nil
 }
 
-// WithCharacterForUpdate locks the character row, passes the current refresh
-// token to fn, and writes the returned token (CCP may rotate it).
+// CCP may rotate the refresh token; write back whatever fn returns.
 func (s *Store) WithCharacterForUpdate(ctx context.Context, characterID int64, fn func(refreshToken string) (string, error)) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {

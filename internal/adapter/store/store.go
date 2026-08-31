@@ -10,8 +10,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Store is the PostgreSQL adapter for every durable table in SPEC §8.
-// Open applies embedded migrations. Not wired into main until later tasks.
 type Store struct {
 	pool *pgxpool.Pool
 }

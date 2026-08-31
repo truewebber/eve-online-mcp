@@ -28,6 +28,8 @@ linters:
     - testpackage
     # JSON/YAML tag names follow OpenAPI / ESI / vendors, not a global case rule.
     - tagliatelle
+    # RULES.md §6: comments are rare and explain why. Do not require them.
+    - godoclint
   settings:
     godot:
       period: true
@@ -48,6 +50,12 @@ linters:
     revive:
       # Listing any rule turns defaults off unless this is set.
       enable-default-rules: true
+      rules:
+        # RULES.md §6: names and types document; do not require a comment.
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
     # Direct go.mod requires only — not import paths (that is depguard).
     gomodguard_v2:
       local-replace-directives: true
@@ -123,10 +131,6 @@ linters:
     paths:
       - internal/service/http/api.gen.go
     rules:
-      # oapi-codegen writes a package godoc; godoclint counts the whole
-      # package and reports the clash on handler.go, not on *.gen.go.
-      - path: internal/service/http/
-        linters: [godoclint]
       - path: cmd/
         linters: [forbidigo]
       - path: evals/

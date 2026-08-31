@@ -8,7 +8,6 @@ import (
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 )
 
-// guardPersist adapts adapter/store to write.Persist.
 type guardPersist struct{ db *store.Store }
 
 func (p guardPersist) PutConfirm(ctx context.Context, c write.Confirm) error {

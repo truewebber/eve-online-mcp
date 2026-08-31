@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Confirm is a one-shot preview token for a mutating tool call.
+// One-shot: consume on the mutating call, not on preview.
 type Confirm struct {
 	Token      string
 	UserID     string
@@ -14,8 +14,7 @@ type Confirm struct {
 	CreatedAt  time.Time
 }
 
-// Persist is the durable side of the write guard. Implemented by adapter/store
-// (via a thin session wrapper) so domain/write does not import the adapter.
+// Implemented outside this package so domain/write does not import the adapter.
 type Persist interface {
 	PutConfirm(ctx context.Context, c Confirm) error
 	GetConfirm(ctx context.Context, token string) (*Confirm, bool, error)

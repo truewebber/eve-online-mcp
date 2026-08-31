@@ -1,4 +1,3 @@
-// Package session is the per-user runtime: ESI, SSO, names and the write guard.
 package session
 
 import (
@@ -23,10 +22,8 @@ import (
 
 const idleConnFactor = 2
 
-// ErrStoreRequired is returned when Open is called without a Postgres store.
 var ErrStoreRequired = errors.New("session: postgres store is required")
 
-// Options is assembled at the composition root from process config.
 type Options struct {
 	UserAgent         string
 	RequestTimeoutSec float64
@@ -103,8 +100,8 @@ func From(ctx context.Context) (*Session, error) {
 	return s, nil
 }
 
-// ForUser returns a Session bound to one user's character tokens. The EVE
-// application credentials stay the process ones; HTTP cache is shared.
+// ForUser keeps the process EVE application and the shared HTTP cache;
+// only character tokens are bound to this user.
 func (s *Session) ForUser(userID string) *Session {
 	opts := s.Opts
 	opts.SSO.DB = s.Store

@@ -136,8 +136,6 @@ func (s *Store) BlobPut(ctx context.Context, key string, value json.RawMessage) 
 	return wrap("BlobPut", err)
 }
 
-// PurgeExpired deletes handshake rows, confirm tokens and stale cache
-// past their TTL. Safe to call on a ticker or on access.
 func (s *Store) PurgeExpired(ctx context.Context) (int64, error) {
 	var n int64
 	for _, q := range []string{

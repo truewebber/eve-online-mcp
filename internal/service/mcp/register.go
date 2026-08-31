@@ -1,4 +1,3 @@
-// Package mcp is the MCP protocol surface. It depends only on usecase.
 package mcp
 
 import (

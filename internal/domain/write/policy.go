@@ -1,4 +1,3 @@
-// Package write is the mutating-capability catalog and the confirm/mail guard.
 package write
 
 import (
@@ -7,9 +6,8 @@ import (
 )
 
 const (
-	// MailCap is the per-user outgoing-mail ceiling in a rolling hour.
-	MailCap = 5
-	// ConfirmTTL is how long a preview token stays valid.
+	// Rolling hour, per user — not a daily budget.
+	MailCap    = 5
 	ConfirmTTL = 300 * time.Second
 
 	CapMailSend = "mail_send"
@@ -129,7 +127,6 @@ func CorpScopeSet() map[string]struct{} {
 	return out
 }
 
-// CapabilityNames returns every mutating capability, sorted.
 func CapabilityNames() []string {
 	out := make([]string, 0, len(Capabilities()))
 	for name := range Capabilities() {
@@ -140,7 +137,6 @@ func CapabilityNames() []string {
 	return out
 }
 
-// RequestedScopes is the full EVE SSO scope set: reads, corp reads, and every write.
 func RequestedScopes() []string {
 	seen := map[string]struct{}{}
 	var out []string

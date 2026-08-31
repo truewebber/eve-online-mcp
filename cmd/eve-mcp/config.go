@@ -22,14 +22,11 @@ var (
 	errDatabase = errors.New("DATABASE_URL is required (Postgres DSN; run make postgres)")
 )
 
-// config is the process config for cmd/eve-mcp only.
 // The instance owns exactly one EVE application; users sign in via browser.
 type config struct {
-	// ClientID is the EVE application from developers.eveonline.com.
 	ClientID     string `env:"CLIENT_ID,notEmpty"`
 	ClientSecret string `env:"CLIENT_SECRET"`
-	// Contact identifies the operator to CCP in the User-Agent.
-	Contact string `env:"CONTACT"`
+	Contact      string `env:"CONTACT"`
 
 	Listen         string `env:"LISTEN"`
 	InternalListen string `env:"INTERNAL_LISTEN"`
@@ -41,7 +38,6 @@ type config struct {
 	UserAgent   string
 }
 
-// loadConfig reads ./.env if present (else the OS environment), then validates.
 func loadConfig() (config, error) {
 	c := config{
 		Listen:         "127.0.0.1:8765",

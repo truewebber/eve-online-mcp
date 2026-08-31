@@ -1,6 +1,5 @@
 package eve
 
-// Repeated JSON field names and ESI/MCP string values in this package.
 const (
 	fAction              = "action"
 	fAlliance            = "alliance"

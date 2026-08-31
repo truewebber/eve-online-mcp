@@ -18,10 +18,9 @@ type accessMem struct {
 	AccessExpiresAt time.Time
 }
 
-// TokenStore holds per-character SSO tokens. When bound to a userID,
-// refresh tokens live in Postgres; access tokens stay in process memory
-// (SPEC §3.4). An empty userID is the MCP login broker: memory only,
-// until FinishEVE (oauth) upserts into a user store.
+// Refresh tokens live in Postgres when bound to a userID; access tokens
+// stay in process memory (SPEC §3.4). An empty userID is the MCP login
+// broker: memory only, until FinishEVE upserts into a user store.
 type TokenStore struct {
 	db     *store.Store
 	userID string
@@ -30,7 +29,6 @@ type TokenStore struct {
 	access map[int]accessMem       // durable overlay
 }
 
-// ErrMissingCharacterID is returned when Upsert is called without a character id.
 var ErrMissingCharacterID = errors.New("sso: missing character id")
 
 func newTokenStore(db *store.Store, userID string) *TokenStore {

@@ -1,4 +1,3 @@
-// Package httpsvc is the OpenAPI HTTP surface. It depends only on usecase.
 package httpsvc
 
 import (
@@ -10,7 +9,6 @@ import (
 	"github.com/truewebber/eve-online-mcp/internal/usecase/oauth"
 )
 
-// API implements the generated ServerInterface.
 type API struct {
 	OAuth *oauth.Server
 	Host  oauth.Host

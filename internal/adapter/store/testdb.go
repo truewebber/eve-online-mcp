@@ -11,8 +11,7 @@ import (
 // across packages (`go test ./...` runs packages in parallel).
 const testAdvisoryKey int64 = 87265001
 
-// HoldTestLock takes a session-level advisory lock on a dedicated pool
-// connection so Truncate/CRUD in another package cannot interleave.
+// Session-level advisory lock so Truncate/CRUD in another package cannot interleave.
 func (s *Store) HoldTestLock(ctx context.Context) (func(), error) {
 	conn, err := s.pool.Acquire(ctx)
 	if err != nil {
@@ -36,7 +35,7 @@ func (s *Store) HoldTestLock(ctx context.Context) (func(), error) {
 	}, nil
 }
 
-// ResetTables truncates durable tables. Integration tests only.
+// Integration tests only.
 func (s *Store) ResetTables(ctx context.Context) error {
 	_, err := s.pool.Exec(ctx, `
 		TRUNCATE mail_log, confirm_tokens, auth_codes, login_states,

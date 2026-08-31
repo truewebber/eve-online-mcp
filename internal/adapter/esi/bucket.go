@@ -8,10 +8,8 @@ import (
 )
 
 const (
-	// UserBucketCapacity is the per-user ESI request allowance.
 	UserBucketCapacity = 400.0
-	// UserBucketRefill is tokens restored per second.
-	UserBucketRefill = 2.0
+	UserBucketRefill   = 2.0
 )
 
 // UserLimitedError is this user's ESI request allowance. Do not retry

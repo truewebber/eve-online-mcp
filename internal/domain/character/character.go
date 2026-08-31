@@ -1,15 +1,12 @@
-// Package character is the in-game identity and corporation model.
 package character
 
 const PlayerCorpIDFloor = 98_000_000
 
-// NotFoundError means the requested character is missing or ambiguous.
 type NotFoundError struct{ Msg string }
 
 func (e NotFoundError) Error() string { return e.Msg }
 
-// Token is the authorized character as the rest of the domain sees it.
-// Refresh material stays in the SSO adapter; this is the identity + grants.
+// Refresh material stays in the SSO adapter; this is identity and grants only.
 type Token struct {
 	CharacterID   int
 	CharacterName string
@@ -17,7 +14,6 @@ type Token struct {
 	OwnerHash     string
 }
 
-// Corporation is a character's player or NPC corp plus ESI role bags.
 type Corporation struct {
 	Token           *Token
 	CorporationID   int

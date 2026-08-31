@@ -15,7 +15,6 @@ const (
 	fieldKind  = "kind"
 )
 
-// MapError turns adapter/domain errors into the JSON the model already knows.
 func MapError(err error) map[string]any {
 	var ae sso.Error
 	var nf character.NotFoundError
