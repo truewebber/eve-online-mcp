@@ -28,28 +28,16 @@ type userBucket struct {
 	mu     sync.Mutex
 	tokens float64
 	last   time.Time
-	now    func() time.Time
 }
 
 func newUserBucket() *userBucket {
-	return &userBucket{
-		tokens: UserBucketCapacity,
-		now:    time.Now,
-	}
-}
-
-func (b *userBucket) nowTime() time.Time {
-	if b.now != nil {
-		return b.now()
-	}
-
-	return time.Now()
+	return &userBucket{tokens: UserBucketCapacity}
 }
 
 func (b *userBucket) take() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	now := b.nowTime()
+	now := time.Now()
 	b.refillLocked(now)
 	if b.tokens < 1 {
 		deficit := 1 - b.tokens
@@ -83,7 +71,7 @@ func (b *userBucket) refund() {
 func (b *userBucket) remaining() float64 {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.refillLocked(b.nowTime())
+	b.refillLocked(time.Now())
 
 	return b.tokens
 }

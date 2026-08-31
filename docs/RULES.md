@@ -54,9 +54,6 @@ run the real path. The clock is still Postgres `now()`, not a field on
 network in `synctest.Test`: I/O outside the bubble is not durably
 blocking and the bubble deadlocks.
 
-Existing clock fields (the ESI user bucket) are debt. Do not copy them.
-Do not add more.
-
 ## 2. Postgres constraints are not control flow
 
 Write SQL that does not lose. Do not catch a unique, check, foreign-key

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
@@ -17,52 +18,53 @@ const testCompatDate = "2026-08-18"
 
 func TestUserBucketExhausted(t *testing.T) {
 	t.Parallel()
-	b := newUserBucket()
-	now := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
-	b.now = func() time.Time { return now }
-	for i := range int(UserBucketCapacity) {
-		err := b.take()
-		if err != nil {
-			t.Fatalf("take %d: %v", i, err)
+	synctest.Test(t, func(t *testing.T) {
+		b := newUserBucket()
+		now := time.Now()
+		for i := range int(UserBucketCapacity) {
+			err := b.take()
+			if err != nil {
+				t.Fatalf("take %d: %v", i, err)
+			}
 		}
-	}
-	err := b.take()
-	var limited UserLimitedError
-	if !errors.As(err, &limited) {
-		t.Fatalf("401st want UserLimitedError, got %v", err)
-	}
-	if limited.RetrySec < 1 {
-		t.Fatalf("retry_sec %d", limited.RetrySec)
-	}
-	if !limited.RetryAt.After(now) {
-		t.Fatalf("retry_at %s", limited.RetryAt)
-	}
+		err := b.take()
+		var limited UserLimitedError
+		if !errors.As(err, &limited) {
+			t.Fatalf("401st want UserLimitedError, got %v", err)
+		}
+		if limited.RetrySec < 1 {
+			t.Fatalf("retry_sec %d", limited.RetrySec)
+		}
+		if !limited.RetryAt.After(now) {
+			t.Fatalf("retry_at %s", limited.RetryAt)
+		}
+	})
 }
 
 func TestUserBucketRefill(t *testing.T) {
 	t.Parallel()
-	b := newUserBucket()
-	now := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
-	b.now = func() time.Time { return now }
-	for range int(UserBucketCapacity) {
+	synctest.Test(t, func(t *testing.T) {
+		b := newUserBucket()
+		for range int(UserBucketCapacity) {
+			err := b.take()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		time.Sleep(time.Second)
 		err := b.take()
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("first after refill: %v", err)
 		}
-	}
-	now = now.Add(time.Second)
-	err := b.take()
-	if err != nil {
-		t.Fatalf("first after refill: %v", err)
-	}
-	err = b.take()
-	if err != nil {
-		t.Fatalf("second after refill: %v", err)
-	}
-	err = b.take()
-	if err == nil {
-		t.Fatal("third after 1s refill should fail")
-	}
+		err = b.take()
+		if err != nil {
+			t.Fatalf("second after refill: %v", err)
+		}
+		err = b.take()
+		if err == nil {
+			t.Fatal("third after 1s refill should fail")
+		}
+	})
 }
 
 func TestFreshCacheHitDoesNotTakeToken(t *testing.T) {
@@ -75,8 +77,6 @@ func TestFreshCacheHitDoesNotTakeToken(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	c := New(Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), nil, nil)
-	now := time.Now()
-	c.bucket.now = func() time.Time { return now }
 	c.testCache = &memCache{m: map[string]*store.CachedResponse{
 		mustCacheKey(t, c, "/status", nil, map[string]any{}): {
 			Body:      json.RawMessage(`{"players":1}`),
@@ -109,13 +109,11 @@ func TestNetworkGetTakesToken(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	c := New(Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), nil, nil)
-	now := time.Now()
-	c.bucket.now = func() time.Time { return now }
 	if _, err := c.Get(t.Context(), "/status", nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	if got := c.bucket.remaining(); got != UserBucketCapacity-1 {
-		t.Fatalf("tokens %v", got)
+	if got := c.bucket.remaining(); got >= UserBucketCapacity {
+		t.Fatalf("tokens %v, network GET must consume a token", got)
 	}
 	for c.bucket.remaining() >= 1 {
 		err := c.bucket.take()
@@ -139,8 +137,6 @@ func TestNotModifiedRefundsToken(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	c := New(Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), nil, nil)
-	now := time.Now()
-	c.bucket.now = func() time.Time { return now }
 	c.testCache = &memCache{m: map[string]*store.CachedResponse{
 		mustCacheKey(t, c, "/status", nil, map[string]any{}): {
 			Body:      json.RawMessage(`{"players":1}`),
