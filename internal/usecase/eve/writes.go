@@ -236,7 +236,8 @@ func eveFittingSave(ctx context.Context, a *session.Session, in fittingSaveIn) (
 }
 
 func resolveFittingModules(a *session.Session, ship string, modules []fittingModule) (fittingResolved, error) {
-	wanted := []string{ship}
+	wanted := make([]string, 0, 1+len(modules))
+	wanted = append(wanted, ship)
 	for _, m := range modules {
 		wanted = append(wanted, m.Name)
 	}

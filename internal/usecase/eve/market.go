@@ -142,7 +142,7 @@ func marketQuoteView(a *session.Session, match names.NameResolution, quotes map[
 		out["note"] = "No orders at all here. Try whole_region=true, or a different region — not everything is traded outside the main hubs."
 	}
 	if match.Ambiguous() {
-		var others []string
+		others := make([]string, 0, len(match.Alternatives))
 		for _, m := range match.Alternatives {
 			others = append(others, fmt.Sprintf("#%d", m.ID))
 		}

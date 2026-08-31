@@ -182,7 +182,7 @@ func eveCharacterSkillQueue(_ context.Context, a *session.Session, in characterS
 }
 
 func formatSkillQueue(entries []map[string]any, names map[int]string, now time.Time) []map[string]any {
-	var rows []map[string]any
+	rows := make([]map[string]any, 0, len(entries))
 	for _, e := range entries {
 		finish := parseTime(j.Str(e["finish_date"]))
 		finishes := "paused"
@@ -257,7 +257,7 @@ func collectCloneIDs(implants []any, jump []map[string]any, home map[string]any)
 }
 
 func formatActiveImplants(implants []any, names map[int]string) []string {
-	var active []string
+	active := make([]string, 0, len(implants))
 	for _, v := range implants {
 		active = append(active, names[j.Int(v)])
 	}
@@ -266,10 +266,11 @@ func formatActiveImplants(implants []any, names map[int]string) []string {
 }
 
 func formatJumpClones(jump []map[string]any, names map[int]string) []map[string]any {
-	var jumps []map[string]any
+	jumps := make([]map[string]any, 0, len(jump))
 	for _, clone := range jump {
-		var imps []string
-		for _, v := range j.Slice(clone["implants"]) {
+		listed := j.Slice(clone["implants"])
+		imps := make([]string, 0, len(listed))
+		for _, v := range listed {
 			imps = append(imps, names[j.Int(v)])
 		}
 		name := j.Str(clone["name"])
@@ -339,7 +340,7 @@ func standingsNameIDs(standings, lpData []map[string]any) []int {
 }
 
 func formatCharacterStandings(standings []map[string]any, names map[int]string) []map[string]any {
-	var rows []map[string]any
+	rows := make([]map[string]any, 0, len(standings))
 	for _, s := range standings {
 		rows = append(rows, map[string]any{
 			"entity": names[j.Int(s["from_id"])], "type": s["from_type"],
@@ -355,7 +356,7 @@ func formatLoyaltyPoints(lpData []map[string]any, names map[int]string) []map[st
 	sort.Slice(lpData, func(i, k int) bool {
 		return j.Float(lpData[i]["loyalty_points"]) > j.Float(lpData[k]["loyalty_points"])
 	})
-	var lpRows []map[string]any
+	lpRows := make([]map[string]any, 0, len(lpData))
 	for _, l := range lpData {
 		lpRows = append(lpRows, map[string]any{"corporation": names[j.Int(l["corporation_id"])], "lp": l["loyalty_points"]})
 	}

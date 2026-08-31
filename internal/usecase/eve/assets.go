@@ -161,7 +161,7 @@ func topItemLines(types map[int]int, typeNames map[int]string, prices map[int]ma
 	if len(top) > itemsN {
 		top = top[:itemsN]
 	}
-	var topItems []string
+	topItems := make([]string, 0, len(top))
 	for _, x := range top {
 		topItems = append(topItems, fmt.Sprintf("%v x%d (~%s)", nameOr(typeNames, x.t), x.q, isk(unitPrice(prices, x.t)*float64(x.q))))
 	}
@@ -239,7 +239,7 @@ func assetFindMatches(items []map[string]any, typeNames map[int]string, name str
 }
 
 func assetFindRows(matches []map[string]any, roots map[int]int, byID map[int]map[string]any, typeNames, placeNames map[int]string, prices map[int]map[string]float64) []map[string]any {
-	var rows []map[string]any
+	rows := make([]map[string]any, 0, len(matches))
 	for _, item := range matches {
 		root := roots[j.Int(item["item_id"])]
 		container := byID[j.Int(item["location_id"])]

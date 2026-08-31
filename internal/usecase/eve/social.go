@@ -387,7 +387,7 @@ func buildKillmailRows(a *session.Session, kills []map[string]any, characterID, 
 	}
 	names, _ := a.Resolver.Names(setToList(idSet), nil)
 	prices, _ := a.Resolver.ReferencePrices()
-	var rows []map[string]any
+	rows := make([]map[string]any, 0, len(kills))
 	killsN, losses := 0, 0
 	for _, kill := range kills {
 		victim := j.Map(kill["victim"])

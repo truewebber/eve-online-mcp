@@ -446,7 +446,7 @@ func universeHopData(a *session.Session, hops []int) map[int]map[string]any {
 
 func universeWalkHops(a *session.Session, hops []int) universeRouteWalk {
 	byID := universeHopData(a, hops)
-	var steps []map[string]any
+	steps := make([]map[string]any, 0, len(hops))
 	lowsec, nullsec := 0, 0
 	for _, sid := range hops {
 		data := byID[sid]

@@ -144,7 +144,7 @@ func sumMining(entries []map[string]any) (map[int]int, map[int]int) {
 }
 
 func miningOreRows(totals map[int]int, names map[int]string, prices map[int]map[string]float64) ([]map[string]any, float64) {
-	var rows []map[string]any
+	rows := make([]map[string]any, 0, len(totals))
 	grand := 0.0
 	for tid, qty := range totals {
 		value := unitPrice(prices, tid) * float64(qty)
@@ -166,7 +166,7 @@ func topMiningSystems(bySystem map[int]int, names map[int]string, n int) []map[s
 	if len(sys) > n {
 		sys = sys[:n]
 	}
-	var top []map[string]any
+	top := make([]map[string]any, 0, len(sys))
 	for _, s := range sys {
 		top = append(top, map[string]any{"system": nameOr(names, s.id), "units": s.q})
 	}

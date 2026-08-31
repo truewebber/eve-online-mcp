@@ -192,7 +192,7 @@ func tallyJournal(entries []map[string]any) (map[string]*journalTot, []map[strin
 }
 
 func journalRows(entries []map[string]any) []map[string]any {
-	var rows []map[string]any
+	rows := make([]map[string]any, 0, len(entries))
 	for _, e := range entries {
 		rows = append(rows, map[string]any{
 			"date": e["date"], "ref_type": e["ref_type"], "amount": isk(e["amount"]),

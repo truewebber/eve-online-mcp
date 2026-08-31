@@ -348,7 +348,7 @@ func eveCorpAssetsList(_ context.Context, a *session.Session, in corpAssetsListI
 }
 
 func collectTypeIDs(items []map[string]any) []int {
-	var typeIDs []int
+	typeIDs := make([]int, 0, len(items))
 	for _, i := range items {
 		typeIDs = append(typeIDs, j.Int(i["type_id"]))
 	}
@@ -485,7 +485,7 @@ func corpAssetFindPlaceIDs(matches []map[string]any, roots map[int]int) []int {
 }
 
 func corpAssetFindRows(matches []map[string]any, byID map[int]map[string]any, roots map[int]int, typeNames, placeNames map[int]string, prices map[int]map[string]float64, hangars map[int]string) []map[string]any {
-	var rows []map[string]any
+	rows := make([]map[string]any, 0, len(matches))
 	for _, item := range matches {
 		qty := j.Int(item["quantity"])
 		if qty == 0 {
@@ -553,7 +553,8 @@ type corpNameMaps struct {
 }
 
 func corpBlueprintNames(a *session.Session, corp *character.Corporation, bps []map[string]any) corpNameMaps {
-	var typeIDs, placeIDs []int
+	typeIDs := make([]int, 0, len(bps))
+	placeIDs := make([]int, 0, len(bps))
 	for _, b := range bps {
 		typeIDs = append(typeIDs, j.Int(b["type_id"]))
 		placeIDs = append(placeIDs, j.Int(b["location_id"]))
@@ -570,7 +571,7 @@ type corpBlueprintList struct {
 }
 
 func corpBlueprintRows(bps []map[string]any, typeNames, placeNames map[int]string, hangars map[int]string) corpBlueprintList {
-	var rows []map[string]any
+	rows := make([]map[string]any, 0, len(bps))
 	orig, copies := 0, 0
 	for _, b := range bps {
 		kind := "original"
@@ -620,9 +621,10 @@ type walletBalanceRows struct {
 }
 
 func corpWalletRows(data any, names map[int]string) walletBalanceRows {
-	var rows []map[string]any
+	wallets := j.Maps(data)
+	rows := make([]map[string]any, 0, len(wallets))
 	total := 0.0
-	for _, w := range j.Maps(data) {
+	for _, w := range wallets {
 		rows = append(rows, map[string]any{
 			"division": w["division"], "name": walletLabel(j.Int(w["division"]), names),
 			"balance": isk(w["balance"]), "balance_isk": w["balance"],
@@ -853,7 +855,7 @@ type corpStructureList struct {
 
 func corpStructureRows(structures []map[string]any, names map[int]string) corpStructureList {
 	now := time.Now().UTC()
-	var rows []map[string]any
+	rows := make([]map[string]any, 0, len(structures))
 	unfuelled := 0
 	for _, s := range structures {
 		expires, dead := structureFuelExpires(parseTime(j.Str(s["fuel_expires"])), now)
@@ -883,8 +885,9 @@ func structureFuelExpires(fuel *time.Time, now time.Time) (string, bool) {
 }
 
 func structureServices(s map[string]any) any {
-	var services []string
-	for _, svc := range j.Maps(s["services"]) {
+	listed := j.Maps(s["services"])
+	services := make([]string, 0, len(listed))
+	for _, svc := range listed {
 		services = append(services, fmt.Sprintf("%v (%v)", svc["name"], svc["state"]))
 	}
 	if len(services) == 0 {
@@ -961,7 +964,7 @@ func corpRoleStrings(roles any) []string {
 }
 
 func corpMemberRows(memberIDs []int, names map[int]string, roleMap map[int][]string) []map[string]any {
-	var rows []map[string]any
+	rows := make([]map[string]any, 0, len(memberIDs))
 	for _, mid := range memberIDs {
 		var roles any
 		if r := roleMap[mid]; len(r) > 0 {
