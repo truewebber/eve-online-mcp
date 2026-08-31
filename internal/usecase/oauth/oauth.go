@@ -34,7 +34,7 @@ const (
 	refreshTTL    = 30 * 24 * time.Hour
 	codeTTL       = 2 * time.Minute
 	scopeEve      = "eve"
-	jwtSecretName = "mcp_jwt_hmac"
+	jwtSecretName = "mcp_jwt_hmac" //nolint:gosec // app_secrets row name, not a credential
 )
 
 var (

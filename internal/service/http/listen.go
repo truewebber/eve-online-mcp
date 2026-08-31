@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	svcmcp "github.com/truewebber/eve-online-mcp/internal/service/mcp"
 
@@ -49,7 +50,7 @@ func ListenAndServe(h *API, opts ListenOptions) error {
 	}
 
 	errs := make(chan error, 2)
-	go func() { errs <- http.ListenAndServe(opts.InternalListen, internalMux()) }()
+	go func() { errs <- serve(opts.InternalListen, internalMux()) }()
 
 	base := h.Host.BaseURL()
 	log.Printf("writes: confirm, mail cap 5/hour")
@@ -57,9 +58,22 @@ func ListenAndServe(h *API, opts ListenOptions) error {
 	log.Printf("EVE callback must be exactly: %s", h.Host.CallbackURL)
 	log.Printf("internal endpoint (healthz): http://%s", opts.InternalListen)
 
-	go func() { errs <- http.ListenAndServe(opts.Listen, mux) }()
+	go func() { errs <- serve(opts.Listen, mux) }()
 
 	return <-errs
+}
+
+func serve(addr string, h http.Handler) error {
+	s := &http.Server{
+		Addr:              addr,
+		Handler:           h,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      2 * time.Minute,
+		IdleTimeout:       2 * time.Minute,
+	}
+
+	return s.ListenAndServe()
 }
 
 // internalMux is the k8s-facing surface: /healthz now, /metrics when

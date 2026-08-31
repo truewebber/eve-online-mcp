@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -99,21 +100,44 @@ Flags:
 lint checks tool definitions. smoke calls every read tool. all runs both.
 `
 
-var errUnreachable = errors.New("cannot reach the MCP server")
+var (
+	errUnreachable = errors.New("cannot reach the MCP server")
+	errBadMCPURL   = errors.New("MCP URL must be http(s) with a host")
+)
 
 type rpc struct {
-	url    string
-	token  string
-	client *http.Client
-	id     int
+	endpoint *url.URL
+	token    string
+	client   *http.Client
+	id       int
 }
 
-func newRPC(url, token string) *rpc {
-	return &rpc{
-		url:    url,
-		token:  token,
-		client: &http.Client{Timeout: 120 * time.Second},
+func parseMCPURL(raw string) (*url.URL, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, err
 	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, errBadMCPURL
+	}
+	if u.Host == "" {
+		return nil, errBadMCPURL
+	}
+
+	return &url.URL{Scheme: u.Scheme, Host: u.Host, Path: u.Path, RawPath: u.RawPath, RawQuery: u.RawQuery}, nil
+}
+
+func newRPC(raw, token string) (*rpc, error) {
+	u, err := parseMCPURL(raw)
+	if err != nil {
+		return nil, err
+	}
+
+	return &rpc{
+		endpoint: u,
+		token:    token,
+		client:   &http.Client{Timeout: 120 * time.Second},
+	}, nil
 }
 
 func (r *rpc) call(method string, params map[string]any) (map[string]any, error) {
@@ -130,7 +154,7 @@ func (r *rpc) call(method string, params map[string]any) (map[string]any, error)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, r.url, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, r.endpoint.String(), bytes.NewReader(payload)) //nolint:gosec // CLI --url is the operator MCP endpoint
 	if err != nil {
 		return nil, err
 	}
@@ -139,17 +163,17 @@ func (r *rpc) call(method string, params map[string]any) (map[string]any, error)
 	if r.token != "" {
 		req.Header.Set("Authorization", "Bearer "+r.token)
 	}
-	resp, err := r.client.Do(req)
+	resp, err := r.client.Do(req) //nolint:gosec // CLI --url is the operator MCP endpoint
 	if err != nil {
-		return nil, fmt.Errorf("cannot reach the MCP server at %s: %w", r.url, err)
+		return nil, fmt.Errorf("cannot reach the MCP server at %s: %w", r.endpoint, err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("cannot reach the MCP server at %s: %w", r.url, err)
+		return nil, fmt.Errorf("cannot reach the MCP server at %s: %w", r.endpoint, err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("%w at %s: HTTP Error %d: %s", errUnreachable, r.url, resp.StatusCode, strings.TrimSpace(string(raw)))
+		return nil, fmt.Errorf("%w at %s: HTTP Error %d: %s", errUnreachable, r.endpoint, resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 	body := string(raw)
 	for line := range strings.SplitSeq(body, "\n") {
@@ -433,7 +457,12 @@ func run(args []string) int {
 	if tok == "" {
 		tok = os.Getenv("EVE_MCP_TOKEN")
 	}
-	client := newRPC(*url, tok)
+	client, err := newRPC(*url, tok)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+
+		return 2
+	}
 	switch gate {
 	case "lint":
 		return lint(client)

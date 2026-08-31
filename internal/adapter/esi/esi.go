@@ -3,7 +3,9 @@ package esi
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -11,7 +13,6 @@ import (
 	"io"
 	"log"
 	"maps"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -716,8 +717,13 @@ func errorAs(err error, target **net.OpError) bool {
 
 func backoff(attempt int) time.Duration {
 	base := min(time.Duration(1<<attempt)*time.Second, 8*time.Second)
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return base
+	}
+	frac := float64(binary.BigEndian.Uint64(b[:])) / float64(^uint64(0))
 
-	return time.Duration(float64(base) * (0.5 + rand.Float64()/2))
+	return time.Duration(float64(base) * (0.5 + frac/2))
 }
 
 func httpError(status int, body []byte, path string) Error {
