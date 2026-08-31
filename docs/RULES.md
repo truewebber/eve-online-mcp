@@ -238,3 +238,17 @@ named yet.
 
 Complicated business logic is those simpler functions called in
 order, not a longer body. If the name needs "and", split it.
+
+## 16. Config is env on the binary
+
+Config lives in `package main` (SPEC §2). It is env, and only env.
+`main` reads the environment; what goes inward is already parsed.
+
+An env var exists only when the value changes between environments.
+Timeouts, pool sizes, retry counts and the rest of "how this client
+behaves" are constants in the adapter or domain that owns them.
+
+A database is a connection string. A listener is host and port. Do
+not name an env `ENDPOINT` or `ADDRESS`. An address is scheme, host,
+port, path — each a field, combined in the name when they travel
+together (`EVE_API_HOST`, `API_HOST_PORT`).
