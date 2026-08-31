@@ -1,0 +1,36 @@
+{
+  "method": "GET",
+  "path": "/characters/196379789",
+  "source": "recorded",
+  "compat_date": "2026-08-18",
+  "status": 200,
+  "headers": {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Expose-Headers": "Etag, Retry-After, X-Compatibility-Date, X-Esi-Error-Limit-Remain, X-Esi-Error-Limit-Reset, X-Pages, X-Ratelimit-Group, X-Ratelimit-Limit, X-Ratelimit-Remaining, X-Ratelimit-Used",
+    "Cache-Control": "public, max-age=86400, must-revalidate, stale-if-error=900",
+    "Content-Language": "en",
+    "Content-Type": "application/json",
+    "Date": "Mon, 31 Aug 2026 23:06:55 GMT",
+    "Etag": "W/\"cb2b8ce0dee5b2822ff401821d27b4e42b5ecdf0340f70e11c9203ac8d56e8a5\"",
+    "Expires": "Tue, 01 Sep 2026 23:06:55 GMT",
+    "Last-Modified": "Mon, 31 Aug 2026 10:01:07 GMT",
+    "Strict-Transport-Security": "max-age=31536000",
+    "Vary": "X-Tenant",
+    "X-Compatibility-Date": "2026-06-09",
+    "X-Esi-Cache-Status": "HIT",
+    "X-Esi-Error-Limit-Remain": "99",
+    "X-Esi-Error-Limit-Reset": "5"
+  },
+  "body": {
+    "birthday": "2003-06-10T17:47:00Z",
+    "bloodline_id": 3,
+    "corporation_id": 1164409536,
+    "gender": "male",
+    "name": "Chribba",
+    "race_id": 2,
+    "achievement_score": 140,
+    "alliance_id": 159826257,
+    "description": "u'\u003cfont size=\"14\" color=\"#bfffffff\"\u003e\u003c/font\u003e\u003cfont size=\"12\" color=\"#ff00ffff\"\u003e\u003cb\u003ePublic channel \\'\u003c/font\u003e\u003cfont size=\"12\" color=\"#ffffffff\"\u003eHoly Veldspar\u003c/font\u003e\u003cfont size=\"12\" color=\"#ff00ffff\"\u003e\\'\u003cbr\u003eTwitter \u003c/font\u003e\u003cfont size=\"12\" color=\"#ffffffff\"\u003e@Chribba\u003cbr\u003e\u003cbr\u003e\u003c/font\u003e\u003cfont size=\"18\" color=\"#ff007fff\"\u003e\\u5343\\u91cc\\u4e4b\\u884c\\uff0c\\u59cb\\u4e8e\\u8db3\\u4e0b\u003cbr\u003e\u003cbr\u003e\u003c/font\u003e\u003cfont size=\"12\" color=\"#ff00ff00\"\u003e3rd party service\u003c/font\u003e\u003cfont size=\"12\" color=\"#ffffffff\"\u003e \u003c/font\u003e\u003cfont size=\"12\" color=\"#ffffe400\"\u003e\u003ca href=\"http://eve-search.com/l/15060956\"\u003eLink\u003c/a\u003e\u003cbr\u003e\u003cbr\u003e\u003c/font\u003e\u003cfont size=\"12\" color=\"#ffffff00\"\u003eOwner of EVE-Files.com EVE-Search.com EVEBoard.com Veldspar.com EVE-Offline.net\u003cbr\u003e\u003cbr\u003e\u003c/font\u003e\u003cfont size=\"12\" color=\"#ff007fff\"\u003eAlts:\u003c/font\u003e\u003cfont size=\"12\" color=\"#ff00ffff\"\u003e \u003c/b\u003e\u003c/font\u003e\u003cfont size=\"12\" color=\"#ffffffff\"\u003eElyza, Yuffie, Ifalna, Ellone, Rikku, Selphie, Nhadala, Refia, Shalua, Arylon, Chribba Kamprad, Chribba Veldspar, Chribba Claus and Veldspar.\u003cbr\u003e\u003cbr\u003e\u003c/font\u003e\u003cfont size=\"12\" color=\"#ff007fff\"\u003e\u003cb\u003eDUST514:\u003c/b\u003e\u003c/font\u003e\u003cfont size=\"12\" color=\"#ffffffff\"\u003e ChribbaX and Chribba DXIV\u003cbr\u003e\u003cbr\u003e\u003c/font\u003e\u003cfont size=\"12\" color=\"#ff007fff\"\u003e\u003cb\u003eVanguard:\u003c/b\u003e\u003c/font\u003e\u003cfont size=\"12\" color=\"#ffffffff\"\u003e ChribbaX\u003c/font\u003e'",
+    "security_status": 5.1
+  }
+}

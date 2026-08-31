@@ -7,9 +7,10 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"go.uber.org/mock/gomock"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
-	"github.com/truewebber/eve-online-mcp/internal/logtest"
+	"github.com/truewebber/eve-online-mcp/internal/mocks"
 )
 
 const listPublicTables = `
@@ -22,7 +23,7 @@ func TestOpenDoesNotMigrate(t *testing.T) {
 	t.Parallel()
 	dsn := EmptyDatabase(t)
 	ctx := context.Background()
-	s, err := store.Open(ctx, dsn, logtest.Silent{})
+	s, err := store.Open(ctx, dsn, mocks.QuietLogger(gomock.NewController(t)))
 	if err != nil {
 		t.Fatal(err)
 	}

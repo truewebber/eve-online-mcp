@@ -17,6 +17,7 @@ type Code struct {
 	ExpiresAt     time.Time
 }
 
+//go:generate go tool go.uber.org/mock/mockgen -destination=../../mocks/authcode.go -package=mocks -mock_names=Repository=MockAuthcodeRepository github.com/truewebber/eve-online-mcp/internal/domain/authcode Repository
 type Repository interface {
 	Put(ctx context.Context, c Code) error
 	Take(ctx context.Context, value string) (*Code, error)

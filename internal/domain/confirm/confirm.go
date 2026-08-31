@@ -18,6 +18,7 @@ type Confirm struct {
 	CreatedAt  time.Time
 }
 
+//go:generate go tool go.uber.org/mock/mockgen -destination=../../mocks/confirm.go -package=mocks -mock_names=Repository=MockConfirmRepository github.com/truewebber/eve-online-mcp/internal/domain/confirm Repository
 type Repository interface {
 	Put(ctx context.Context, c Confirm) error
 	Get(ctx context.Context, value string) (*Confirm, error)

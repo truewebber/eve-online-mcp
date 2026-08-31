@@ -7,7 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/truewebber/eve-online-mcp/internal/logtest"
+	"go.uber.org/mock/gomock"
+
+	"github.com/truewebber/eve-online-mcp/internal/mocks"
 )
 
 func openTest(t *testing.T) *Store {
@@ -17,7 +19,7 @@ func openTest(t *testing.T) *Store {
 		t.Skip("DATABASE_URL is unset; run `make postgres` then `make migrate`")
 	}
 	ctx := context.Background()
-	s, err := Open(ctx, dsn, logtest.Silent{})
+	s, err := Open(ctx, dsn, mocks.QuietLogger(gomock.NewController(t)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +76,7 @@ func TestGetOrCreateSecretStable(t *testing.T) {
 	if err != nil || string(a) != string(b) {
 		t.Fatalf("unstable in same Open")
 	}
-	s2, err := Open(ctx, os.Getenv("DATABASE_URL"), logtest.Silent{})
+	s2, err := Open(ctx, os.Getenv("DATABASE_URL"), mocks.QuietLogger(gomock.NewController(t)))
 	if err != nil {
 		t.Fatal(err)
 	}

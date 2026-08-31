@@ -4,8 +4,10 @@ import (
 	"net/url"
 	"testing"
 
+	"go.uber.org/mock/gomock"
+
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
-	"github.com/truewebber/eve-online-mcp/internal/logtest"
+	"github.com/truewebber/eve-online-mcp/internal/mocks"
 )
 
 func TestPrepareLoginAssemblesAuthorizeURL(t *testing.T) {
@@ -14,7 +16,7 @@ func TestPrepareLoginAssemblesAuthorizeURL(t *testing.T) {
 		ClientID:    "cid",
 		CallbackURL: "http://127.0.0.1/auth/callback",
 		Scopes:      []string{"esi-wallet.read_character_wallet.v1"},
-	}, nil, logtest.Silent{})
+	}, nil, mocks.QuietLogger(gomock.NewController(t)))
 	prep, err := c.PrepareLogin(nil)
 	if err != nil {
 		t.Fatal(err)

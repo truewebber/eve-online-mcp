@@ -3,13 +3,15 @@ package http
 import (
 	"testing"
 
+	"go.uber.org/mock/gomock"
+
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
-	"github.com/truewebber/eve-online-mcp/internal/logtest"
+	"github.com/truewebber/eve-online-mcp/internal/mocks"
 )
 
 func TestMemoryTokenStore(t *testing.T) {
 	t.Parallel()
-	c := New(sso.Options{}, nil, logtest.Silent{})
+	c := New(sso.Options{}, nil, mocks.QuietLogger(gomock.NewController(t)))
 	tok := &sso.CharacterToken{CharacterID: 1, CharacterName: "A", RefreshToken: "rt"}
 	err := c.Upsert(t.Context(), tok)
 	if err != nil {

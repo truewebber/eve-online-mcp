@@ -1,6 +1,6 @@
 # T11 — Test foundation: generated mocks and recorded ESI
 
-- Status: `todo`
+- Status: `done`
 - Size: L
 - Depends on: —
 - RULES: §13 (mocks are generated), §5 (tests are the only proof),
@@ -148,24 +148,24 @@ Two kinds of fixture:
 
 ## Acceptance
 
-- [ ] `rg -n 'logtest|memPersist|type (mem|stub|fake|silent)[A-Z]'`
+- [x] `rg -n 'logtest|memPersist|type (mem|stub|fake|silent)[A-Z]'`
       finds nothing outside `internal/mocks`
-- [ ] Every interface we own, plus `log.Logger`, has a generated mock in
+- [x] Every interface we own, plus `log.Logger`, has a generated mock in
       `internal/mocks` and nowhere else; `make generate` leaves a clean
       tree
-- [ ] `.golangci.yml` carries no exclusion for a mocks path that does
+- [x] `.golangci.yml` carries no exclusion for a mocks path that does
       not exist
-- [ ] `rg -n 'Clock|now func\(\)|WithClock|timeNow'` finds nothing
-- [ ] `go test ./...` passes with no network and no `DATABASE_URL`
-- [ ] Store and migration tests still run when `DATABASE_URL` is set
-- [ ] Fixtures carry status, headers and body at the pinned
+- [x] `rg -n 'Clock|now func\(\)|WithClock|timeNow'` finds nothing
+- [x] `go test ./...` passes with no network and no `DATABASE_URL`
+- [x] Store and migration tests still run when `DATABASE_URL` is set
+- [x] Fixtures carry status, headers and body at the pinned
       compatibility date, and every schema-generated one is named as
       such in the task output
-- [ ] `-update` re-records fixtures end to end, so the host can fill in
+- [x] `-update` re-records fixtures end to end, so the host can fill in
       the authenticated ones with one `go test` invocation
-- [ ] One tool handler is asserted end to end against fixtures
-- [ ] No production code path branches on being under test
-- [ ] `make lint` is clean
+- [x] One tool handler is asserted end to end against fixtures
+- [x] No production code path branches on being under test
+- [x] `make lint` is clean
 
 ## Verify
 

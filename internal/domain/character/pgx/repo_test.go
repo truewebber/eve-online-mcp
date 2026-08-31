@@ -7,17 +7,21 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/mock/gomock"
+
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store/storetest"
+
 	"github.com/truewebber/eve-online-mcp/internal/domain/character"
-	"github.com/truewebber/eve-online-mcp/internal/logtest"
+	"github.com/truewebber/eve-online-mcp/internal/mocks"
 )
 
 func openRepo(t *testing.T) (*store.Store, *Repo) {
 	t.Helper()
-	db := storetest.Open(t, logtest.Silent{})
+	logger := mocks.QuietLogger(gomock.NewController(t))
+	db := storetest.Open(t, logger)
 
-	return db, New(db.Pool(), logtest.Silent{})
+	return db, New(db.Pool(), logger)
 }
 
 func TestOwnership(t *testing.T) {

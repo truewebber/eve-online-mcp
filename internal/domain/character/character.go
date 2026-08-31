@@ -25,6 +25,7 @@ type Character struct {
 	CreatedAt    time.Time
 }
 
+//go:generate go tool go.uber.org/mock/mockgen -destination=../../mocks/character.go -package=mocks -mock_names=Repository=MockCharacterRepository github.com/truewebber/eve-online-mcp/internal/domain/character Repository
 type Repository interface {
 	Upsert(ctx context.Context, c Character) error
 	Get(ctx context.Context, id int64) (*Character, error)

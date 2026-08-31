@@ -6,12 +6,15 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/mock/gomock"
+
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store/storetest"
+
 	"github.com/truewebber/eve-online-mcp/internal/domain/character"
 	characterpgx "github.com/truewebber/eve-online-mcp/internal/domain/character/pgx"
-	"github.com/truewebber/eve-online-mcp/internal/logtest"
+	"github.com/truewebber/eve-online-mcp/internal/mocks"
 )
 
 const testRefreshToken = "rt-1"
@@ -19,13 +22,13 @@ const testRefreshToken = "rt-1"
 func openStore(t *testing.T) *store.Store {
 	t.Helper()
 
-	return storetest.Open(t, logtest.Silent{})
+	return storetest.Open(t, mocks.QuietLogger(gomock.NewController(t)))
 }
 
 func openChars(t *testing.T, db *store.Store) character.Repository {
 	t.Helper()
 
-	return characterpgx.New(db.Pool(), logtest.Silent{})
+	return characterpgx.New(db.Pool(), mocks.QuietLogger(gomock.NewController(t)))
 }
 
 func TestTokenStorePersistsRefreshNotAccess(t *testing.T) {
@@ -37,7 +40,7 @@ func TestTokenStorePersistsRefreshNotAccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base := New(sso.Options{}, nil, logtest.Silent{})
+	base := New(sso.Options{}, nil, mocks.QuietLogger(gomock.NewController(t)))
 	ts := base.ForUser(u.ID, chars)
 	tok := &sso.CharacterToken{
 		CharacterID:     2112625428,
@@ -89,7 +92,7 @@ func TestTokenStoreRejectsOtherOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base := New(sso.Options{}, nil, logtest.Silent{})
+	base := New(sso.Options{}, nil, mocks.QuietLogger(gomock.NewController(t)))
 	tok := &sso.CharacterToken{
 		CharacterID: 99, CharacterName: "Lock", RefreshToken: "rt",
 	}
@@ -110,7 +113,7 @@ func TestBrokerStoreStaysInMemory(t *testing.T) {
 	db := openStore(t)
 	chars := openChars(t, db)
 	ctx := context.Background()
-	broker := New(sso.Options{}, nil, logtest.Silent{}).ForUser("", chars)
+	broker := New(sso.Options{}, nil, mocks.QuietLogger(gomock.NewController(t))).ForUser("", chars)
 	tok := &sso.CharacterToken{CharacterID: 7, CharacterName: "Broker", RefreshToken: "rt"}
 	if err := broker.Upsert(ctx, tok); err != nil {
 		t.Fatal(err)

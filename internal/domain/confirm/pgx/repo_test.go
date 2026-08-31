@@ -5,9 +5,12 @@ import (
 	"errors"
 	"testing"
 
+	"go.uber.org/mock/gomock"
+
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store/storetest"
+
 	"github.com/truewebber/eve-online-mcp/internal/domain/confirm"
-	"github.com/truewebber/eve-online-mcp/internal/logtest"
+	"github.com/truewebber/eve-online-mcp/internal/mocks"
 )
 
 const (
@@ -18,7 +21,7 @@ const (
 func openRepo(t *testing.T) *Repo {
 	t.Helper()
 
-	return New(storetest.Open(t, logtest.Silent{}).Pool())
+	return New(storetest.Open(t, mocks.QuietLogger(gomock.NewController(t))).Pool())
 }
 
 func TestPutGetDelete(t *testing.T) {

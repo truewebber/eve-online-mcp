@@ -1,0 +1,53 @@
+{
+  "method": "POST",
+  "path": "/universe/ids",
+  "source": "recorded",
+  "compat_date": "2026-08-18",
+  "status": 200,
+  "headers": {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Expose-Headers": "Etag, Retry-After, X-Compatibility-Date, X-Esi-Error-Limit-Remain, X-Esi-Error-Limit-Reset, X-Pages, X-Ratelimit-Group, X-Ratelimit-Limit, X-Ratelimit-Remaining, X-Ratelimit-Used",
+    "Content-Language": "en",
+    "Content-Type": "application/json; charset=UTF-8",
+    "Date": "Mon, 31 Aug 2026 23:06:55 GMT",
+    "Strict-Transport-Security": "max-age=31536000",
+    "Vary": "X-Tenant",
+    "X-Compatibility-Date": "2020-01-01",
+    "X-Esi-Cache-Status": "MISS",
+    "X-Esi-Error-Limit-Remain": "99",
+    "X-Esi-Error-Limit-Reset": "5",
+    "X-Esi-Request-Id": "40e74be3-7782-4cce-8e6d-800991d41390"
+  },
+  "body": {
+    "alliances": [
+      {
+        "id": 99005382,
+        "name": "Jita Holding Inc."
+      }
+    ],
+    "characters": [
+      {
+        "id": 243070982,
+        "name": "Tritanium"
+      }
+    ],
+    "corporations": [
+      {
+        "id": 383768304,
+        "name": "jion ss Corp"
+      }
+    ],
+    "inventory_types": [
+      {
+        "id": 34,
+        "name": "Tritanium"
+      }
+    ],
+    "systems": [
+      {
+        "id": 30000142,
+        "name": "Jita"
+      }
+    ]
+  }
+}

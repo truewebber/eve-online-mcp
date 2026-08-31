@@ -8,8 +8,10 @@ import (
 	"net/url"
 	"testing"
 
+	"go.uber.org/mock/gomock"
+
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
-	"github.com/truewebber/eve-online-mcp/internal/logtest"
+	"github.com/truewebber/eve-online-mcp/internal/mocks"
 )
 
 func TestRequestAssemblesURL(t *testing.T) {
@@ -24,7 +26,7 @@ func TestRequestAssemblesURL(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	c := New(esi.Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), logtest.Silent{})
+	c := New(esi.Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), mocks.QuietLogger(gomock.NewController(t)))
 	_, err := c.Get(t.Context(), esi.Path("characters", esi.ID(1), "skills"), nil, map[string]any{"page": 2}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -53,7 +55,7 @@ func TestRequestKeepsHostWhenPathHasDotDot(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	c := New(esi.Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), logtest.Silent{})
+	c := New(esi.Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), mocks.QuietLogger(gomock.NewController(t)))
 	_, err := c.Get(t.Context(), "/characters/1/../../../evil", nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +84,7 @@ func TestRequestEncodesQuery(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	c := New(esi.Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), logtest.Silent{})
+	c := New(esi.Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), mocks.QuietLogger(gomock.NewController(t)))
 	_, err := c.Get(t.Context(), "/search", nil, map[string]any{"search": "a&b=c"}, nil)
 	if err != nil {
 		t.Fatal(err)

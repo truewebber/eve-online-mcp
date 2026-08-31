@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"go.uber.org/mock/gomock"
+
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
 	esihttp "github.com/truewebber/eve-online-mcp/internal/adapter/esi/http"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
@@ -22,8 +24,9 @@ import (
 	confirmpgx "github.com/truewebber/eve-online-mcp/internal/domain/confirm/pgx"
 	"github.com/truewebber/eve-online-mcp/internal/domain/loginstate"
 	loginstatepgx "github.com/truewebber/eve-online-mcp/internal/domain/loginstate/pgx"
+
 	oauthclientpgx "github.com/truewebber/eve-online-mcp/internal/domain/oauthclient/pgx"
-	"github.com/truewebber/eve-online-mcp/internal/logtest"
+	"github.com/truewebber/eve-online-mcp/internal/mocks"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 )
 
@@ -37,11 +40,13 @@ const (
 func openDB(t *testing.T) *store.Store {
 	t.Helper()
 
-	return storetest.Open(t, logtest.Silent{})
+	return storetest.Open(t, mocks.QuietLogger(gomock.NewController(t)))
 }
 
-func characters(db *store.Store) character.Repository {
-	return characterpgx.New(db.Pool(), logtest.Silent{})
+func characters(t *testing.T, db *store.Store) character.Repository {
+	t.Helper()
+
+	return characterpgx.New(db.Pool(), mocks.QuietLogger(gomock.NewController(t)))
 }
 
 func logins(db *store.Store) loginstate.Repository {
@@ -56,34 +61,39 @@ func confirms(db *store.Store) confirm.Repository {
 	return confirmpgx.New(db.Pool())
 }
 
-func testESI() esi.Client {
-	return esihttp.New(esi.Options{}, nhttp.DefaultClient, logtest.Silent{})
+func testESI(t *testing.T) esi.Client {
+	t.Helper()
+
+	return esihttp.New(esi.Options{}, nhttp.DefaultClient, mocks.QuietLogger(gomock.NewController(t)))
 }
 
-func testSSO() sso.Client {
+func testSSO(t *testing.T) sso.Client {
+	t.Helper()
+
 	return ssohttp.New(sso.Options{
 		ClientID:    "test-eve-client",
 		CallbackURL: "http://127.0.0.1/auth/callback",
-	}, nhttp.DefaultClient, logtest.Silent{})
+	}, nhttp.DefaultClient, mocks.QuietLogger(gomock.NewController(t)))
 }
 
 func testServer(t *testing.T, db *store.Store) *Server {
 	t.Helper()
+	logger := mocks.QuietLogger(gomock.NewController(t))
 	runtime, err := session.Open(session.Options{
 		Store:      db,
-		Characters: characters(db),
+		Characters: characters(t, db),
 		Clients:    oauthclientpgx.New(db.Pool()),
 		Logins:     logins(db),
 		Codes:      codes(db),
 		Confirms:   confirms(db),
-		ESI:        testESI(),
-		SSO:        testSSO(),
-		Logger:     logtest.Silent{},
+		ESI:        testESI(t),
+		SSO:        testSSO(t),
+		Logger:     logger,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := Open(Host{Listen: "127.0.0.1:8765"}, runtime, db, logtest.Silent{})
+	s, err := Open(Host{Listen: "127.0.0.1:8765"}, runtime, db, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +110,7 @@ func TestFinishMCPAttachesExistingOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	const charID int64 = 2112625428
-	chars := characters(db)
+	chars := characters(t, db)
 	if err := chars.Upsert(ctx, character.Character{
 		ID: charID, UserID: u.ID, Name: janeDoe, RefreshToken: "old-rt",
 	}); err != nil {
@@ -148,7 +158,7 @@ func TestFinishMCPCreatesUser(t *testing.T) {
 	if loc == "" {
 		t.Fatal("empty redirect")
 	}
-	row, err := characters(db).Get(context.Background(), charID)
+	row, err := characters(t, db).Get(context.Background(), charID)
 	if err != nil || row.UserID == "" {
 		t.Fatalf("owner %v err %v", row, err)
 	}
@@ -170,7 +180,7 @@ func TestFinishAltRefusesOtherUser(t *testing.T) {
 		t.Fatal(err)
 	}
 	const charID int64 = 2112625428
-	chars := characters(db)
+	chars := characters(t, db)
 	if err := chars.Upsert(ctx, character.Character{
 		ID: charID, UserID: a.ID, Name: janeDoe, RefreshToken: "a-rt",
 	}); err != nil {
@@ -207,7 +217,7 @@ func TestFinishAltRefreshesOwnCharacter(t *testing.T) {
 		t.Fatal(err)
 	}
 	const charID int64 = 99
-	chars := characters(db)
+	chars := characters(t, db)
 	if err := chars.Upsert(ctx, character.Character{
 		ID: charID, UserID: u.ID, Name: altName, RefreshToken: "old-rt",
 	}); err != nil {

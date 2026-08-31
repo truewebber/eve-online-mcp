@@ -1,0 +1,20 @@
+{
+  "method": "GET",
+  "path": "/characters/1/assets",
+  "source": "openapi",
+  "compat_date": "2026-08-18",
+  "status": 420,
+  "headers": {
+    "Cache-Control": "public",
+    "Content-Type": "application/json",
+    "ETag": "\"openapi\"",
+    "Expires": "Wed, 19 Aug 2026 00:00:00 GMT",
+    "Retry-After": "15",
+    "X-Compatibility-Date": "2026-08-18",
+    "X-Esi-Error-Limit-Remain": "0",
+    "X-Esi-Error-Limit-Reset": "15"
+  },
+  "body": {
+    "error": "This software has exceeded the error limit for ESI."
+  }
+}

@@ -5,14 +5,17 @@ import (
 	"errors"
 	"testing"
 
+	"go.uber.org/mock/gomock"
+
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store/storetest"
+
 	"github.com/truewebber/eve-online-mcp/internal/domain/oauthclient"
-	"github.com/truewebber/eve-online-mcp/internal/logtest"
+	"github.com/truewebber/eve-online-mcp/internal/mocks"
 )
 
 func TestUpsertAndGet(t *testing.T) {
 	t.Parallel()
-	db := storetest.Open(t, logtest.Silent{})
+	db := storetest.Open(t, mocks.QuietLogger(gomock.NewController(t)))
 	repo := New(db.Pool())
 	ctx := context.Background()
 	if err := repo.Upsert(ctx, oauthclient.Client{

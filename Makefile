@@ -1,4 +1,4 @@
-.PHONY: build run lint lint-fix lint-check gen postgres migrate down test-store
+.PHONY: build run lint lint-fix lint-check gen generate postgres migrate down test test-store
 
 GO ?= go
 COMPOSE ?= docker compose
@@ -31,6 +31,13 @@ lint-fix:
 
 gen:
 	$(OAPI_CODEGEN) -config api/http.cfg.yaml api/http.yaml
+
+generate:
+	$(GO) generate ./...
+
+test:
+	@echo "offline: recorded ESI fixtures; store and migration tests skip without DATABASE_URL — use make test-store"
+	$(GO) test ./...
 
 test-store: postgres migrate
 	DATABASE_URL=$(DATABASE_URL) $(GO) test ./internal/adapter/store ./internal/adapter/store/storetest ./internal/adapter/sso ./internal/adapter/sso/http ./internal/adapter/esi ./internal/adapter/esi/http ./internal/usecase/oauth ./internal/usecase/session ./internal/domain/write ./internal/domain/character/pgx ./internal/domain/oauthclient/pgx ./internal/domain/loginstate/pgx ./internal/domain/authcode/pgx ./internal/domain/confirm/pgx -count=1

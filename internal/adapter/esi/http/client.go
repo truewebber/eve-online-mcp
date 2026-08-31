@@ -66,13 +66,22 @@ func New(opts esi.Options, httpClient *nhttp.Client, logger log.Logger) *Client 
 
 	return &Client{
 		opts:        opts,
-		http:        httpClient,
+		http:        ownHTTP(httpClient),
 		cache:       newResponseCache(),
 		sem:         make(chan struct{}, opts.MaxConcurrency),
 		errorRemain: errorLimitBudget,
 		bucket:      newUserBucket(),
 		logger:      logger,
 	}
+}
+
+func ownHTTP(c *nhttp.Client) *nhttp.Client {
+	if c == nil {
+		return &nhttp.Client{}
+	}
+	cp := *c
+
+	return &cp
 }
 
 func (c *Client) ForUser(auth esi.TokenSource) esi.Client {

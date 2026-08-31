@@ -15,6 +15,8 @@ type Confirm struct {
 }
 
 // Implemented outside this package so domain/write does not import the adapter.
+//
+//go:generate go tool go.uber.org/mock/mockgen -destination=../../mocks/write.go -package=mocks -mock_names=Persist=MockWritePersist github.com/truewebber/eve-online-mcp/internal/domain/write Persist
 type Persist interface {
 	PutConfirm(ctx context.Context, c Confirm) error
 	GetConfirm(ctx context.Context, token string) (*Confirm, bool, error)

@@ -6,15 +6,18 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/mock/gomock"
+
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store/storetest"
+
 	"github.com/truewebber/eve-online-mcp/internal/domain/authcode"
-	"github.com/truewebber/eve-online-mcp/internal/logtest"
+	"github.com/truewebber/eve-online-mcp/internal/mocks"
 )
 
 func openRepo(t *testing.T) (*store.Store, *Repo) {
 	t.Helper()
-	db := storetest.Open(t, logtest.Silent{})
+	db := storetest.Open(t, mocks.QuietLogger(gomock.NewController(t)))
 
 	return db, New(db.Pool())
 }

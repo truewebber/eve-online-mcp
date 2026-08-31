@@ -88,7 +88,7 @@ linters:
           list-mode: lax
           files:
             - "**/internal/domain/*/*.go"
-            - "!**/internal/domain/**/mocks/**/*.go"
+            - "!$test"
           deny:
             - pkg: github.com/truewebber/eve-online-mcp/internal/domain/
               desc: domains must not import each other; use interfaces only

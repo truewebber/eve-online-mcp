@@ -1,0 +1,37 @@
+{
+  "method": "POST",
+  "path": "/route/30000142/30002187",
+  "source": "recorded",
+  "compat_date": "2026-08-18",
+  "status": 200,
+  "headers": {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Expose-Headers": "Etag, Retry-After, X-Compatibility-Date, X-Esi-Error-Limit-Remain, X-Esi-Error-Limit-Reset, X-Pages, X-Ratelimit-Group, X-Ratelimit-Limit, X-Ratelimit-Remaining, X-Ratelimit-Used",
+    "Content-Language": "en",
+    "Content-Type": "application/json",
+    "Date": "Mon, 31 Aug 2026 23:06:55 GMT",
+    "Strict-Transport-Security": "max-age=31536000",
+    "Vary": "X-Tenant",
+    "X-Compatibility-Date": "2025-09-30",
+    "X-Ratelimit-Group": "routes",
+    "X-Ratelimit-Limit": "3600/15m",
+    "X-Ratelimit-Remaining": "3596",
+    "X-Ratelimit-Used": "2"
+  },
+  "body": {
+    "route": [
+      30000142,
+      30000138,
+      30000132,
+      30000134,
+      30005196,
+      30005192,
+      30004083,
+      30004081,
+      30002197,
+      30002193,
+      30003491,
+      30002187
+    ]
+  }
+}

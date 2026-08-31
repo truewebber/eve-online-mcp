@@ -1,4 +1,4 @@
-package write
+package write_test
 
 import (
 	"context"
@@ -7,17 +7,88 @@ import (
 	"testing"
 	"time"
 
-	"github.com/truewebber/eve-online-mcp/internal/logtest"
+	"go.uber.org/mock/gomock"
+
+	"github.com/truewebber/eve-online-mcp/internal/domain/write"
+	"github.com/truewebber/eve-online-mcp/internal/mocks"
 )
 
 const testDestination = "Jita"
 
-func testGuard(t *testing.T) (*Guard, *memPersist) {
-	t.Helper()
-	mem := newMemPersist()
-	g := NewGuard(mem, "user-1", logtest.Silent{})
+type confirmBox struct {
+	tokens map[string]write.Confirm
+	mail   []mailAt
+}
 
-	return g, mem
+type mailAt struct {
+	userID string
+	at     time.Time
+}
+
+func testGuard(t *testing.T) (*write.Guard, *confirmBox) {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	box := &confirmBox{tokens: map[string]write.Confirm{}}
+	persist := mocks.NewMockWritePersist(ctrl)
+	persist.EXPECT().PutConfirm(gomock.Any(), gomock.Any()).DoAndReturn(box.put).AnyTimes()
+	persist.EXPECT().GetConfirm(gomock.Any(), gomock.Any()).DoAndReturn(box.get).AnyTimes()
+	persist.EXPECT().DeleteConfirm(gomock.Any(), gomock.Any()).DoAndReturn(box.drop).AnyTimes()
+	persist.EXPECT().CountConfirm(gomock.Any(), gomock.Any()).DoAndReturn(box.countConfirm).AnyTimes()
+	persist.EXPECT().CountMailSince(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(box.countMail).AnyTimes()
+	persist.EXPECT().InsertMail(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(box.insertMail).AnyTimes()
+	g := write.NewGuard(persist, "user-1", mocks.QuietLogger(ctrl))
+
+	return g, box
+}
+
+func (b *confirmBox) put(_ context.Context, c write.Confirm) error {
+	b.tokens[c.Token] = c
+
+	return nil
+}
+
+func (b *confirmBox) get(_ context.Context, token string) (*write.Confirm, bool, error) {
+	c, ok := b.tokens[token]
+	if !ok {
+		return nil, false, nil
+	}
+	cp := c
+
+	return &cp, true, nil
+}
+
+func (b *confirmBox) drop(_ context.Context, token string) error {
+	delete(b.tokens, token)
+
+	return nil
+}
+
+func (b *confirmBox) countConfirm(_ context.Context, userID string) (int, error) {
+	n := 0
+	for _, c := range b.tokens {
+		if c.UserID == userID {
+			n++
+		}
+	}
+
+	return n, nil
+}
+
+func (b *confirmBox) countMail(_ context.Context, userID string, since time.Time) (int, error) {
+	n := 0
+	for _, row := range b.mail {
+		if row.userID == userID && !row.at.Before(since) {
+			n++
+		}
+	}
+
+	return n, nil
+}
+
+func (b *confirmBox) insertMail(_ context.Context, userID string, at time.Time) error {
+	b.mail = append(b.mail, mailAt{userID: userID, at: at})
+
+	return nil
 }
 
 func TestAuthorizePreviewAndConfirm(t *testing.T) {
@@ -26,7 +97,7 @@ func TestAuthorizePreviewAndConfirm(t *testing.T) {
 	g, _ := testGuard(t)
 	args := map[string]any{"destination": testDestination}
 	preview := map[string]any{"will_set": testDestination}
-	scopes := Capabilities()["waypoint"].Scopes
+	scopes := write.Capabilities()["waypoint"].Scopes
 
 	out, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, preview, "", scopes)
 	if err != nil {
@@ -45,7 +116,7 @@ func TestAuthorizePreviewAndConfirm(t *testing.T) {
 		t.Fatalf("confirm %v %v", done, err)
 	}
 	_, err = g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, preview, token, scopes)
-	if !errors.As(err, new(BlockedError)) {
+	if !errors.As(err, new(write.BlockedError)) {
 		t.Fatalf("replay want BlockedError, got %v", err)
 	}
 }
@@ -55,9 +126,9 @@ func TestConfirmToolMismatchKeepsToken(t *testing.T) {
 	ctx := context.Background()
 	g, _ := testGuard(t)
 	args := map[string]any{"destination": testDestination}
-	scopes := append([]string{}, Capabilities()["waypoint"].Scopes...)
-	scopes = append(scopes, Capabilities()[CapMailSend].Scopes...)
-	out, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, "", Capabilities()["waypoint"].Scopes)
+	scopes := append([]string{}, write.Capabilities()["waypoint"].Scopes...)
+	scopes = append(scopes, write.Capabilities()[write.CapMailSend].Scopes...)
+	out, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, "", write.Capabilities()["waypoint"].Scopes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,12 +136,12 @@ func TestConfirmToolMismatchKeepsToken(t *testing.T) {
 	if !ok || token == "" {
 		t.Fatalf("preview %+v", out)
 	}
-	_, err = g.Authorize(ctx, "eve_mail_send", CapMailSend, args, nil, token, scopes)
-	var blocked BlockedError
+	_, err = g.Authorize(ctx, "eve_mail_send", write.CapMailSend, args, nil, token, scopes)
+	var blocked write.BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "eve_ui_set_waypoint") {
 		t.Fatalf("mismatch %v", err)
 	}
-	done, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, token, Capabilities()["waypoint"].Scopes)
+	done, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, token, write.Capabilities()["waypoint"].Scopes)
 	if err != nil || done.Required != nil {
 		t.Fatalf("token should still work: %v %v", done, err)
 	}
@@ -80,7 +151,7 @@ func TestConfirmDigestMismatchDiscards(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	g, _ := testGuard(t)
-	scopes := Capabilities()["waypoint"].Scopes
+	scopes := write.Capabilities()["waypoint"].Scopes
 	out, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", map[string]any{"d": testDestination}, nil, "", scopes)
 	if err != nil {
 		t.Fatal(err)
@@ -90,7 +161,7 @@ func TestConfirmDigestMismatchDiscards(t *testing.T) {
 		t.Fatalf("preview %+v", out)
 	}
 	_, err = g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", map[string]any{"d": "Amarr"}, nil, token, scopes)
-	var blocked BlockedError
+	var blocked write.BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "arguments changed") {
 		t.Fatalf("digest %v", err)
 	}
@@ -103,20 +174,21 @@ func TestConfirmDigestMismatchDiscards(t *testing.T) {
 func TestConfirmExpiry(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	g, mem := testGuard(t)
+	g, box := testGuard(t)
 	args := map[string]any{"d": testDestination}
-	digest, err := digestArgs(args)
+	out, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, "", write.Capabilities()["waypoint"].Scopes)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := mem.PutConfirm(ctx, Confirm{
-		Token: "stale", UserID: "user-1", Tool: "eve_ui_set_waypoint",
-		ArgsDigest: digest, CreatedAt: time.Now().Add(-10 * time.Minute),
-	}); err != nil {
-		t.Fatal(err)
+	token, ok := out.Required["confirm_token"].(string)
+	if !ok || token == "" {
+		t.Fatalf("preview %+v", out)
 	}
-	_, err = g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, "stale", Capabilities()["waypoint"].Scopes)
-	var blocked BlockedError
+	stored := box.tokens[token]
+	stored.CreatedAt = time.Now().Add(-10 * time.Minute)
+	box.tokens[token] = stored
+	_, err = g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, token, write.Capabilities()["waypoint"].Scopes)
+	var blocked write.BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "expired") {
 		t.Fatalf("expiry %v", err)
 	}
@@ -126,12 +198,12 @@ func TestSixthMailIsBlocked(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	g, _ := testGuard(t)
-	scopes := Capabilities()[CapMailSend].Scopes
+	scopes := write.Capabilities()[write.CapMailSend].Scopes
 	for range 5 {
-		g.Record(ctx, "eve_mail_send", CapMailSend, nil, "ok")
+		g.Record(ctx, "eve_mail_send", write.CapMailSend, nil, "ok")
 	}
-	_, err := g.Authorize(ctx, "eve_mail_send", CapMailSend, nil, nil, "", scopes)
-	var blocked BlockedError
+	_, err := g.Authorize(ctx, "eve_mail_send", write.CapMailSend, nil, nil, "", scopes)
+	var blocked write.BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "Mail budget exhausted") {
 		t.Fatalf("sixth mail %v", err)
 	}
@@ -147,7 +219,7 @@ func TestCheckCapabilityUnknownOnly(t *testing.T) {
 		t.Fatalf("known capability: %v", err)
 	}
 	err := g.CheckCapability("teleport")
-	var blocked BlockedError
+	var blocked write.BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "Unknown") {
 		t.Fatalf("unknown %v", err)
 	}
@@ -163,29 +235,29 @@ func TestStatusHasNoAuditOrBudget(t *testing.T) {
 			t.Fatalf("status still has %s: %+v", key, st)
 		}
 	}
-	if st["mail_cap_per_hour"] != MailCap {
+	if st["mail_cap_per_hour"] != write.MailCap {
 		t.Fatalf("mail cap %+v", st["mail_cap_per_hour"])
 	}
 	caps, ok := st["capabilities"].([]string)
 	if !ok {
 		t.Fatalf("capabilities %+v", st["capabilities"])
 	}
-	if len(caps) != len(Capabilities()) {
+	if len(caps) != len(write.Capabilities()) {
 		t.Fatalf("capabilities %v", caps)
 	}
 }
 
 func TestRequestedScopesIncludesCorpAndWrites(t *testing.T) {
 	t.Parallel()
-	scopes := RequestedScopes()
+	scopes := write.RequestedScopes()
 	want := map[string]struct{}{}
-	for _, s := range ReadScopes() {
+	for _, s := range write.ReadScopes() {
 		want[s] = struct{}{}
 	}
-	for _, s := range CorpReadScopes() {
+	for _, s := range write.CorpReadScopes() {
 		want[s] = struct{}{}
 	}
-	for _, cap := range Capabilities() {
+	for _, cap := range write.Capabilities() {
 		for _, s := range cap.Scopes {
 			want[s] = struct{}{}
 		}

@@ -1,0 +1,33 @@
+{
+  "method": "POST",
+  "path": "/universe/names",
+  "source": "recorded",
+  "compat_date": "2026-08-18",
+  "status": 200,
+  "headers": {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Expose-Headers": "Etag, Retry-After, X-Compatibility-Date, X-Esi-Error-Limit-Remain, X-Esi-Error-Limit-Reset, X-Pages, X-Ratelimit-Group, X-Ratelimit-Limit, X-Ratelimit-Remaining, X-Ratelimit-Used",
+    "Content-Language": "en",
+    "Content-Type": "application/json; charset=UTF-8",
+    "Date": "Mon, 31 Aug 2026 23:06:55 GMT",
+    "Strict-Transport-Security": "max-age=31536000",
+    "Vary": "X-Tenant",
+    "X-Compatibility-Date": "2020-01-01",
+    "X-Esi-Cache-Status": "MISS",
+    "X-Esi-Error-Limit-Remain": "99",
+    "X-Esi-Error-Limit-Reset": "5",
+    "X-Esi-Request-Id": "bbbdf9e2-b0c2-4718-b70b-0218c8413db3"
+  },
+  "body": [
+    {
+      "category": "inventory_type",
+      "id": 34,
+      "name": "Tritanium"
+    },
+    {
+      "category": "solar_system",
+      "id": 30000142,
+      "name": "Jita"
+    }
+  ]
+}

@@ -45,6 +45,7 @@ type PreparedLogin struct {
 	Scopes   []string
 }
 
+//go:generate go tool go.uber.org/mock/mockgen -destination=../../mocks/sso.go -package=mocks -mock_names=Client=MockSSOClient github.com/truewebber/eve-online-mcp/internal/adapter/sso Client
 type Client interface {
 	PrepareLogin(scopes []string) (*PreparedLogin, error)
 	ExchangeCode(ctx context.Context, code, verifier string) (*CharacterToken, error)

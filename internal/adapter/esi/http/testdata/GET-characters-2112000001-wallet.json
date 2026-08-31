@@ -1,0 +1,17 @@
+{
+  "method": "GET",
+  "path": "/characters/2112000001/wallet",
+  "source": "openapi",
+  "compat_date": "2026-08-18",
+  "status": 200,
+  "headers": {
+    "Cache-Control": "public",
+    "Content-Type": "application/json",
+    "ETag": "\"openapi\"",
+    "Expires": "Wed, 19 Aug 2026 00:00:00 GMT",
+    "X-Compatibility-Date": "2026-08-18",
+    "X-Esi-Error-Limit-Remain": "100",
+    "X-Esi-Error-Limit-Reset": "60"
+  },
+  "body": 1000000
+}

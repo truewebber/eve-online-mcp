@@ -95,7 +95,7 @@ commit as the change to the document that owns it; after the task
 | [T08](T08-write-policy-constants.md) | Always-on writes; drop budget + audit | done | M | T07 | — | §2, §4 |
 | [T09](T09-user-esi-bucket.md) | Per-user ESI token bucket | done | M | T07 | — | §5.2 |
 | [T10](T10-character-ownership.md) | Alt-add ownership refuse | done | S | T05 T06 | — | §3.3 |
-| [T11](T11-test-foundation.md) | Generated mocks and recorded ESI | todo | L | — | §13 §5 §1 | §12.0 |
+| [T11](T11-test-foundation.md) | Generated mocks and recorded ESI | done | L | — | §13 §5 §1 | §12.0 |
 | [T12](T12-hmac-key.md) | `HMAC_KEY` env; drop `app_secrets` | todo | S | T11 | §14 §16 | §2, §12.4 |
 | [T13](T13-tests-and-ci.md) | `tests/` end to end, and a pipeline | todo | M | T12 | §5 §3 §14 | §4.3, §6, §9 |
 | [T14](T14-character-is-the-user.md) | The character is the user; drop `users` | todo | L | T13 | §11 §5 | §3.3, §12.1 |

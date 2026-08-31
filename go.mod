@@ -13,12 +13,14 @@ require (
 	github.com/oapi-codegen/runtime v1.1.2
 	github.com/pressly/goose/v3 v3.27.3
 	github.com/truewebber/gopkg v1.3.1
+	go.uber.org/mock v0.6.0
 )
 
 tool (
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 	github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 	github.com/pressly/goose/v3/cmd/goose
+	go.uber.org/mock/mockgen
 )
 
 require (

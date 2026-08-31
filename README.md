@@ -208,13 +208,23 @@ either way the connection dies and the client asks for a new sign-in.
 
 ## Development
 
+Tools on `PATH` (also pinned in `go.mod` `tool`):
+
+```bash
+go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1
+```
+
+`oapi-codegen` regenerates `internal/service/http/api.gen.go` from
+`api/http.yaml` (`make gen`).
+
 ```bash
 make postgres                     # local Postgres (loopback :5432)
 make migrate                      # goose, against DATABASE_URL
 go build -o eve-mcp ./cmd/eve-mcp
 ./eve-mcp                         # foreground, reads ./.env or the environment
-go test ./...                     # unit tests
+make test                         # offline: fixtures; store tests skip without DATABASE_URL
 make test-store                   # everything that needs DATABASE_URL
+make generate                     # mockgen + oapi-codegen
 ```
 
 The server is a Go binary on the host. Postgres is Compose-only — do not

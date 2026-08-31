@@ -119,7 +119,7 @@ func TestFinishAltUsesRecordedUser(t *testing.T) {
 	if err := s.finishAlt(ctx, &loginstate.Login{UserID: u.ID}, tok); err != nil {
 		t.Fatal(err)
 	}
-	row, err := characters(db).Get(ctx, 7)
+	row, err := characters(t, db).Get(ctx, 7)
 	if err != nil || row.UserID != u.ID {
 		t.Fatalf("owner %v err %v", row, err)
 	}
