@@ -259,6 +259,7 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			rec := post(tc.setup(t))
 			if rec.Code != tc.status {
 				t.Fatalf("status %d want %d body %s", rec.Code, tc.status, rec.Body.String())
