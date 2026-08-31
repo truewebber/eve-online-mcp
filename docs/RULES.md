@@ -179,3 +179,21 @@ in a struct.
 
 A signature we do not own (generated code, an SDK callback) is not
 this rule.
+
+## 11. Each layer owns its types
+
+`service`, `usecase`, `domain` and `adapter` each speak only their
+own types (SPEC §7). A public signature of a layer accepts and returns
+that layer's types: the service type is the service's representation
+to the outside, the usecase type is the usecase contract. Domain and
+adapter operate in their own types the same way.
+
+Crossing a boundary is a map, not a leak. `service` does not expose a
+usecase or adapter type; `usecase` does not take or return a domain
+or adapter type; nobody reaches through a layer to borrow its
+neighbor's struct. A type that leaks is an import that already
+violates `service → usecase → adapter | domain`.
+
+A signature we do not own (generated OpenAPI, an SDK callback) lives
+in `service`. `int`, `string` and other language builtins are not a
+layer's types.
