@@ -399,7 +399,7 @@ func corpAssetLocationRows(buckets map[int]*corpAssetBucket, placeNames, typeNam
 		if b.value < in.MinValue {
 			continue
 		}
-		topItems := corpAssetTopItems(b.types, typeNames, prices, itemsN)
+		topItems := topItemLines(b.types, typeNames, prices, itemsN)
 		rows = append(rows, map[string]any{
 			"location": place, "value": isk(b.value), "value_isk": mathRound(b.value, 2),
 			"distinct_types": len(b.types), "units": b.units, "location_id": placeID, "top_items": topItems,
@@ -407,26 +407,6 @@ func corpAssetLocationRows(buckets map[int]*corpAssetBucket, placeNames, typeNam
 	}
 
 	return rows
-}
-
-func corpAssetTopItems(types map[int]int, typeNames map[int]string, prices map[int]map[string]float64, itemsN int) []string {
-	type kv struct{ t, q int }
-	var top []kv
-	for t, q := range types {
-		top = append(top, kv{t, q})
-	}
-	sort.Slice(top, func(i, k int) bool {
-		return lineValue(prices, top[i].t, top[i].q) > lineValue(prices, top[k].t, top[k].q)
-	})
-	if len(top) > itemsN {
-		top = top[:itemsN]
-	}
-	var topItems []string
-	for _, x := range top {
-		topItems = append(topItems, fmt.Sprintf("%v x%d (~%s)", nameOr(typeNames, x.t), x.q, isk(unitPrice(prices, x.t)*float64(x.q))))
-	}
-
-	return topItems
 }
 
 func corpAssetBucketTotal(buckets map[int]*corpAssetBucket) float64 {

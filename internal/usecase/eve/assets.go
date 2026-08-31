@@ -142,14 +142,14 @@ func assetLocationRows(buckets map[int]*assetBucket, placeNames, typeNames map[i
 		}
 		rows = append(rows, map[string]any{
 			"location": place, "value": isk(b.value), "value_isk": mathRound(b.value, 2),
-			"distinct_types": len(b.types), "units": b.units, "location_id": placeID, "top_items": assetTopItems(b.types, typeNames, prices, itemsN),
+			"distinct_types": len(b.types), "units": b.units, "location_id": placeID, "top_items": topItemLines(b.types, typeNames, prices, itemsN),
 		})
 	}
 
 	return rows
 }
 
-func assetTopItems(types map[int]int, typeNames map[int]string, prices map[int]map[string]float64, itemsN int) []string {
+func topItemLines(types map[int]int, typeNames map[int]string, prices map[int]map[string]float64, itemsN int) []string {
 	type kv struct{ t, q int }
 	var top []kv
 	for t, q := range types {
