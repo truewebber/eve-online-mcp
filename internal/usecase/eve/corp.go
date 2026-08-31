@@ -19,24 +19,16 @@ import (
 )
 
 func hangarDivision(flag string) (int, bool) {
-	switch flag {
-	case "CorpSAG1":
-		return 1, true
-	case "CorpSAG2":
-		return 2, true
-	case "CorpSAG3":
-		return 3, true
-	case "CorpSAG4":
-		return 4, true
-	case "CorpSAG5":
-		return 5, true
-	case "CorpSAG6":
-		return 6, true
-	case "CorpSAG7":
-		return 7, true
-	default:
+	const prefix = "CorpSAG"
+	if !strings.HasPrefix(flag, prefix) || len(flag) != len(prefix)+1 {
 		return 0, false
 	}
+	n := int(flag[len(prefix)] - '0')
+	if n < 1 || n > corpHangarCount {
+		return 0, false
+	}
+
+	return n, true
 }
 
 func corpScope(key string) string {
@@ -264,7 +256,7 @@ func corpOverviewIdentity(ctx context.Context, a *session.Session, corp *charact
 		"corporation_kind": map[bool]string{true: "npc", false: "player"}[corp.IsNPC()],
 		"member_count":     public["member_count"], "ceo": n[j.Int(public["ceo_id"])],
 		"alliance": n[j.Int(public["alliance_id"])],
-		"tax_pct":  mathRound(j.Float(public["tax_rate"])*100, 2),
+		"tax_pct":  mathRound(j.Float(public["tax_rate"])*percentScale, decimalPlaces),
 	}, rolesForDisplay(corp)), nil
 }
 
@@ -320,7 +312,7 @@ func eveCorpAssetsList(ctx context.Context, a *session.Session, in corpAssetsLis
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/assets", corp.CorporationID), &corp.Token.CharacterID, nil, 80)
+	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/assets", corp.CorporationID), &corp.Token.CharacterID, nil, pagesCorpAssets)
 	if err != nil {
 		return nil, err
 	}
@@ -345,7 +337,7 @@ func eveCorpAssetsList(ctx context.Context, a *session.Session, in corpAssetsLis
 	buckets := corpAssetBuckets(assets, roots, prices)
 	rows := corpAssetLocationRows(buckets, placeNames, typeNames, prices, in)
 	sort.Slice(rows, func(i, k int) bool { return j.Float(rows[i]["value_isk"]) > j.Float(rows[k]["value_isk"]) })
-	visible, meta := page(rows, limitOr(in.Limit, 10), "Raise `limit`, or filter with `location` / `min_value`.")
+	visible, meta := page(rows, limitOr(in.Limit, limitShort), "Raise `limit`, or filter with `location` / `min_value`.")
 	out := merge(who(corp), merge(map[string]any{
 		"total_estimated_value": isk(corpAssetBucketTotal(buckets)), "total_locations": len(buckets),
 		"matching_locations": len(rows), "valuation_basis": "CCP global average price per type, not a hub quote",
@@ -404,7 +396,7 @@ func corpAssetBuckets(assets []map[string]any, roots map[int]int, prices map[int
 
 func corpAssetLocationRows(buckets map[int]*corpAssetBucket, placeNames, typeNames map[int]string, prices map[int]map[string]float64, in corpAssetsListIn) []map[string]any {
 	needle := strings.ToLower(strings.TrimSpace(in.Location))
-	itemsN := limitOr(in.Items, 5)
+	itemsN := limitOr(in.Items, limitTopItems)
 	var rows []map[string]any
 	for placeID, b := range buckets {
 		place := nameOr(placeNames, placeID)
@@ -416,7 +408,7 @@ func corpAssetLocationRows(buckets map[int]*corpAssetBucket, placeNames, typeNam
 		}
 		topItems := topItemLines(b.types, typeNames, prices, itemsN)
 		rows = append(rows, map[string]any{
-			"location": place, "value": isk(b.value), "value_isk": mathRound(b.value, 2),
+			"location": place, "value": isk(b.value), "value_isk": mathRound(b.value, decimalPlaces),
 			"distinct_types": len(b.types), "units": b.units, "location_id": placeID, "top_items": topItems,
 		})
 	}
@@ -438,7 +430,7 @@ func eveCorpAssetsFind(ctx context.Context, a *session.Session, in corpAssetsFin
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/assets", corp.CorporationID), &corp.Token.CharacterID, nil, 80)
+	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/assets", corp.CorporationID), &corp.Token.CharacterID, nil, pagesCorpAssets)
 	if err != nil {
 		return nil, err
 	}
@@ -463,7 +455,7 @@ func eveCorpAssetsFind(ctx context.Context, a *session.Session, in corpAssetsFin
 	}
 	rows := corpAssetFindRows(matches, itemsByID(items), roots, typeNames, placeNames, prices, divs["hangar"])
 	sort.Slice(rows, func(i, k int) bool { return j.Int(rows[i]["quantity"]) > j.Int(rows[k]["quantity"]) })
-	visible, meta := page(rows, limitOr(in.Limit, 20), "")
+	visible, meta := page(rows, limitOr(in.Limit, limitMedium), "")
 	out := merge(who(corp), merge(map[string]any{
 		"query": in.Name, "total_units": sumIntField(rows, "quantity"), "total_stacks": len(rows),
 		"data_age": result.StaleNote(),
@@ -546,7 +538,7 @@ func eveCorpBlueprints(ctx context.Context, a *session.Session, in corpBlueprint
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/blueprints", corp.CorporationID), &corp.Token.CharacterID, nil, 40)
+	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/blueprints", corp.CorporationID), &corp.Token.CharacterID, nil, pagesESI)
 	if err != nil {
 		return nil, err
 	}
@@ -567,7 +559,7 @@ func eveCorpBlueprints(ctx context.Context, a *session.Session, in corpBlueprint
 
 		return j.Int(listed.rows[i]["material_efficiency"]) > j.Int(listed.rows[k]["material_efficiency"])
 	})
-	visible, meta := page(listed.rows, limitOr(in.Limit, 25), "")
+	visible, meta := page(listed.rows, limitOr(in.Limit, limitLong), "")
 
 	return merge(who(corp), merge(map[string]any{
 		"originals": listed.originals, "copies": listed.copies, "data_age": result.StaleNote(),
@@ -694,7 +686,7 @@ func corpWalletMovements(ctx context.Context, a *session.Session, corp *characte
 		out["journal_section"] = sec
 	}
 	if kind == "transactions" || kind == "both" {
-		sec, err := transactionSection(ctx, a, fmt.Sprintf("/corporations/%d/wallets/%d/transactions", corp.CorporationID, div), corp.Token.CharacterID, limitOr(in.Limit, 15), concise(in.ResponseFormat))
+		sec, err := transactionSection(ctx, a, fmt.Sprintf("/corporations/%d/wallets/%d/transactions", corp.CorporationID, div), corp.Token.CharacterID, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
 		if err != nil {
 			return nil, err
 		}
@@ -717,12 +709,12 @@ func corpWalletMovements(ctx context.Context, a *session.Session, corp *characte
 }
 
 func corpWalletJournal(ctx context.Context, a *session.Session, corp *character.Corporation, div int, in corpWalletIn) (map[string]any, error) {
-	res, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/wallets/%d/journal", corp.CorporationID, div), &corp.Token.CharacterID, nil, 10)
+	res, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/wallets/%d/journal", corp.CorporationID, div), &corp.Token.CharacterID, nil, pagesShort)
 	if err != nil {
 		return nil, err
 	}
 
-	return summarizeJournal(res.Data, res.StaleNote(), res.Truncated, 10, in.RefType, limitOr(in.Limit, 15), concise(in.ResponseFormat), fmt.Sprintf("division %d", div))
+	return summarizeJournal(res.Data, res.StaleNote(), res.Truncated, pagesShort, in.RefType, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat), fmt.Sprintf("division %d", div))
 }
 
 func eveCorpIndustryJobs(ctx context.Context, a *session.Session, in corpIndustryJobsIn) (any, error) {
@@ -730,11 +722,11 @@ func eveCorpIndustryJobs(ctx context.Context, a *session.Session, in corpIndustr
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/industry/jobs", corp.CorporationID), &corp.Token.CharacterID, map[string]any{"include_completed": boolDef(in.IncludeCompleted, false)}, 40)
+	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/industry/jobs", corp.CorporationID), &corp.Token.CharacterID, map[string]any{"include_completed": boolDef(in.IncludeCompleted, false)}, pagesESI)
 	if err != nil {
 		return nil, err
 	}
-	out, err := industryJobsResult(ctx, a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), limitOr(in.Limit, 20), concise(in.ResponseFormat), true)
+	out, err := industryJobsResult(ctx, a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), limitOr(in.Limit, limitMedium), concise(in.ResponseFormat), true)
 	if err != nil {
 		return nil, err
 	}
@@ -794,7 +786,7 @@ func corpMiningAttachLedger(ctx context.Context, a *session.Session, corp *chara
 
 		return
 	}
-	ledger, err := corpMiningLedger(ctx, a, corp, limitOr(in.Limit, 15), concise(in.ResponseFormat))
+	ledger, err := corpMiningLedger(ctx, a, corp, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
 	if err != nil {
 		out["ledger_note"] = err.Error()
 
@@ -808,12 +800,12 @@ func eveCorpOrders(ctx context.Context, a *session.Session, in corpOrdersIn) (an
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/orders", corp.CorporationID), &corp.Token.CharacterID, nil, 40)
+	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/orders", corp.CorporationID), &corp.Token.CharacterID, nil, pagesESI)
 	if err != nil {
 		return nil, err
 	}
 	divs := corpDivisions(ctx, a, corp)
-	out, err := formatOrders(ctx, a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), limitOr(in.Limit, 25), concise(in.ResponseFormat), divs["wallet"])
+	out, err := formatOrders(ctx, a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), limitOr(in.Limit, limitLong), concise(in.ResponseFormat), divs["wallet"])
 	if err != nil {
 		return nil, err
 	}
@@ -826,11 +818,11 @@ func eveCorpContracts(ctx context.Context, a *session.Session, in corpContractsI
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/contracts", corp.CorporationID), &corp.Token.CharacterID, nil, 40)
+	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/contracts", corp.CorporationID), &corp.Token.CharacterID, nil, pagesESI)
 	if err != nil {
 		return nil, err
 	}
-	out, err := formatContracts(ctx, a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), limitOr(in.Limit, 15), concise(in.ResponseFormat), true)
+	out, err := formatContracts(ctx, a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), limitOr(in.Limit, limitDefault), concise(in.ResponseFormat), true)
 	if err != nil {
 		return nil, err
 	}
@@ -843,7 +835,7 @@ func eveCorpKillmails(ctx context.Context, a *session.Session, in corpKillmailsI
 	if err != nil {
 		return nil, err
 	}
-	out, err := formatKillmails(ctx, a, corp.CharacterName(), corp.Token.CharacterID, corp.CorporationID, fmt.Sprintf("/corporations/%d/killmails/recent", corp.CorporationID), limitOr(in.Limit, 8), concise(in.ResponseFormat))
+	out, err := formatKillmails(ctx, a, corp.CharacterName(), corp.Token.CharacterID, corp.CorporationID, fmt.Sprintf("/corporations/%d/killmails/recent", corp.CorporationID), limitOr(in.Limit, limitKillmails), concise(in.ResponseFormat))
 	if err != nil {
 		return nil, err
 	}
@@ -856,7 +848,7 @@ func eveCorpStructures(ctx context.Context, a *session.Session, in corpStructure
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/structures", corp.CorporationID), &corp.Token.CharacterID, nil, 40)
+	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/structures", corp.CorporationID), &corp.Token.CharacterID, nil, pagesESI)
 	if err != nil {
 		return nil, err
 	}
@@ -872,7 +864,7 @@ func eveCorpStructures(ctx context.Context, a *session.Session, in corpStructure
 	sort.Slice(listed.rows, func(i, k int) bool {
 		return j.Str(listed.rows[i]["fuel_expires"]) < j.Str(listed.rows[k]["fuel_expires"])
 	})
-	visible, meta := page(listed.rows, limitOr(in.Limit, 15), "")
+	visible, meta := page(listed.rows, limitOr(in.Limit, limitDefault), "")
 
 	return merge(who(corp), merge(map[string]any{
 		"structure_count": len(listed.rows), "unfuelled": listed.unfuelled, "data_age": result.StaleNote(),
@@ -947,7 +939,7 @@ func eveCorpMembers(ctx context.Context, a *session.Session, in corpMembersIn) (
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/members", corp.CorporationID), &corp.Token.CharacterID, nil, 40)
+	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/members", corp.CorporationID), &corp.Token.CharacterID, nil, pagesESI)
 	if err != nil {
 		return nil, err
 	}
@@ -963,7 +955,7 @@ func eveCorpMembers(ctx context.Context, a *session.Session, in corpMembersIn) (
 	sort.Slice(rows, func(i, k int) bool {
 		return strings.ToLower(j.Str(rows[i]["name"])) < strings.ToLower(j.Str(rows[k]["name"]))
 	})
-	visible, meta := page(rows, limitOr(in.Limit, 25), "")
+	visible, meta := page(rows, limitOr(in.Limit, limitLong), "")
 
 	return merge(who(corp), merge(map[string]any{
 		"member_count": len(rows), "data_age": result.StaleNote(),
@@ -1246,7 +1238,7 @@ type miningLedgerAgg struct {
 }
 
 func corpMiningLedger(ctx context.Context, a *session.Session, corp *character.Corporation, limit int, conciseMode bool) (map[string]any, error) {
-	observersRes, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporation/%d/mining/observers", corp.CorporationID), &corp.Token.CharacterID, nil, 40)
+	observersRes, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporation/%d/mining/observers", corp.CorporationID), &corp.Token.CharacterID, nil, pagesESI)
 	if err != nil {
 		return nil, err
 	}
@@ -1283,7 +1275,7 @@ func corpMiningLedger(ctx context.Context, a *session.Session, corp *character.C
 }
 
 func miningLedgerAge(observersRes esi.Result, oldest float64) string {
-	if oldest < 60 {
+	if oldest < float64(secondsPerMinute) {
 		return fmt.Sprintf("%ds old", int(oldest))
 	}
 
@@ -1307,13 +1299,13 @@ func miningAggIDs(agg miningLedgerAgg) map[int]struct{} {
 
 func fetchCorpMiningObservers(ctx context.Context, a *session.Session, corp *character.Corporation, observers []map[string]any, observersRes esi.Result) miningLedgerAgg {
 	capped := observers
-	if len(capped) > 25 {
-		capped = capped[:25]
+	if len(capped) > miningObserverCap {
+		capped = capped[:miningObserverCap]
 	}
 	ch := miningObserverPages(ctx, a, corp, capped)
 	agg := miningLedgerAgg{
 		totals: map[int]int{}, byMiner: map[int]int{}, byObserver: map[int]int{},
-		oldest: observersRes.AgeSeconds, truncated: observersRes.Truncated || len(observers) > 25,
+		oldest: observersRes.AgeSeconds, truncated: observersRes.Truncated || len(observers) > miningObserverCap,
 	}
 	for range capped {
 		absorbMiningObserver(&agg, <-ch)
@@ -1337,7 +1329,7 @@ func miningObserverPages(ctx context.Context, a *session.Session, corp *characte
 
 				return
 			}
-			r, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporation/%d/mining/observers/%d", corp.CorporationID, j.Int(obs["observer_id"])), &corp.Token.CharacterID, nil, 10)
+			r, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporation/%d/mining/observers/%d", corp.CorporationID, j.Int(obs["observer_id"])), &corp.Token.CharacterID, nil, pagesShort)
 			ch <- miningObsBox{obs, r, err}
 		}(obs)
 	}
@@ -1376,8 +1368,8 @@ func topN(m map[int]int, names map[int]string, label string) []map[string]any {
 		list = append(list, kv{id, q})
 	}
 	sort.Slice(list, func(i, k int) bool { return list[i].q > list[k].q })
-	if len(list) > 5 {
-		list = list[:5]
+	if len(list) > limitTopItems {
+		list = list[:limitTopItems]
 	}
 	out := make([]map[string]any, 0, len(list))
 	for _, x := range list {

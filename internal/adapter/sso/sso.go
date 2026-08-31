@@ -54,7 +54,14 @@ type Options struct {
 }
 
 const (
-	refreshMargin = 60 * time.Second
+	refreshMargin     = 60 * time.Second
+	pkceVerifierBytes = 32
+	oauthStateBytes   = 16
+	maxTokenBody      = 1 << 20
+	jwtLeeway         = 30 * time.Second
+	bitsPerByte       = 8
+	errorBodyPreview  = 200
+	detailPartsCap    = 2
 )
 
 var (
@@ -114,10 +121,10 @@ func (c *Client) PrepareLogin(scopes []string) (*PreparedLogin, error) {
 	if scopes == nil {
 		scopes = append([]string{}, c.opts.Scopes...)
 	}
-	verifier := b64url(random(32))
+	verifier := b64url(random(pkceVerifierBytes))
 	sum := sha256.Sum256([]byte(verifier))
 	challenge := b64url(sum[:])
-	state := b64url(random(16))
+	state := b64url(random(oauthStateBytes))
 	q := url.Values{
 		"response_type":         {"code"},
 		"redirect_uri":          {c.opts.CallbackURL},
@@ -298,11 +305,11 @@ func (c *Client) tokenRequest(ctx context.Context, data url.Values, clientID, se
 		return nil, Err("SSO token request failed: " + err.Error())
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxTokenBody))
 	if err != nil {
 		return nil, Err("SSO token request failed: " + err.Error())
 	}
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode >= http.StatusBadRequest {
 		return nil, Err(fmt.Sprintf("SSO token request failed (%d): %s", resp.StatusCode, ssoDetail(resp.Header.Get("Content-Type"), body)))
 	}
 	var payload map[string]any
@@ -372,7 +379,7 @@ func (c *Client) tokenFromPayload(ctx context.Context, payload map[string]any, f
 }
 
 func (c *Client) decode(ctx context.Context, accessToken string) (jwt.MapClaims, error) {
-	parser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256", "ES256"}), jwt.WithAudience(TokenAudience), jwt.WithLeeway(30*time.Second))
+	parser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256", "ES256"}), jwt.WithAudience(TokenAudience), jwt.WithLeeway(jwtLeeway))
 	key, err := c.signingKey(ctx, accessToken)
 	if err != nil {
 		log.Printf("JWKS unavailable (%v); accepting SSO token on TLS alone", err)
@@ -478,7 +485,7 @@ func rsaFromJWK(k map[string]any) (*rsa.PublicKey, error) {
 	}
 	var e int
 	for _, b := range eBytes {
-		e = e<<8 | int(b)
+		e = e<<bitsPerByte | int(b)
 	}
 
 	return &rsa.PublicKey{N: new(big.Int).SetBytes(nBytes), E: e}, nil
@@ -491,8 +498,8 @@ func ssoDetail(contentType string, body []byte) string {
 	if strings.Contains(contentType, "html") {
 		return "the SSO rejected the request (bad client_id, wrong callback URL, or a refresh token that is no longer valid)"
 	}
-	if len(body) > 200 {
-		return string(body[:200])
+	if len(body) > errorBodyPreview {
+		return string(body[:errorBodyPreview])
 	}
 
 	return string(body)
@@ -511,7 +518,7 @@ func ssoJSONDetail(contentType string, body []byte) string {
 		errS = j.Str(payload["message"])
 	}
 	desc := j.Str(payload["error_description"])
-	parts := make([]string, 0, 2)
+	parts := make([]string, 0, detailPartsCap)
 	if errS != "" {
 		parts = append(parts, errS)
 	}

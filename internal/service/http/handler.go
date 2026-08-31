@@ -47,13 +47,13 @@ func (h *API) GetAuthCallback(w http.ResponseWriter, r *http.Request, _ GetAuthC
 		if detail == "" {
 			detail = errS
 		}
-		pageStatus(w, 400, "Login refused", `<p class=warn>`+html.EscapeString(detail)+`</p>`)
+		pageStatus(w, http.StatusBadRequest, "Login refused", `<p class=warn>`+html.EscapeString(detail)+`</p>`)
 
 		return
 	}
 	code, state := r.URL.Query().Get("code"), r.URL.Query().Get("state")
 	if code == "" || state == "" {
-		pageStatus(w, 400, "Bad callback", `<p class=warn>Missing code or state.</p>`)
+		pageStatus(w, http.StatusBadRequest, "Bad callback", `<p class=warn>Missing code or state.</p>`)
 
 		return
 	}
@@ -67,7 +67,7 @@ func (h *API) GetAuthCallback(w http.ResponseWriter, r *http.Request, _ GetAuthC
 		if errors.Is(err, oauth.ErrUnknownLogin) {
 			detail = "Unknown or expired login state — start the login again."
 		}
-		pageStatus(w, 400, title, `<p class=warn>`+html.EscapeString(detail)+`</p>`)
+		pageStatus(w, http.StatusBadRequest, title, `<p class=warn>`+html.EscapeString(detail)+`</p>`)
 
 		return
 	}

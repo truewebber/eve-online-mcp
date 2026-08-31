@@ -45,11 +45,11 @@ func patchBounds(schema *jsonschema.Schema) {
 		}
 		switch name {
 		case "limit", "items":
-			prop.Minimum, prop.Maximum = new(1.0), new(500.0)
+			prop.Minimum, prop.Maximum = new(1.0), new(argLimitMax)
 		case "division":
-			prop.Minimum, prop.Maximum = new(1.0), new(7.0)
+			prop.Minimum, prop.Maximum = new(1.0), new(argDivisionMax)
 		case "history_days":
-			prop.Minimum, prop.Maximum = new(0.0), new(365.0)
+			prop.Minimum, prop.Maximum = new(0.0), new(argHistoryDays)
 		case "approved_cost":
 			prop.Minimum = new(0.0)
 		}
@@ -112,14 +112,14 @@ func isk(value any) string {
 	}
 	abs := math.Abs(amount)
 	switch {
-	case abs >= 1e12:
-		return fmt.Sprintf("%.2ft", amount/1e12)
-	case abs >= 1e9:
-		return fmt.Sprintf("%.2fb", amount/1e9)
-	case abs >= 1e6:
-		return fmt.Sprintf("%.2fm", amount/1e6)
-	case abs >= 1e3:
-		return fmt.Sprintf("%.2fk", amount/1e3)
+	case abs >= iskTrillion:
+		return fmt.Sprintf("%.2ft", amount/iskTrillion)
+	case abs >= iskBillion:
+		return fmt.Sprintf("%.2fb", amount/iskBillion)
+	case abs >= iskMillion:
+		return fmt.Sprintf("%.2fm", amount/iskMillion)
+	case abs >= iskThousand:
+		return fmt.Sprintf("%.2fk", amount/iskThousand)
 	default:
 		return fmt.Sprintf("%.2f", amount)
 	}
@@ -183,7 +183,7 @@ func emptyVal(v any) bool {
 
 func page(rows []map[string]any, limit int, hint string) ([]map[string]any, map[string]any) {
 	if limit <= 0 {
-		limit = 15
+		limit = limitDefault
 	}
 	if len(rows) <= limit {
 		return rows, map[string]any{"returned": len(rows), "truncated": false}
@@ -258,22 +258,12 @@ func rootLocations(items []map[string]any) map[int]int {
 }
 
 func roman(level int) string {
-	switch level {
-	case 1:
-		return "I"
-	case 2:
-		return "II"
-	case 3:
-		return "III"
-	case 4:
-		return "IV"
-	case 5:
-		return "V"
-	case 0:
-		return "0"
-	default:
-		return strconv.Itoa(level)
+	numerals := [...]string{"0", "I", "II", "III", "IV", "V"}
+	if level >= 0 && level < len(numerals) {
+		return numerals[level]
 	}
+
+	return strconv.Itoa(level)
 }
 
 func parseTime(value string) *time.Time {
@@ -296,9 +286,9 @@ func humanDelta(d time.Duration) string {
 	if seconds < 0 {
 		return "done"
 	}
-	days, rem := seconds/86400, seconds%86400
-	hours, rem := rem/3600, rem%3600
-	minutes := rem / 60
+	days, rem := seconds/secondsPerDay, seconds%secondsPerDay
+	hours, rem := rem/secondsPerHour, rem%secondsPerHour
+	minutes := rem / secondsPerMinute
 	if days > 0 {
 		return fmt.Sprintf("%dd %dh", days, hours)
 	}

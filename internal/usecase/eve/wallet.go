@@ -42,14 +42,14 @@ func walletHistory(ctx context.Context, a *session.Session, in walletHistIn) (an
 	cid := token.CharacterID
 	out := map[string]any{"character": token.CharacterName, "period": "last ~30 days (ESI retention limit)"}
 	if kind == "journal" || kind == "both" {
-		sec, err := journalSection(ctx, a, cid, in.RefType, limitOr(in.Limit, 15), concise(in.ResponseFormat))
+		sec, err := journalSection(ctx, a, cid, in.RefType, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
 		if err != nil {
 			return nil, err
 		}
 		out["journal_section"] = sec
 	}
 	if kind == "transactions" || kind == "both" {
-		sec, err := transactionSection(ctx, a, fmt.Sprintf("/characters/%d/wallet/transactions", cid), cid, limitOr(in.Limit, 15), concise(in.ResponseFormat))
+		sec, err := transactionSection(ctx, a, fmt.Sprintf("/characters/%d/wallet/transactions", cid), cid, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
 		if err != nil {
 			return nil, err
 		}
@@ -72,12 +72,12 @@ func walletHistory(ctx context.Context, a *session.Session, in walletHistIn) (an
 }
 
 func journalSection(ctx context.Context, a *session.Session, cid int, refType string, limit int, conciseMode bool) (map[string]any, error) {
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/wallet/journal", cid), &cid, nil, 10)
+	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/wallet/journal", cid), &cid, nil, pagesShort)
 	if err != nil {
 		return nil, err
 	}
 
-	return summarizeJournal(result.Data, result.StaleNote(), result.Truncated, 10, refType, limit, conciseMode, "")
+	return summarizeJournal(result.Data, result.StaleNote(), result.Truncated, pagesShort, refType, limit, conciseMode, "")
 }
 
 type journalTot struct{ in, out, n float64 }
@@ -170,7 +170,7 @@ func tallyJournal(entries []map[string]any) (map[string]*journalTot, []map[strin
 	for name, b := range totals {
 		byCat = append(byCat, map[string]any{
 			"ref_type": name, "entries": int(b.n), "income": isk(b.in), "spending": isk(b.out),
-			"net_isk": mathRound(b.in+b.out, 2),
+			"net_isk": mathRound(b.in+b.out, decimalPlaces),
 		})
 	}
 	sort.Slice(byCat, func(i, k int) bool {
@@ -184,7 +184,7 @@ func tallyJournal(entries []map[string]any) (map[string]*journalTot, []map[strin
 
 		return ai > ak
 	})
-	if len(byCat) > 15 {
+	if len(byCat) > journalCategoryCap {
 		byCat = byCat[:15]
 	}
 
@@ -205,7 +205,7 @@ func journalRows(entries []map[string]any) []map[string]any {
 }
 
 func transactionSection(ctx context.Context, a *session.Session, path string, cid int, limit int, conciseMode bool) (map[string]any, error) {
-	result, err := a.ESI.GetCursorPages(ctx, path, &cid, nil, "from_id", "transaction_id", 2500, 4)
+	result, err := a.ESI.GetCursorPages(ctx, path, &cid, nil, "from_id", "transaction_id", txLookback, txPages)
 	if err != nil {
 		return nil, err
 	}

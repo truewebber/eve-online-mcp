@@ -38,6 +38,12 @@ const (
 	maxDescriptionChars = 2000
 	// A read call costing more than this by default is not respecting context.
 	maxDefaultResponseChars = 6000
+
+	rpcTimeout    = 120 * time.Second
+	errorPreview  = 60
+	charsPerToken = 4
+	thousandGroup = 3
+	exitUsage     = 2
 )
 
 // Tools whose rows are already minimal — every field is high-signal, so a
@@ -138,7 +144,7 @@ func newRPC(raw, token string) (*rpc, error) {
 	return &rpc{
 		endpoint: u,
 		token:    token,
-		client:   &http.Client{Timeout: 120 * time.Second},
+		client:   &http.Client{Timeout: rpcTimeout},
 	}, nil
 }
 
@@ -373,8 +379,8 @@ func smoke(r *rpc) int {
 		} else if m, ok := parsed.(map[string]any); ok {
 			if errVal, has := m["error"]; has && errVal != nil && errVal != "" {
 				s := fmt.Sprint(errVal)
-				if len(s) > 60 {
-					s = s[:60]
+				if len(s) > errorPreview {
+					s = s[:errorPreview]
 				}
 				status = "ERROR " + s
 				failures = append(failures, name)
@@ -384,10 +390,10 @@ func smoke(r *rpc) int {
 			status += fmt.Sprintf("  OVERSIZED (>%d chars by default)", maxDefaultResponseChars)
 			failures = append(failures, name)
 		}
-		fmt.Printf("%-30s %7s %6s  %s\n", name, comma(len(text)), comma(len(text)/4), status)
+		fmt.Printf("%-30s %7s %6s  %s\n", name, comma(len(text)), comma(len(text)/charsPerToken), status)
 	}
 
-	fmt.Printf("\ntotal if every tool were called once: %s chars (~%s tokens)\n", comma(total), comma(total/4))
+	fmt.Printf("\ntotal if every tool were called once: %s chars (~%s tokens)\n", comma(total), comma(total/charsPerToken))
 	if len(failures) > 0 {
 		seen := map[string]struct{}{}
 		var uniq []string
@@ -415,14 +421,14 @@ func comma(n int) string {
 	}
 	s := strconv.Itoa(n)
 	var b strings.Builder
-	pre := len(s) % 3
+	pre := len(s) % thousandGroup
 	if pre == 0 && len(s) > 0 {
-		pre = 3
+		pre = thousandGroup
 	}
 	b.WriteString(s[:pre])
-	for i := pre; i < len(s); i += 3 {
+	for i := pre; i < len(s); i += thousandGroup {
 		b.WriteByte(',')
-		b.WriteString(s[i : i+3])
+		b.WriteString(s[i : i+thousandGroup])
 	}
 	if neg {
 		return "-" + b.String()
@@ -445,7 +451,7 @@ func run(args []string) int {
 	if len(args) == 0 {
 		fs.Usage()
 
-		return 2
+		return exitUsage
 	}
 	gate := args[0]
 	if gate == "-h" || gate == "--help" {
@@ -457,7 +463,7 @@ func run(args []string) int {
 		fmt.Fprintf(os.Stderr, "unknown gate %q (want lint, smoke, or all)\n", gate)
 		fs.Usage()
 
-		return 2
+		return exitUsage
 	}
 	err := fs.Parse(args[1:])
 	if err != nil {
@@ -465,7 +471,7 @@ func run(args []string) int {
 			return 0
 		}
 
-		return 2
+		return exitUsage
 	}
 	tok := *token
 	if tok == "" {
@@ -475,7 +481,7 @@ func run(args []string) int {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 
-		return 2
+		return exitUsage
 	}
 	switch gate {
 	case "lint":

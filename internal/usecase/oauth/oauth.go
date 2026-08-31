@@ -35,6 +35,10 @@ const (
 	codeTTL       = 2 * time.Minute
 	scopeEve      = "eve"
 	jwtSecretName = "mcp_jwt_hmac" //nolint:gosec // app_secrets row name, not a credential
+	hmacMinBytes  = 32
+	clientIDBytes = 16
+	authCodeBytes = 24
+	jwtLeeway     = 30 * time.Second
 )
 
 var (
@@ -113,7 +117,7 @@ func Open(pub Host, runtime *session.Session, db *store.Store) (*Server, error) 
 	if err != nil {
 		return nil, err
 	}
-	if len(key) < 32 {
+	if len(key) < hmacMinBytes {
 		return nil, ErrHMACTooShort
 	}
 	brokerOpts := runtime.Opts.SSO
@@ -208,7 +212,7 @@ func (s *Server) ServeRegister(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	id := randomID(16)
+	id := randomID(clientIDBytes)
 	err = s.db.PutClient(r.Context(), store.Client{ID: id, RedirectURIs: allowed})
 	if err != nil {
 		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
@@ -374,7 +378,7 @@ func (s *Server) ProtectMCP(next http.Handler) http.Handler {
 	return mcpauth.RequireBearerToken(s.VerifyAccess, &mcpauth.RequireBearerTokenOptions{
 		ResourceMetadataURL: s.MetadataURL(),
 		Scopes:              []string{scopeEve},
-		ClockSkew:           30 * time.Second,
+		ClockSkew:           jwtLeeway,
 	})(inner)
 }
 
@@ -394,7 +398,7 @@ func (s *Server) finishMCP(ctx context.Context, p *store.LoginState, token *sso.
 		return "", err
 	}
 
-	code := randomID(24)
+	code := randomID(authCodeBytes)
 	if err := s.db.PutAuthCode(ctx, store.AuthCode{
 		Code:          code,
 		UserID:        userID,
@@ -559,7 +563,7 @@ func (s *Server) parseRefresh(raw string) (string, error) {
 		}
 
 		return s.hmacKey, nil
-	}, jwt.WithIssuer(s.Base()), jwt.WithLeeway(30*time.Second))
+	}, jwt.WithIssuer(s.Base()), jwt.WithLeeway(jwtLeeway))
 	if err != nil || !tok.Valid {
 		return "", errInvalidToken
 	}
@@ -585,7 +589,7 @@ func (s *Server) verifyAccess(token string) (*mcpauth.TokenInfo, error) {
 		}
 
 		return s.hmacKey, nil
-	}, jwt.WithAudience(s.ResourceURL()), jwt.WithIssuer(s.Base()), jwt.WithLeeway(30*time.Second))
+	}, jwt.WithAudience(s.ResourceURL()), jwt.WithIssuer(s.Base()), jwt.WithLeeway(jwtLeeway))
 	if err != nil || !tok.Valid {
 		return nil, mcpauth.ErrInvalidToken
 	}

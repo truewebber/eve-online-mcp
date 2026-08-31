@@ -11,6 +11,14 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+const (
+	httpServers       = 2
+	readHeaderTimeout = 5 * time.Second
+	readTimeout       = 15 * time.Second
+	writeTimeout      = 2 * time.Minute
+	idleTimeout       = 2 * time.Minute
+)
+
 type ListenOptions struct {
 	Listen         string
 	InternalListen string
@@ -49,7 +57,7 @@ func ListenAndServe(h *API, opts ListenOptions) error {
 		mux.Handle(path+"/", protected)
 	}
 
-	errs := make(chan error, 2)
+	errs := make(chan error, httpServers)
 	go func() { errs <- serve(opts.InternalListen, internalMux()) }()
 
 	base := h.Host.BaseURL()
@@ -67,10 +75,10 @@ func serve(addr string, h http.Handler) error {
 	s := &http.Server{
 		Addr:              addr,
 		Handler:           h,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      2 * time.Minute,
-		IdleTimeout:       2 * time.Minute,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       idleTimeout,
 	}
 
 	return s.ListenAndServe()

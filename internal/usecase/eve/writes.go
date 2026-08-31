@@ -206,12 +206,12 @@ func eveFittingSave(ctx context.Context, a *session.Session, in fittingSaveIn) (
 		return resolved.fail, nil
 	}
 	name := in.Name
-	if len(name) > 50 {
-		name = name[:50]
+	if len(name) > fittingNameMax {
+		name = name[:fittingNameMax]
 	}
 	desc := in.Description
-	if len(desc) > 500 {
-		desc = desc[:500]
+	if len(desc) > fittingDescMax {
+		desc = desc[:fittingDescMax]
 	}
 	body := map[string]any{"name": name, "description": desc, "ship_type_id": resolved.shipID, "items": resolved.items}
 	args := map[string]any{"name": name, "description": desc, "ship_type_id": resolved.shipID, "items": resolved.items, "character_id": token.CharacterID}
@@ -436,8 +436,8 @@ func eveMailSend(ctx context.Context, a *session.Session, in mailSendIn) (any, e
 	if err != nil {
 		return nil, err
 	}
-	if len(in.To) > 20 {
-		return map[string]any{"error": fmt.Sprintf("Refusing to mail %d recipients at once; the cap is 20. Send in smaller batches.", len(in.To))}, nil
+	if len(in.To) > mailRecipientsMax {
+		return map[string]any{"error": fmt.Sprintf("Refusing to mail %d recipients at once; the cap is %d. Send in smaller batches.", len(in.To), mailRecipientsMax)}, nil
 	}
 	resolved, err := resolveMailRecipients(ctx, a, in.To)
 	if err != nil {
@@ -447,11 +447,11 @@ func eveMailSend(ctx context.Context, a *session.Session, in mailSendIn) (any, e
 		return resolved.fail, nil
 	}
 	subj, body := in.Subject, in.Body
-	if len(subj) > 1000 {
-		subj = subj[:1000]
+	if len(subj) > mailSubjectMax {
+		subj = subj[:mailSubjectMax]
 	}
-	if len(body) > 10000 {
-		body = body[:10000]
+	if len(body) > mailBodyMax {
+		body = body[:mailBodyMax]
 	}
 	payload := map[string]any{"recipients": resolved.recipients, "subject": subj, "body": body, "approved_cost": in.ApprovedCost}
 	args := map[string]any{"recipients": resolved.recipients, "subject": subj, "body": body, "approved_cost": in.ApprovedCost, "character_id": token.CharacterID}
@@ -576,7 +576,7 @@ func eveContactsSet(ctx context.Context, a *session.Session, in contactsSetIn) (
 			watchable[m.ID] = struct{}{}
 		}
 	}
-	existing, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/contacts", token.CharacterID), &token.CharacterID, nil, 40)
+	existing, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/contacts", token.CharacterID), &token.CharacterID, nil, pagesESI)
 	if err != nil {
 		return nil, err
 	}

@@ -126,7 +126,7 @@ func eveMailList(ctx context.Context, a *session.Session, in mailListIn) (any, e
 			"timestamp": m["timestamp"], "read": j.Bool(m["is_read"]), "labels": m["labels"],
 		})
 	}
-	visible, meta := page(rows, limitOr(in.Limit, 15), "")
+	visible, meta := page(rows, limitOr(in.Limit, limitDefault), "")
 
 	return merge(map[string]any{
 		"character": token.CharacterName, "unread": unread, "data_age": result.StaleNote(),
@@ -209,8 +209,8 @@ func eveSocialNotifications(ctx context.Context, a *session.Session, in notesIn)
 			from = j.Str(n["sender_type"])
 		}
 		detail := strings.ReplaceAll(j.Str(n["text"]), "\n", " ")
-		if len(detail) > 300 {
-			detail = detail[:300]
+		if len(detail) > textPreview {
+			detail = detail[:textPreview]
 		}
 		var det any
 		if detail != "" {
@@ -225,7 +225,7 @@ func eveSocialNotifications(ctx context.Context, a *session.Session, in notesIn)
 			"read": read, "detail": det,
 		})
 	}
-	visible, meta := page(rows, limitOr(in.Limit, 15), "")
+	visible, meta := page(rows, limitOr(in.Limit, limitDefault), "")
 
 	return merge(map[string]any{
 		"character": token.CharacterName, "unread": unread, "data_age": result.StaleNote(),
@@ -242,7 +242,7 @@ func eveSocialKillmails(ctx context.Context, a *session.Session, in kmIn) (any, 
 		return nil, err
 	}
 
-	return formatKillmails(ctx, a, token.CharacterName, token.CharacterID, 0, fmt.Sprintf("/characters/%d/killmails/recent", token.CharacterID), limitOr(in.Limit, 8), concise(in.ResponseFormat))
+	return formatKillmails(ctx, a, token.CharacterName, token.CharacterID, 0, fmt.Sprintf("/characters/%d/killmails/recent", token.CharacterID), limitOr(in.Limit, limitKillmails), concise(in.ResponseFormat))
 }
 
 func eveFittingList(ctx context.Context, a *session.Session, in fitIn) (any, error) {
@@ -280,8 +280,8 @@ func eveFittingList(ctx context.Context, a *session.Session, in fitIn) (any, err
 			mods = append(mods, fmt.Sprintf("%v x%v [%v]", nameOr(names, j.Int(i["type_id"])), i["quantity"], i["flag"]))
 		}
 		desc := j.Str(f["description"])
-		if len(desc) > 200 {
-			desc = desc[:200]
+		if len(desc) > fittingDescPreview {
+			desc = desc[:fittingDescPreview]
 		}
 		var d any
 		if desc != "" {
@@ -292,7 +292,7 @@ func eveFittingList(ctx context.Context, a *session.Session, in fitIn) (any, err
 			"module_count": len(j.Slice(f["items"])), "description": d, "modules": mods,
 		})
 	}
-	visible, meta := page(rows, limitOr(in.Limit, 10), "")
+	visible, meta := page(rows, limitOr(in.Limit, limitShort), "")
 
 	return merge(map[string]any{
 		"character": token.CharacterName, "data_age": result.StaleNote(),

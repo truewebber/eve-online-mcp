@@ -58,7 +58,7 @@ func eveIndustryJobs(ctx context.Context, a *session.Session, in industryJobsIn)
 		return nil, err
 	}
 
-	return industryJobsResult(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, 20), concise(in.ResponseFormat), false)
+	return industryJobsResult(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, limitMedium), concise(in.ResponseFormat), false)
 }
 
 func eveIndustryPlanets(ctx context.Context, a *session.Session, in industryPlanetsIn) (any, error) {
@@ -114,7 +114,7 @@ func eveIndustryMining(ctx context.Context, a *session.Session, in industryMinin
 		return nil, err
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/mining", cid), &cid, nil, 40)
+	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/mining", cid), &cid, nil, pagesESI)
 	if err != nil {
 		return nil, err
 	}
@@ -132,11 +132,11 @@ func eveIndustryMining(ctx context.Context, a *session.Session, in industryMinin
 		return nil, err
 	}
 	rows, grand := miningOreRows(totals, names, prices)
-	visible, meta := page(rows, limitOr(in.Limit, 15), "")
+	visible, meta := page(rows, limitOr(in.Limit, limitDefault), "")
 
 	return merge(map[string]any{
 		"character": token.CharacterName, "period": "last ~30 days",
-		"total_estimated_value": isk(grand), "top_systems": topMiningSystems(bySystem, names, 5),
+		"total_estimated_value": isk(grand), "top_systems": topMiningSystems(bySystem, names, limitTopItems),
 		"data_age": result.StaleNote(), "ores": visible,
 	}, meta), nil
 }
@@ -339,8 +339,8 @@ func colonyStored(ctx context.Context, a *session.Session, pins []map[string]any
 		list = append(list, kv{pn[t], q})
 	}
 	sort.Slice(list, func(i, k int) bool { return list[i].q > list[k].q })
-	if len(list) > 8 {
-		list = list[:8]
+	if len(list) > colonyStoredTop {
+		list = list[:colonyStoredTop]
 	}
 	out := map[string]int{}
 	for _, x := range list {
@@ -352,19 +352,19 @@ func colonyStored(ctx context.Context, a *session.Session, pins []map[string]any
 
 func activityName(id int) string {
 	switch id {
-	case 1:
+	case activityManufacturing:
 		return "Manufacturing"
-	case 3:
+	case activityResearchTE:
 		return "Researching Time Efficiency"
-	case 4:
+	case activityResearchME:
 		return "Researching Material Efficiency"
-	case 5:
+	case activityCopying:
 		return "Copying"
-	case 7:
+	case activityReverseEng:
 		return "Reverse Engineering"
-	case 8:
+	case activityInvention:
 		return "Invention"
-	case 9, 11:
+	case activityReactionA, activityReactionB:
 		return "Reactions"
 	default:
 		return fmt.Sprintf("#%d", id)

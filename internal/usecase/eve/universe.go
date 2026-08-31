@@ -86,7 +86,7 @@ func registerUniverse(s *mcp.Server) {
 }
 
 func eveUniverseSearch(ctx context.Context, a *session.Session, in universeSearchIn) (any, error) {
-	if len(strings.TrimSpace(in.Query)) < 3 {
+	if len(strings.TrimSpace(in.Query)) < esiSearchMinChars {
 		return map[string]any{"error": "query must be at least 3 characters"}, nil
 	}
 	wanted := universeSearchWanted(in.Categories)
@@ -140,8 +140,8 @@ func universeSearchInvalid(wanted []string) []string {
 }
 
 func universeSearchAssemble(ctx context.Context, a *session.Session, characterID int, in universeSearchIn, raw map[string][]int, used string) (map[string]any, error) {
-	limit := limitOr(in.Limit, 10)
-	pool := min(max(4*limit, 50), 200)
+	limit := limitOr(in.Limit, limitShort)
+	pool := min(max(searchPoolFactor*limit, searchPoolFloor), searchPoolMax)
 	names, err := a.Resolver.Names(ctx, setToList(universeSearchIDSet(raw, pool)), &characterID)
 	if err != nil {
 		return nil, err
@@ -214,8 +214,8 @@ func eveUniverseItem(ctx context.Context, a *session.Session, in universeItemIn)
 		return nil, err
 	}
 	desc := j.Str(info["description"])
-	if len(desc) > 500 {
-		desc = desc[:500]
+	if len(desc) > typeDescPreview {
+		desc = desc[:typeDescPreview]
 	}
 	out := map[string]any{
 		"item": info["name"], "type_id": match.Chosen.ID,
@@ -261,7 +261,7 @@ func eveUniverseSystem(ctx context.Context, a *session.Session, in universeSyste
 
 	return map[string]any{
 		"system": name, "system_id": sid, "region": universeRegionName(ctx, a, info),
-		"security_status": mathRound(sec, 2), "security_class": secBand(sec),
+		"security_status": mathRound(sec, decimalPlaces), "security_class": secBand(sec),
 		"stations": len(j.Slice(info["stations"])), "stargates": len(j.Slice(info["stargates"])),
 		"ship_kills_last_hour": j.Int(kills["ship_kills"]), "pod_kills_last_hour": j.Int(kills["pod_kills"]),
 		"npc_kills_last_hour": j.Int(kills["npc_kills"]), "jumps_last_hour": j.Int(jumps["ship_jumps"]),
@@ -499,8 +499,8 @@ func universeDangerousHops(steps []map[string]any) []string {
 			dang = append(dang, j.Str(s["system"]))
 		}
 	}
-	if len(dang) > 20 {
-		dang = dang[:20]
+	if len(dang) > routeDangerMax {
+		dang = dang[:routeDangerMax]
 	}
 
 	return dang
@@ -515,7 +515,7 @@ func eveUniverseHotspots(ctx context.Context, a *session.Session, in universeHot
 	sort.Slice(rows, func(i, k int) bool {
 		return j.Int(rows[i]["ship_kills"])+j.Int(rows[i]["pod_kills"]) > j.Int(rows[k]["ship_kills"])+j.Int(rows[k]["pod_kills"])
 	})
-	limit := limitOr(in.Limit, 10)
+	limit := limitOr(in.Limit, limitShort)
 	if len(rows) > limit {
 		rows = rows[:limit]
 	}
@@ -568,7 +568,7 @@ func searchWithFallback(ctx context.Context, a *session.Session, characterID int
 }
 
 func secBand(security float64) string {
-	if security >= 0.45 {
+	if security >= hisecThreshold {
 		return "highsec"
 	}
 	if security > 0.0 {

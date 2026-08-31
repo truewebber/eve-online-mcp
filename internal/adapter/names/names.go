@@ -21,6 +21,8 @@ const (
 	idsBatch         = 500
 	structureIDFloor = 1_000_000_000_000
 	priceTTL         = 3600.0
+	staticBlobAge    = 30 * 24 * time.Hour
+	hubOrderPages    = 10
 )
 
 func categoryKind(key string) string {
@@ -180,7 +182,7 @@ func (r *Resolver) ResolveNames(ctx context.Context, names []string, prefer, onl
 
 func (r *Resolver) TypeInfo(ctx context.Context, typeID int) (map[string]any, error) {
 	key := fmt.Sprintf("type:%d", typeID)
-	maxAge := 30 * 24 * time.Hour
+	maxAge := staticBlobAge
 	cached, err := r.blob(ctx, key, &maxAge)
 	if err != nil {
 		return nil, err
@@ -205,7 +207,7 @@ func (r *Resolver) GroupName(ctx context.Context, groupID int) string {
 		return "unknown"
 	}
 	key := fmt.Sprintf("group:%d", groupID)
-	maxAge := 30 * 24 * time.Hour
+	maxAge := staticBlobAge
 	cached, err := r.blob(ctx, key, &maxAge)
 	if err != nil || cached == nil {
 		result, err := r.esi.Get(ctx, fmt.Sprintf("/universe/groups/%d", groupID), nil, nil, nil)
@@ -326,7 +328,7 @@ func (r *Resolver) HubQuotes(ctx context.Context, typeID, regionID int, stationI
 		fmt.Sprintf("/markets/%d/orders", regionID),
 		nil,
 		map[string]any{"type_id": typeID, "order_type": "all"},
-		10,
+		hubOrderPages,
 	)
 	if err != nil {
 		return nil, err

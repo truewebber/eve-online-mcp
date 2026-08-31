@@ -158,7 +158,7 @@ func fetchOverview(ctx context.Context, a *session.Session, cid int) overviewFet
 
 		return overviewBox{r, err}
 	}
-	ch := make(chan overviewBox, 7)
+	ch := make(chan overviewBox, overviewFetches)
 	go func() { ch <- get(fmt.Sprintf("/characters/%d", cid), false) }()
 	go func() { ch <- get(fmt.Sprintf("/characters/%d/wallet", cid), true) }()
 	go func() { ch <- get(fmt.Sprintf("/characters/%d/location", cid), true) }()
@@ -184,7 +184,7 @@ func applyOverviewPublic(ctx context.Context, a *session.Session, public overvie
 	if j.Int(info["alliance_id"]) != 0 {
 		out["alliance"] = n[j.Int(info["alliance_id"])]
 	}
-	out["security_status"] = mathRound(j.Float(info["security_status"]), 2)
+	out["security_status"] = mathRound(j.Float(info["security_status"]), decimalPlaces)
 	out["birthday"] = info["birthday"]
 }
 
@@ -282,5 +282,5 @@ func mathRound(v float64, places int) float64 {
 		p *= 10
 	}
 
-	return float64(int(v*p+0.5)) / p
+	return float64(int(v*p+roundHalf)) / p
 }

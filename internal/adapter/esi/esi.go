@@ -40,6 +40,18 @@ const (
 	errorFloor  = 15
 	maxBackoff  = 60 * time.Second
 	maxCacheTTL = 86400.0
+
+	staleAfterMinute   = 60.0
+	staleAfterHour     = 3600.0
+	errorLimitBudget   = 100
+	maxResponseBody    = 16 << 20
+	errorSnippet       = 300
+	defaultRetryAfter  = 10 * time.Second
+	statusErrorLimited = 420
+	roundHalf          = 0.5
+	backoffCap         = 8 * time.Second
+	throttleRetryCap   = 2 * time.Second
+	jitterFloor        = 0.5
 )
 
 type Error struct {
@@ -73,14 +85,14 @@ type Result struct {
 }
 
 func (r Result) StaleNote() string {
-	if r.AgeSeconds < 60 {
+	if r.AgeSeconds < staleAfterMinute {
 		return fmt.Sprintf("%ds old", int(r.AgeSeconds))
 	}
-	if r.AgeSeconds < 3600 {
-		return fmt.Sprintf("%dm old", int(r.AgeSeconds/60))
+	if r.AgeSeconds < staleAfterHour {
+		return fmt.Sprintf("%dm old", int(r.AgeSeconds/staleAfterMinute))
 	}
 
-	return fmt.Sprintf("%.1fh old", r.AgeSeconds/3600)
+	return fmt.Sprintf("%.1fh old", r.AgeSeconds/staleAfterHour)
 }
 
 type httpCache interface {
@@ -117,7 +129,7 @@ func New(opts Options, httpClient *http.Client, db *store.Store, ssoClient *sso.
 		store:       db,
 		sso:         ssoClient,
 		sem:         make(chan struct{}, opts.MaxConcurrency),
-		errorRemain: 100,
+		errorRemain: errorLimitBudget,
 		bucket:      newUserBucket(),
 	}
 }
@@ -374,7 +386,7 @@ func (c *Client) cachedGet(ctx context.Context, path string, characterID *int, p
 		return Result{}, err
 	}
 	defer resp.Body.Close()
-	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody))
 	if err != nil {
 		return Result{}, err
 	}
@@ -390,7 +402,7 @@ func (c *Client) cachedGet(ctx context.Context, path string, characterID *int, p
 
 		return Result{Data: cached.Data(), FromCache: true, AgeSeconds: 0, ExpiresAt: expiresAt, Pages: cached.Pages}, nil
 	}
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode >= http.StatusBadRequest {
 		if cached != nil && resp.StatusCode >= 500 && resp.StatusCode < 600 {
 			log.Printf("%s returned %d, serving stale cache", path, resp.StatusCode)
 
@@ -433,11 +445,11 @@ func (c *Client) write(ctx context.Context, method, path string, characterID *in
 		return nil, err
 	}
 	defer resp.Body.Close()
-	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody))
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode >= http.StatusBadRequest {
 		return nil, httpError(resp.StatusCode, bodyBytes, path)
 	}
 
@@ -484,9 +496,9 @@ func (c *Client) request(ctx context.Context, method, path string, params map[st
 		return nil, Error{Msg: fmt.Sprintf("Network error calling %s: %v", path, err)}
 	}
 	c.noteErrorHeaders(resp)
-	if resp.StatusCode == 420 || resp.StatusCode == http.StatusTooManyRequests {
+	if resp.StatusCode == statusErrorLimited || resp.StatusCode == http.StatusTooManyRequests {
 		if resp.StatusCode == http.StatusTooManyRequests && attempt < 1 {
-			wait := min(retryAfter(resp), 2*time.Second)
+			wait := min(retryAfter(resp), throttleRetryCap)
 			log.Printf("%s throttled (%d); one short retry after %s", path, resp.StatusCode, wait)
 			if err := discardBody(resp); err != nil {
 				return nil, err
@@ -548,12 +560,12 @@ func (c *Client) awaitErrorBudget() error {
 	}
 	wait := time.Until(c.errorResetAt)
 	if wait <= 0 {
-		c.errorRemain = 100
+		c.errorRemain = errorLimitBudget
 
 		return nil
 	}
 	remain := c.errorRemain
-	resetSec := max(int(wait.Seconds()+0.5), 1)
+	resetSec := max(int(wait.Seconds()+roundHalf), 1)
 	retryAt := c.errorResetAt
 
 	return RateLimitedError{
@@ -561,7 +573,7 @@ func (c *Client) awaitErrorBudget() error {
 			"ESI error limit is nearly spent (%d errors left, resets in %ds). This server shares one public IP, so further calls now would lock out everyone. Wait until %s, then retry the same tool. Do not retry sooner.",
 			remain, resetSec, retryAt.UTC().Format(time.RFC3339),
 		),
-		Status:   420,
+		Status:   statusErrorLimited,
 		RetryAt:  retryAt,
 		RetrySec: resetSec,
 		Remain:   &remain,
@@ -707,14 +719,14 @@ func maxAge(resp *http.Response) *float64 {
 func retryAfter(resp *http.Response) time.Duration {
 	raw := resp.Header.Get("Retry-After")
 	if raw == "" {
-		return 10 * time.Second
+		return defaultRetryAfter
 	}
 	if sec, err := strconv.ParseFloat(raw, 64); err == nil {
 		if sec > 0 {
 			return time.Duration(sec * float64(time.Second))
 		}
 
-		return 10 * time.Second
+		return defaultRetryAfter
 	}
 	if when, err := http.ParseTime(raw); err == nil {
 		served := headerDate(resp, "Date")
@@ -728,7 +740,7 @@ func retryAfter(resp *http.Response) time.Duration {
 		}
 	}
 
-	return 10 * time.Second
+	return defaultRetryAfter
 }
 
 func safeToRetry(method string, err error) bool {
@@ -770,14 +782,14 @@ func errorAs(err error, target **net.OpError) bool {
 }
 
 func backoff(attempt int) time.Duration {
-	base := min(time.Duration(1<<attempt)*time.Second, 8*time.Second)
+	base := min(time.Duration(1<<attempt)*time.Second, backoffCap)
 	var b [8]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return base
 	}
 	frac := float64(binary.BigEndian.Uint64(b[:])) / float64(^uint64(0))
 
-	return time.Duration(float64(base) * (0.5 + frac/2))
+	return time.Duration(float64(base) * (jitterFloor * (1 + frac)))
 }
 
 func httpError(status int, body []byte, path string) Error {
@@ -791,15 +803,15 @@ func httpError(status int, body []byte, path string) Error {
 	if detail == "" && decoded != nil {
 		raw, err := json.Marshal(decoded)
 		if err == nil {
-			if len(raw) > 300 {
-				raw = raw[:300]
+			if len(raw) > errorSnippet {
+				raw = raw[:errorSnippet]
 			}
 			detail = string(raw)
 		}
 	}
 	if detail == "" {
-		if len(body) > 300 {
-			detail = string(body[:300])
+		if len(body) > errorSnippet {
+			detail = string(body[:errorSnippet])
 		} else {
 			detail = string(body)
 		}
@@ -828,10 +840,10 @@ func limitError(resp *http.Response, path string) RateLimitedError {
 		}
 	}
 	if retry <= 0 {
-		retry = 10 * time.Second
+		retry = defaultRetryAfter
 	}
 	retryAt := time.Now().Add(retry)
-	sec := max(int(retry.Seconds()+0.5), 1)
+	sec := max(int(retry.Seconds()+roundHalf), 1)
 	remainN := 0
 	if remain != nil {
 		remainN = *remain

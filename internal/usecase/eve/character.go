@@ -78,10 +78,10 @@ func eveCharacterSkills(ctx context.Context, a *session.Session, in characterSki
 	}
 	view := filterCharacterSkills(skills, names, in.Search, boolDef(in.TrainedOnly, true))
 	sort.Slice(view.rows, func(i, k int) bool { return j.Str(view.rows[i]["skill"]) < j.Str(view.rows[k]["skill"]) })
-	visible, meta := page(view.rows, limitOr(in.Limit, 20), "Narrow with `search`, or raise `limit`.")
+	visible, meta := page(view.rows, limitOr(in.Limit, limitMedium), "Narrow with `search`, or raise `limit`.")
 	at5 := 0
 	for _, s := range skills {
-		if j.Int(s["trained_skill_level"]) == 5 {
+		if j.Int(s["trained_skill_level"]) == skillLevelV {
 			at5++
 		}
 	}
@@ -318,7 +318,7 @@ func eveCharacterStandings(ctx context.Context, a *session.Session, in character
 		return nil, err
 	}
 	rows := formatCharacterStandings(standings, names)
-	visible, meta := page(rows, limitOr(in.Limit, 20), "")
+	visible, meta := page(rows, limitOr(in.Limit, limitMedium), "")
 	out := merge(map[string]any{
 		"character": token.CharacterName, "loyalty_points": formatLoyaltyPoints(lpData, names), "standings": visible,
 	}, meta)
@@ -356,7 +356,7 @@ func formatCharacterStandings(standings []map[string]any, names map[int]string) 
 	for _, s := range standings {
 		rows = append(rows, map[string]any{
 			"entity": names[j.Int(s["from_id"])], "type": s["from_type"],
-			"standing": mathRound(j.Float(s["standing"]), 2),
+			"standing": mathRound(j.Float(s["standing"]), decimalPlaces),
 		})
 	}
 	sort.Slice(rows, func(i, k int) bool { return j.Float(rows[i]["standing"]) > j.Float(rows[k]["standing"]) })

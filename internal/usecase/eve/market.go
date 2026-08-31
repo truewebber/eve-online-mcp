@@ -167,7 +167,7 @@ func marketSpread(quotes map[string]any) any {
 		return nil
 	}
 
-	return mathRound(100*(bs-bb)/bs, 2)
+	return mathRound(percentScale*(bs-bb)/bs, decimalPlaces)
 }
 
 func eveMarketOrders(ctx context.Context, a *session.Session, in marketOrdersIn) (any, error) {
@@ -184,7 +184,7 @@ func eveMarketOrders(ctx context.Context, a *session.Session, in marketOrdersIn)
 		return nil, err
 	}
 
-	return formatOrders(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, 25), concise(in.ResponseFormat), nil)
+	return formatOrders(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, limitLong), concise(in.ResponseFormat), nil)
 }
 
 func eveMarketContracts(ctx context.Context, a *session.Session, in marketContractsIn) (any, error) {
@@ -196,12 +196,12 @@ func eveMarketContracts(ctx context.Context, a *session.Session, in marketContra
 		return nil, err
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/contracts", cid), &cid, nil, 40)
+	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/contracts", cid), &cid, nil, pagesESI)
 	if err != nil {
 		return nil, err
 	}
 
-	return formatContracts(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), limitOr(in.Limit, 15), concise(in.ResponseFormat), false)
+	return formatContracts(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), limitOr(in.Limit, limitDefault), concise(in.ResponseFormat), false)
 }
 
 func marketHistory(ctx context.Context, a *session.Session, typeID, regionID, days int) (map[string]any, error) {
@@ -235,7 +235,7 @@ func marketHistory(ctx context.Context, a *session.Session, typeID, regionID, da
 	avg /= float64(len(recent))
 	var trend any
 	if first != 0 {
-		trend = mathRound(100*(j.Float(recent[len(recent)-1]["average"])-first)/first, 2)
+		trend = mathRound(percentScale*(j.Float(recent[len(recent)-1]["average"])-first)/first, decimalPlaces)
 	}
 
 	return map[string]any{
@@ -281,7 +281,7 @@ func formatOrders(ctx context.Context, a *session.Session, character string, cid
 		}
 		var filled any
 		if tot := j.Float(o["volume_total"]); tot != 0 {
-			filled = mathRound(100*(1-float64(remaining)/tot), 1)
+			filled = mathRound(percentScale*(1-float64(remaining)/tot), 1)
 		}
 		side := "sell"
 		if isBuy {

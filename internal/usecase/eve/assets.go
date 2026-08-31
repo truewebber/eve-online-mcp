@@ -64,7 +64,7 @@ func eveAssetsList(ctx context.Context, a *session.Session, in assetsListIn) (an
 		return nil, err
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/assets", cid), &cid, nil, 40)
+	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/assets", cid), &cid, nil, pagesESI)
 	if err != nil {
 		return nil, err
 	}
@@ -90,9 +90,9 @@ func eveAssetsList(ctx context.Context, a *session.Session, in assetsListIn) (an
 		return nil, err
 	}
 	buckets := assetBuckets(assets, roots, prices)
-	rows := assetLocationRows(buckets, placeNames, typeNames, prices, in.Location, in.MinValue, limitOr(in.Items, 5))
+	rows := assetLocationRows(buckets, placeNames, typeNames, prices, in.Location, in.MinValue, limitOr(in.Items, limitTopItems))
 	sort.Slice(rows, func(i, k int) bool { return j.Float(rows[i]["value_isk"]) > j.Float(rows[k]["value_isk"]) })
-	visible, meta := page(rows, limitOr(in.Limit, 10), "Raise `limit`, or filter with `location` / `min_value`.")
+	visible, meta := page(rows, limitOr(in.Limit, limitShort), "Raise `limit`, or filter with `location` / `min_value`.")
 	total := 0.0
 	for _, b := range buckets {
 		total += b.value
@@ -147,7 +147,7 @@ func assetLocationRows(buckets map[int]*assetBucket, placeNames, typeNames map[i
 			continue
 		}
 		rows = append(rows, map[string]any{
-			"location": place, "value": isk(b.value), "value_isk": mathRound(b.value, 2),
+			"location": place, "value": isk(b.value), "value_isk": mathRound(b.value, decimalPlaces),
 			"distinct_types": len(b.types), "units": b.units, "location_id": placeID, "top_items": topItemLines(b.types, typeNames, prices, itemsN),
 		})
 	}
@@ -187,7 +187,7 @@ func eveAssetsFind(ctx context.Context, a *session.Session, in assetsFindIn) (an
 		return nil, err
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/assets", cid), &cid, nil, 40)
+	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/assets", cid), &cid, nil, pagesESI)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +228,7 @@ func eveAssetsFind(ctx context.Context, a *session.Session, in assetsFindIn) (an
 	}
 	rows := assetFindRows(matches, roots, byID, typeNames, placeNames, prices)
 	sort.Slice(rows, func(i, k int) bool { return j.Int(rows[i]["quantity"]) > j.Int(rows[k]["quantity"]) })
-	visible, meta := page(rows, limitOr(in.Limit, 20), "")
+	visible, meta := page(rows, limitOr(in.Limit, limitMedium), "")
 	total := 0
 	for _, r := range rows {
 		total += j.Int(r["quantity"])
@@ -286,7 +286,7 @@ func eveAssetsBlueprints(ctx context.Context, a *session.Session, in assetsBluep
 		return nil, err
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/blueprints", cid), &cid, nil, 40)
+	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/blueprints", cid), &cid, nil, pagesESI)
 	if err != nil {
 		return nil, err
 	}
@@ -333,7 +333,7 @@ func eveAssetsBlueprints(ctx context.Context, a *session.Session, in assetsBluep
 
 		return j.Int(rows[i]["material_efficiency"]) > j.Int(rows[k]["material_efficiency"])
 	})
-	visible, meta := page(rows, limitOr(in.Limit, 25), "")
+	visible, meta := page(rows, limitOr(in.Limit, limitLong), "")
 
 	return merge(map[string]any{
 		"character": token.CharacterName, "originals": orig, "copies": copies,

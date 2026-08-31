@@ -21,6 +21,8 @@ import (
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 )
 
+const idleConnFactor = 2
+
 // ErrStoreRequired is returned when Open is called without a Postgres store.
 var ErrStoreRequired = errors.New("session: postgres store is required")
 
@@ -57,8 +59,8 @@ func Open(opts Options) (*Session, error) {
 	httpClient := &http.Client{
 		Timeout: time.Duration(opts.RequestTimeoutSec * float64(time.Second)),
 		Transport: &http.Transport{
-			MaxIdleConns:        opts.MaxConcurrency * 2,
-			MaxIdleConnsPerHost: opts.MaxConcurrency * 2,
+			MaxIdleConns:        opts.MaxConcurrency * idleConnFactor,
+			MaxIdleConnsPerHost: opts.MaxConcurrency * idleConnFactor,
 		},
 	}
 	if n, err := opts.Store.PurgeExpired(context.Background()); err == nil && n > 0 {
