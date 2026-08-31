@@ -77,7 +77,7 @@ func eveCharacterSkills(ctx context.Context, a *session.Session, in characterSki
 		return nil, err
 	}
 	view := filterCharacterSkills(skills, names, in.Search, boolDef(in.TrainedOnly, true))
-	sort.Slice(view.rows, func(i, k int) bool { return j.Str(view.rows[i]["skill"]) < j.Str(view.rows[k]["skill"]) })
+	sort.Slice(view.rows, func(i, k int) bool { return j.Str(view.rows[i][fSkill]) < j.Str(view.rows[k][fSkill]) })
 	visible, meta := page(view.rows, limitOr(in.Limit, limitMedium), "Narrow with `search`, or raise `limit`.")
 	at5 := 0
 	for _, s := range skills {
@@ -86,10 +86,10 @@ func eveCharacterSkills(ctx context.Context, a *session.Session, in characterSki
 		}
 	}
 	out := merge(map[string]any{
-		"character": token.CharacterName, "total_sp": payload["total_sp"],
+		fCharacter: token.CharacterName, "total_sp": payload["total_sp"],
 		"unallocated_sp": payload["unallocated_sp"], "skills_known": len(skills),
-		"at_level_5": at5, "matching": len(view.rows), "data_age": result.StaleNote(),
-		"skills": project(visible, []string{"skill", "level"}, concise(in.ResponseFormat)),
+		"at_level_5": at5, "matching": len(view.rows), fDataAge: result.StaleNote(),
+		"skills": project(visible, []string{fSkill, "level"}, concise(in.ResponseFormat)),
 	}, meta)
 	if view.capped > 0 {
 		out["alpha_clone_warning"] = fmt.Sprintf("%d skills have active_level below trained level — this account looks like it is on an Alpha clone, so trained levels are capped.", view.capped)
@@ -124,7 +124,7 @@ func filterCharacterSkills(skills []map[string]any, names map[int]string, search
 			continue
 		}
 		rows = append(rows, map[string]any{
-			"skill": name, "level": roman(level),
+			fSkill: name, "level": roman(level),
 			"skillpoints": skill["skillpoints_in_skill"], "active_level": roman(active),
 		})
 	}
@@ -159,7 +159,7 @@ func eveCharacterSkillQueue(ctx context.Context, a *session.Session, in characte
 	entries := j.Maps(result.Data)
 	if len(entries) == 0 {
 		return map[string]any{
-			"character": token.CharacterName, "queue": []any{},
+			fCharacter: token.CharacterName, "queue": []any{},
 			"warning": "The skill queue is empty. This character is accruing no skill points at all until something is queued.",
 		}, nil
 	}
@@ -174,16 +174,16 @@ func eveCharacterSkillQueue(ctx context.Context, a *session.Session, in characte
 	now := time.Now().UTC()
 	sort.Slice(entries, func(i, k int) bool { return j.Int(entries[i]["queue_position"]) < j.Int(entries[k]["queue_position"]) })
 	rows := formatSkillQueue(entries, names, now)
-	emptyIn := "unknown"
+	emptyIn := vUnknown
 	if last := parseTime(j.Str(rows[len(rows)-1]["finish_date"])); last != nil {
 		emptyIn = humanDelta(last.Sub(now))
 	}
 
 	return map[string]any{
-		"character": token.CharacterName, "queued_skills": len(rows),
-		"training_now":   strings.TrimSpace(j.Str(rows[0]["skill"]) + " " + j.Str(rows[0]["to_level"])),
+		fCharacter: token.CharacterName, "queued_skills": len(rows),
+		"training_now":   strings.TrimSpace(j.Str(rows[0][fSkill]) + " " + j.Str(rows[0]["to_level"])),
 		"queue_empty_in": emptyIn, "queue_ends": rows[len(rows)-1]["finish_date"],
-		"data_age": result.StaleNote(), "queue": rows,
+		fDataAge: result.StaleNote(), "queue": rows,
 	}, nil
 }
 
@@ -200,7 +200,7 @@ func formatSkillQueue(entries []map[string]any, names map[int]string, now time.T
 			name = fmt.Sprintf("#%d", j.Int(e["skill_id"]))
 		}
 		rows = append(rows, map[string]any{
-			"position": e["queue_position"], "skill": name,
+			"position": e["queue_position"], fSkill: name,
 			"to_level": roman(j.Int(e["finished_level"])), "finishes_in": finishes,
 			"finish_date": e["finish_date"],
 		})
@@ -239,11 +239,11 @@ func eveCharacterClones(ctx context.Context, a *session.Session, in characterClo
 	}
 
 	return map[string]any{
-		"character":       token.CharacterName,
+		fCharacter:        token.CharacterName,
 		"home_station":    names[j.Int(home["location_id"])],
 		"last_clone_jump": clones["last_clone_jump_date"],
 		"active_implants": formatActiveImplants(implants, names), "jump_clones": formatJumpClones(jump, names),
-		"data_age": clonesRes.StaleNote(),
+		fDataAge: clonesRes.StaleNote(),
 	}, nil
 }
 
@@ -282,15 +282,15 @@ func formatJumpClones(jump []map[string]any, names map[int]string) []map[string]
 		for _, v := range listed {
 			imps = append(imps, names[j.Int(v)])
 		}
-		name := j.Str(clone["name"])
+		name := j.Str(clone[fName])
 		if name == "" {
 			name = fmt.Sprintf("Clone %v", clone["jump_clone_id"])
 		}
 		loc := names[j.Int(clone["location_id"])]
 		if loc == "" {
-			loc = "unknown"
+			loc = vUnknown
 		}
-		jumps = append(jumps, map[string]any{"name": name, "location": loc, "implants": imps})
+		jumps = append(jumps, map[string]any{fName: name, fLocation: loc, "implants": imps})
 	}
 
 	return jumps
@@ -320,7 +320,7 @@ func eveCharacterStandings(ctx context.Context, a *session.Session, in character
 	rows := formatCharacterStandings(standings, names)
 	visible, meta := page(rows, limitOr(in.Limit, limitMedium), "")
 	out := merge(map[string]any{
-		"character": token.CharacterName, "loyalty_points": formatLoyaltyPoints(lpData, names), "standings": visible,
+		fCharacter: token.CharacterName, "loyalty_points": formatLoyaltyPoints(lpData, names), "standings": visible,
 	}, meta)
 	applyStandingsNotes(out, standingsErr, lpErr, lpGranted, token.CharacterName, lpScope)
 
@@ -355,11 +355,11 @@ func formatCharacterStandings(standings []map[string]any, names map[int]string) 
 	rows := make([]map[string]any, 0, len(standings))
 	for _, s := range standings {
 		rows = append(rows, map[string]any{
-			"entity": names[j.Int(s["from_id"])], "type": s["from_type"],
-			"standing": mathRound(j.Float(s["standing"]), decimalPlaces),
+			"entity": names[j.Int(s["from_id"])], fType: s["from_type"],
+			fStanding: mathRound(j.Float(s[fStanding]), decimalPlaces),
 		})
 	}
-	sort.Slice(rows, func(i, k int) bool { return j.Float(rows[i]["standing"]) > j.Float(rows[k]["standing"]) })
+	sort.Slice(rows, func(i, k int) bool { return j.Float(rows[i][fStanding]) > j.Float(rows[k][fStanding]) })
 
 	return rows
 }
@@ -370,7 +370,7 @@ func formatLoyaltyPoints(lpData []map[string]any, names map[int]string) []map[st
 	})
 	lpRows := make([]map[string]any, 0, len(lpData))
 	for _, l := range lpData {
-		lpRows = append(lpRows, map[string]any{"corporation": names[j.Int(l["corporation_id"])], "lp": l["loyalty_points"]})
+		lpRows = append(lpRows, map[string]any{fCorporation: names[j.Int(l["corporation_id"])], "lp": l["loyalty_points"]})
 	}
 
 	return lpRows

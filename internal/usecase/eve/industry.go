@@ -76,7 +76,7 @@ func eveIndustryPlanets(ctx context.Context, a *session.Session, in industryPlan
 	}
 	colonies := j.Maps(result.Data)
 	if len(colonies) == 0 {
-		return map[string]any{"character": token.CharacterName, "colonies": []any{}, "note": "No PI colonies."}, nil
+		return map[string]any{fCharacter: token.CharacterName, "colonies": []any{}, fNote: "No PI colonies."}, nil
 	}
 	idSet := map[int]struct{}{}
 	for _, c := range colonies {
@@ -90,8 +90,8 @@ func eveIndustryPlanets(ctx context.Context, a *session.Session, in industryPlan
 	var rows []map[string]any
 	for _, c := range colonies {
 		rows = append(rows, map[string]any{
-			"planet": names[j.Int(c["planet_id"])], "system": names[j.Int(c["solar_system_id"])],
-			"type": c["planet_type"], "upgrade_level": c["upgrade_level"],
+			"planet": names[j.Int(c["planet_id"])], fSystem: names[j.Int(c["solar_system_id"])],
+			fType: c["planet_type"], "upgrade_level": c["upgrade_level"],
 			"pins": c["num_pins"], "planet_id": c["planet_id"],
 		})
 	}
@@ -100,8 +100,8 @@ func eveIndustryPlanets(ctx context.Context, a *session.Session, in industryPlan
 	}
 
 	return map[string]any{
-		"character": token.CharacterName, "colony_count": len(rows),
-		"data_age": result.StaleNote(), "colonies": rows,
+		fCharacter: token.CharacterName, "colony_count": len(rows),
+		fDataAge: result.StaleNote(), "colonies": rows,
 	}, nil
 }
 
@@ -120,7 +120,7 @@ func eveIndustryMining(ctx context.Context, a *session.Session, in industryMinin
 	}
 	entries := j.Maps(result.Data)
 	if len(entries) == 0 {
-		return map[string]any{"character": token.CharacterName, "ores": []any{}, "note": "Nothing mined recently."}, nil
+		return map[string]any{fCharacter: token.CharacterName, fOres: []any{}, fNote: "Nothing mined recently."}, nil
 	}
 	totals, bySystem := sumMining(entries)
 	names, err := a.Resolver.Names(ctx, append(keys(totals), keys(bySystem)...), nil)
@@ -135,9 +135,9 @@ func eveIndustryMining(ctx context.Context, a *session.Session, in industryMinin
 	visible, meta := page(rows, limitOr(in.Limit, limitDefault), "")
 
 	return merge(map[string]any{
-		"character": token.CharacterName, "period": "last ~30 days",
-		"total_estimated_value": isk(grand), "top_systems": topMiningSystems(bySystem, names, limitTopItems),
-		"data_age": result.StaleNote(), "ores": visible,
+		fCharacter: token.CharacterName, fPeriod: "last ~30 days",
+		fTotalEstimatedValue: isk(grand), "top_systems": topMiningSystems(bySystem, names, limitTopItems),
+		fDataAge: result.StaleNote(), fOres: visible,
 	}, meta), nil
 }
 
@@ -145,8 +145,8 @@ func sumMining(entries []map[string]any) (map[int]int, map[int]int) {
 	totals := map[int]int{}
 	bySystem := map[int]int{}
 	for _, e := range entries {
-		totals[j.Int(e["type_id"])] += j.Int(e["quantity"])
-		bySystem[j.Int(e["solar_system_id"])] += j.Int(e["quantity"])
+		totals[j.Int(e[fTypeID])] += j.Int(e[fQuantity])
+		bySystem[j.Int(e["solar_system_id"])] += j.Int(e[fQuantity])
 	}
 
 	return totals, bySystem
@@ -158,9 +158,9 @@ func miningOreRows(totals map[int]int, names map[int]string, prices map[int]map[
 	for tid, qty := range totals {
 		value := unitPrice(prices, tid) * float64(qty)
 		grand += value
-		rows = append(rows, map[string]any{"ore": nameOr(names, tid), "units": qty, "estimated_value": isk(value)})
+		rows = append(rows, map[string]any{"ore": nameOr(names, tid), fUnits: qty, fEstimatedValue: isk(value)})
 	}
-	sort.Slice(rows, func(i, k int) bool { return j.Int(rows[i]["units"]) > j.Int(rows[k]["units"]) })
+	sort.Slice(rows, func(i, k int) bool { return j.Int(rows[i][fUnits]) > j.Int(rows[k][fUnits]) })
 
 	return rows, grand
 }
@@ -177,7 +177,7 @@ func topMiningSystems(bySystem map[int]int, names map[int]string, n int) []map[s
 	}
 	top := make([]map[string]any, 0, len(sys))
 	for _, s := range sys {
-		top = append(top, map[string]any{"system": nameOr(names, s.id), "units": s.q})
+		top = append(top, map[string]any{fSystem: nameOr(names, s.id), fUnits: s.q})
 	}
 
 	return top
@@ -187,8 +187,8 @@ func industryJobsResult(ctx context.Context, a *session.Session, character strin
 	jobs := j.Maps(data)
 	if len(jobs) == 0 {
 		return map[string]any{
-			"character": character, "jobs": []any{},
-			"note": "No industry jobs. Pass include_completed=true to see finished ones.",
+			fCharacter: character, fJobs: []any{},
+			fNote: "No industry jobs. Pass include_completed=true to see finished ones.",
 		}, nil
 	}
 	idSet := map[int]struct{}{}
@@ -223,7 +223,7 @@ func industryJobsResult(ctx context.Context, a *session.Session, character strin
 	for _, job := range jobs {
 		end := parseTime(j.Str(job["end_date"]))
 		ready := end != nil && !end.After(now)
-		ends := "unknown"
+		ends := vUnknown
 		if ready {
 			ends = "ready to deliver"
 		} else if end != nil {
@@ -239,9 +239,9 @@ func industryJobsResult(ctx context.Context, a *session.Session, character strin
 		}
 		row := map[string]any{
 			"activity": activityName(j.Int(job["activity_id"])), "product": product,
-			"runs": job["runs"], "ends_in": ends, "location": places[loc],
-			"ready": ready, "status": job["status"],
-			"blueprint":    names[j.Int(job["blueprint_type_id"])],
+			"runs": job["runs"], "ends_in": ends, fLocation: places[loc],
+			"ready": ready, fStatus: job[fStatus],
+			fBlueprint:     names[j.Int(job["blueprint_type_id"])],
 			"install_cost": isk(job["cost"]), "end_date": job["end_date"],
 		}
 		if withInstaller {
@@ -259,14 +259,14 @@ func industryJobsResult(ctx context.Context, a *session.Session, character strin
 			active++
 		}
 	}
-	keep := []string{"activity", "product", "runs", "ends_in", "location"}
+	keep := []string{"activity", "product", "runs", "ends_in", fLocation}
 	if withInstaller {
 		keep = append(keep, "installer")
 	}
 
 	return merge(map[string]any{
-		"character": character, "active_jobs": active, "ready_to_deliver": readyN,
-		"data_age": stale, "jobs": project(visible, keep, conciseMode),
+		fCharacter: character, "active_jobs": active, "ready_to_deliver": readyN,
+		fDataAge: stale, fJobs: project(visible, keep, conciseMode),
 	}, meta), nil
 }
 
@@ -320,7 +320,7 @@ func colonyStored(ctx context.Context, a *session.Session, pins []map[string]any
 	stored := map[int]int{}
 	for _, p := range pins {
 		for _, content := range j.Maps(p["contents"]) {
-			stored[j.Int(content["type_id"])] += j.Int(content["amount"])
+			stored[j.Int(content[fTypeID])] += j.Int(content["amount"])
 		}
 	}
 	if len(stored) == 0 {

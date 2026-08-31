@@ -10,6 +10,8 @@ import (
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
 )
 
+const testRefreshToken = "rt-1"
+
 func openStore(t *testing.T) *store.Store {
 	t.Helper()
 	dsn := os.Getenv("DATABASE_URL")
@@ -47,7 +49,7 @@ func TestTokenStorePersistsRefreshNotAccess(t *testing.T) {
 	tok := &CharacterToken{
 		CharacterID:     2112625428,
 		CharacterName:   "Jane Doe",
-		RefreshToken:    "rt-1",
+		RefreshToken:    testRefreshToken,
 		Scopes:          []string{"publicData"},
 		OwnerHash:       "hash",
 		AccessToken:     "at-mem",
@@ -57,13 +59,13 @@ func TestTokenStorePersistsRefreshNotAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := ts.Get(ctx, tok.CharacterID)
-	if got == nil || got.RefreshToken != "rt-1" || got.AccessToken != "at-mem" {
+	if got == nil || got.RefreshToken != testRefreshToken || got.AccessToken != "at-mem" {
 		t.Fatalf("same process got %+v", got)
 	}
 
 	fresh := newTokenStore(db, u.ID)
 	got = fresh.Get(ctx, tok.CharacterID)
-	if got == nil || got.RefreshToken != "rt-1" {
+	if got == nil || got.RefreshToken != testRefreshToken {
 		t.Fatalf("reload %+v", got)
 	}
 	if got.AccessToken != "" {

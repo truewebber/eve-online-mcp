@@ -44,13 +44,13 @@ func patchBounds(schema *jsonschema.Schema) {
 			continue
 		}
 		switch name {
-		case "limit", "items":
+		case "limit", fItems:
 			prop.Minimum, prop.Maximum = new(1.0), new(argLimitMax)
-		case "division":
+		case fDivision:
 			prop.Minimum, prop.Maximum = new(1.0), new(argDivisionMax)
 		case "history_days":
 			prop.Minimum, prop.Maximum = new(0.0), new(argHistoryDays)
-		case "approved_cost":
+		case fApprovedCost:
 			prop.Minimum = new(0.0)
 		}
 	}
@@ -186,14 +186,14 @@ func page(rows []map[string]any, limit int, hint string) ([]map[string]any, map[
 		limit = limitDefault
 	}
 	if len(rows) <= limit {
-		return rows, map[string]any{"returned": len(rows), "truncated": false}
+		return rows, map[string]any{fReturned: len(rows), fTruncated: false}
 	}
 	if hint == "" {
 		hint = fmt.Sprintf("Raise `limit` (currently %d).", limit)
 	}
 
 	return rows[:limit], map[string]any{
-		"returned": limit, "total_available": len(rows), "truncated": true, "how_to_see_more": hint,
+		fReturned: limit, "total_available": len(rows), fTruncated: true, "how_to_see_more": hint,
 	}
 }
 
@@ -284,7 +284,7 @@ func parseTime(value string) *time.Time {
 func humanDelta(d time.Duration) string {
 	seconds := int(d.Seconds())
 	if seconds < 0 {
-		return "done"
+		return vDone
 	}
 	days, rem := seconds/secondsPerDay, seconds%secondsPerDay
 	hours, rem := rem/secondsPerHour, rem%secondsPerHour

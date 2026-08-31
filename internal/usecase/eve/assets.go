@@ -60,7 +60,7 @@ func eveAssetsList(ctx context.Context, a *session.Session, in assetsListIn) (an
 	if err != nil {
 		return nil, err
 	}
-	if err := a.RequireScope(token, "esi-assets.read_assets.v1", "assets"); err != nil {
+	if err := a.RequireScope(token, "esi-assets.read_assets.v1", fAssets); err != nil {
 		return nil, err
 	}
 	cid := token.CharacterID
@@ -70,7 +70,7 @@ func eveAssetsList(ctx context.Context, a *session.Session, in assetsListIn) (an
 	}
 	assets := j.Maps(result.Data)
 	if len(assets) == 0 {
-		return map[string]any{"character": token.CharacterName, "locations": []any{}, "note": "This character holds no personal assets (corp hangars are separate)."}, nil
+		return map[string]any{fCharacter: token.CharacterName, fLocations: []any{}, fNote: "This character holds no personal assets (corp hangars are separate)."}, nil
 	}
 	roots := rootLocations(assets)
 	prices, err := a.Resolver.ReferencePrices(ctx)
@@ -79,7 +79,7 @@ func eveAssetsList(ctx context.Context, a *session.Session, in assetsListIn) (an
 	}
 	var typeIDs []int
 	for _, i := range assets {
-		typeIDs = append(typeIDs, j.Int(i["type_id"]))
+		typeIDs = append(typeIDs, j.Int(i[fTypeID]))
 	}
 	typeNames, err := a.Resolver.Names(ctx, typeIDs, nil)
 	if err != nil {
@@ -99,11 +99,11 @@ func eveAssetsList(ctx context.Context, a *session.Session, in assetsListIn) (an
 	}
 
 	return merge(map[string]any{
-		"character": token.CharacterName, "total_estimated_value": isk(total),
+		fCharacter: token.CharacterName, fTotalEstimatedValue: isk(total),
 		"total_locations": len(buckets), "matching_locations": len(rows),
-		"valuation_basis": "CCP global average price per type, not a hub quote",
-		"data_age":        result.StaleNote(),
-		"locations":       project(visible, []string{"location", "value", "distinct_types", "units"}, concise(in.ResponseFormat)),
+		fValuationBasis: valuationCCPAvg,
+		fDataAge:        result.StaleNote(),
+		fLocations:      project(visible, []string{fLocation, fValue, fDistinctTypes, fUnits}, concise(in.ResponseFormat)),
 	}, meta), nil
 }
 
@@ -114,7 +114,7 @@ func assetBuckets(assets []map[string]any, roots map[int]int, prices map[int]map
 		if !ok {
 			continue
 		}
-		qty := j.Int(item["quantity"])
+		qty := j.Int(item[fQuantity])
 		if qty == 0 {
 			qty = 1
 		}
@@ -123,7 +123,7 @@ func assetBuckets(assets []map[string]any, roots map[int]int, prices map[int]map
 			b = &assetBucket{types: map[int]int{}}
 			buckets[root] = b
 		}
-		tid := j.Int(item["type_id"])
+		tid := j.Int(item[fTypeID])
 		b.value += unitPrice(prices, tid) * float64(qty)
 		b.units += qty
 		b.types[tid] += qty
@@ -147,8 +147,8 @@ func assetLocationRows(buckets map[int]*assetBucket, placeNames, typeNames map[i
 			continue
 		}
 		rows = append(rows, map[string]any{
-			"location": place, "value": isk(b.value), "value_isk": mathRound(b.value, decimalPlaces),
-			"distinct_types": len(b.types), "units": b.units, "location_id": placeID, "top_items": topItemLines(b.types, typeNames, prices, itemsN),
+			fLocation: place, fValue: isk(b.value), "value_isk": mathRound(b.value, decimalPlaces),
+			fDistinctTypes: len(b.types), fUnits: b.units, "location_id": placeID, "top_items": topItemLines(b.types, typeNames, prices, itemsN),
 		})
 	}
 
@@ -177,13 +177,13 @@ func topItemLines(types map[int]int, typeNames map[int]string, prices map[int]ma
 
 func eveAssetsFind(ctx context.Context, a *session.Session, in assetsFindIn) (any, error) {
 	if strings.TrimSpace(in.Name) == "" {
-		return map[string]any{"error": "name is required"}, nil
+		return map[string]any{fError: "name is required"}, nil
 	}
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
-	if err := a.RequireScope(token, "esi-assets.read_assets.v1", "assets"); err != nil {
+	if err := a.RequireScope(token, "esi-assets.read_assets.v1", fAssets); err != nil {
 		return nil, err
 	}
 	cid := token.CharacterID
@@ -194,7 +194,7 @@ func eveAssetsFind(ctx context.Context, a *session.Session, in assetsFindIn) (an
 	items := j.Maps(result.Data)
 	var typeIDs []int
 	for _, i := range items {
-		typeIDs = append(typeIDs, j.Int(i["type_id"]))
+		typeIDs = append(typeIDs, j.Int(i[fTypeID]))
 	}
 	typeNames, err := a.Resolver.Names(ctx, typeIDs, nil)
 	if err != nil {
@@ -203,8 +203,8 @@ func eveAssetsFind(ctx context.Context, a *session.Session, in assetsFindIn) (an
 	matches := assetFindMatches(items, typeNames, in.Name)
 	if len(matches) == 0 {
 		return map[string]any{
-			"character": token.CharacterName, "query": in.Name, "matches": []any{},
-			"note": "Nothing matching in personal assets. Check the spelling with eve_universe_search, or the item may be in a corp hangar (eve_corp_assets_find).",
+			fCharacter: token.CharacterName, fQuery: in.Name, fMatches: []any{},
+			fNote: "Nothing matching in personal assets. Check the spelling with eve_universe_search, or the item may be in a corp hangar (eve_corp_assets_find).",
 		}, nil
 	}
 	roots := rootLocations(items)
@@ -227,17 +227,17 @@ func eveAssetsFind(ctx context.Context, a *session.Session, in assetsFindIn) (an
 		return nil, err
 	}
 	rows := assetFindRows(matches, roots, byID, typeNames, placeNames, prices)
-	sort.Slice(rows, func(i, k int) bool { return j.Int(rows[i]["quantity"]) > j.Int(rows[k]["quantity"]) })
+	sort.Slice(rows, func(i, k int) bool { return j.Int(rows[i][fQuantity]) > j.Int(rows[k][fQuantity]) })
 	visible, meta := page(rows, limitOr(in.Limit, limitMedium), "")
 	total := 0
 	for _, r := range rows {
-		total += j.Int(r["quantity"])
+		total += j.Int(r[fQuantity])
 	}
 
 	return merge(map[string]any{
-		"character": token.CharacterName, "query": in.Name,
-		"total_units": total, "total_stacks": len(rows), "data_age": result.StaleNote(),
-		"matches": project(visible, []string{"item", "quantity", "location", "estimated_value"}, concise(in.ResponseFormat)),
+		fCharacter: token.CharacterName, fQuery: in.Name,
+		"total_units": total, "total_stacks": len(rows), fDataAge: result.StaleNote(),
+		fMatches: project(visible, []string{fItem, fQuantity, fLocation, fEstimatedValue}, concise(in.ResponseFormat)),
 	}, meta), nil
 }
 
@@ -245,7 +245,7 @@ func assetFindMatches(items []map[string]any, typeNames map[int]string, name str
 	needle := strings.ToLower(strings.TrimSpace(name))
 	var matches []map[string]any
 	for _, i := range items {
-		if strings.Contains(strings.ToLower(typeNames[j.Int(i["type_id"])]), needle) {
+		if strings.Contains(strings.ToLower(typeNames[j.Int(i[fTypeID])]), needle) {
 			matches = append(matches, i)
 		}
 	}
@@ -258,17 +258,17 @@ func assetFindRows(matches []map[string]any, roots map[int]int, byID map[int]map
 	for _, item := range matches {
 		root := roots[j.Int(item["item_id"])]
 		container := byID[j.Int(item["location_id"])]
-		qty := j.Int(item["quantity"])
+		qty := j.Int(item[fQuantity])
 		if qty == 0 {
 			qty = 1
 		}
 		var inside any
 		if container != nil {
-			inside = typeNames[j.Int(container["type_id"])]
+			inside = typeNames[j.Int(container[fTypeID])]
 		}
 		rows = append(rows, map[string]any{
-			"item": typeNames[j.Int(item["type_id"])], "quantity": qty,
-			"location": nameOr(placeNames, root), "estimated_value": isk(unitPrice(prices, j.Int(item["type_id"])) * float64(qty)),
+			fItem: typeNames[j.Int(item[fTypeID])], fQuantity: qty,
+			fLocation: nameOr(placeNames, root), fEstimatedValue: isk(unitPrice(prices, j.Int(item[fTypeID])) * float64(qty)),
 			"inside": inside, "slot": item["location_flag"],
 			"packaged": !j.Bool(item["is_singleton"]), "item_id": item["item_id"],
 		})
@@ -282,7 +282,7 @@ func eveAssetsBlueprints(ctx context.Context, a *session.Session, in assetsBluep
 	if err != nil {
 		return nil, err
 	}
-	if err := a.RequireScope(token, "esi-characters.read_blueprints.v1", "blueprints"); err != nil {
+	if err := a.RequireScope(token, "esi-characters.read_blueprints.v1", fBlueprints); err != nil {
 		return nil, err
 	}
 	cid := token.CharacterID
@@ -292,11 +292,11 @@ func eveAssetsBlueprints(ctx context.Context, a *session.Session, in assetsBluep
 	}
 	bps := j.Maps(result.Data)
 	if len(bps) == 0 {
-		return map[string]any{"character": token.CharacterName, "blueprints": []any{}, "note": "None owned."}, nil
+		return map[string]any{fCharacter: token.CharacterName, fBlueprints: []any{}, fNote: "None owned."}, nil
 	}
 	var typeIDs, placeIDs []int
 	for _, b := range bps {
-		typeIDs = append(typeIDs, j.Int(b["type_id"]))
+		typeIDs = append(typeIDs, j.Int(b[fTypeID]))
 		placeIDs = append(placeIDs, j.Int(b["location_id"]))
 	}
 	typeNames, err := a.Resolver.Names(ctx, typeIDs, nil)
@@ -310,7 +310,7 @@ func eveAssetsBlueprints(ctx context.Context, a *session.Session, in assetsBluep
 	var rows []map[string]any
 	orig, copies := 0, 0
 	for _, b := range bps {
-		kind := "original"
+		kind := vOriginal
 		var runs any
 		if j.Float(b["runs"]) == -1 {
 			orig++
@@ -320,25 +320,25 @@ func eveAssetsBlueprints(ctx context.Context, a *session.Session, in assetsBluep
 			copies++
 		}
 		rows = append(rows, map[string]any{
-			"blueprint": typeNames[j.Int(b["type_id"])], "kind": kind,
-			"material_efficiency": b["material_efficiency"], "time_efficiency": b["time_efficiency"],
-			"runs_left": runs, "location": nameOr(placeNames, j.Int(b["location_id"])),
-			"quantity": b["quantity"],
+			fBlueprint: typeNames[j.Int(b[fTypeID])], fKind: kind,
+			fMaterialEfficiency: b[fMaterialEfficiency], fTimeEfficiency: b[fTimeEfficiency],
+			fRunsLeft: runs, fLocation: nameOr(placeNames, j.Int(b["location_id"])),
+			fQuantity: b[fQuantity],
 		})
 	}
 	sort.Slice(rows, func(i, k int) bool {
-		if j.Str(rows[i]["kind"]) != j.Str(rows[k]["kind"]) {
-			return j.Str(rows[i]["kind"]) == "original"
+		if j.Str(rows[i][fKind]) != j.Str(rows[k][fKind]) {
+			return j.Str(rows[i][fKind]) == vOriginal
 		}
 
-		return j.Int(rows[i]["material_efficiency"]) > j.Int(rows[k]["material_efficiency"])
+		return j.Int(rows[i][fMaterialEfficiency]) > j.Int(rows[k][fMaterialEfficiency])
 	})
 	visible, meta := page(rows, limitOr(in.Limit, limitLong), "")
 
 	return merge(map[string]any{
-		"character": token.CharacterName, "originals": orig, "copies": copies,
-		"data_age":   result.StaleNote(),
-		"blueprints": project(visible, []string{"blueprint", "kind", "material_efficiency", "time_efficiency", "runs_left"}, concise(in.ResponseFormat)),
+		fCharacter: token.CharacterName, "originals": orig, "copies": copies,
+		fDataAge:    result.StaleNote(),
+		fBlueprints: project(visible, []string{fBlueprint, fKind, fMaterialEfficiency, fTimeEfficiency, fRunsLeft}, concise(in.ResponseFormat)),
 	}, meta), nil
 }
 

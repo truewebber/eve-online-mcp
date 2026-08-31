@@ -62,6 +62,9 @@ const (
 	bitsPerByte       = 8
 	errorBodyPreview  = 200
 	detailPartsCap    = 2
+
+	formClientID     = "client_id"
+	formRefreshToken = "refresh_token"
 )
 
 var (
@@ -128,7 +131,7 @@ func (c *Client) PrepareLogin(scopes []string) (*PreparedLogin, error) {
 	q := url.Values{
 		"response_type":         {"code"},
 		"redirect_uri":          {c.opts.CallbackURL},
-		"client_id":             {c.opts.ClientID},
+		formClientID:            {c.opts.ClientID},
 		"scope":                 {strings.Join(scopes, " ")},
 		"state":                 {state},
 		"code_challenge":        {challenge},
@@ -149,7 +152,7 @@ func (c *Client) ExchangeCode(ctx context.Context, code, verifier string) (*Char
 	data := url.Values{
 		"grant_type":    {"authorization_code"},
 		"code":          {code},
-		"client_id":     {c.opts.ClientID},
+		formClientID:    {c.opts.ClientID},
 		"code_verifier": {verifier},
 		"redirect_uri":  {c.opts.CallbackURL},
 	}
@@ -193,9 +196,9 @@ func (c *Client) Revoke(ctx context.Context, characterID int) {
 		return
 	}
 	data := url.Values{
-		"token_type_hint": {"refresh_token"},
+		"token_type_hint": {formRefreshToken},
 		"token":           {token.RefreshToken},
-		"client_id":       {c.opts.ClientID},
+		formClientID:      {c.opts.ClientID},
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, RevokeURL, strings.NewReader(data.Encode()))
 	if err != nil {
@@ -274,9 +277,9 @@ func (c *Client) refreshMemory(ctx context.Context, token *CharacterToken) (*Cha
 
 func (c *Client) exchangeRefresh(ctx context.Context, refreshToken string, fallback *CharacterToken) (*CharacterToken, error) {
 	data := url.Values{
-		"grant_type":    {"refresh_token"},
-		"refresh_token": {refreshToken},
-		"client_id":     {c.opts.ClientID},
+		"grant_type":     {formRefreshToken},
+		formRefreshToken: {refreshToken},
+		formClientID:     {c.opts.ClientID},
 	}
 	payload, err := c.tokenRequest(ctx, data, c.opts.ClientID, c.opts.ClientSecret)
 	if err != nil {
@@ -288,7 +291,7 @@ func (c *Client) exchangeRefresh(ctx context.Context, refreshToken string, fallb
 
 func (c *Client) tokenRequest(ctx context.Context, data url.Values, clientID, secret string) (map[string]any, error) {
 	if secret != "" {
-		data.Del("client_id")
+		data.Del(formClientID)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, TokenURL, strings.NewReader(data.Encode()))
 	if err != nil {
@@ -322,7 +325,7 @@ func (c *Client) tokenRequest(ctx context.Context, data url.Values, clientID, se
 
 func (c *Client) tokenFromPayload(ctx context.Context, payload map[string]any, fallback *CharacterToken) (*CharacterToken, error) {
 	access := j.Str(payload["access_token"])
-	refresh := j.Str(payload["refresh_token"])
+	refresh := j.Str(payload[formRefreshToken])
 	if refresh == "" && fallback != nil {
 		refresh = fallback.RefreshToken
 	}

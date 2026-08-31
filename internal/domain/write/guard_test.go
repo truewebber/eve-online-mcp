@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+const testDestination = "Jita"
+
 func testGuard(t *testing.T) (*Guard, *memPersist) {
 	t.Helper()
 	mem := newMemPersist()
@@ -20,8 +22,8 @@ func TestAuthorizePreviewAndConfirm(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	g, _ := testGuard(t)
-	args := map[string]any{"destination": "Jita"}
-	preview := map[string]any{"will_set": "Jita"}
+	args := map[string]any{"destination": testDestination}
+	preview := map[string]any{"will_set": testDestination}
 	scopes := Capabilities()["waypoint"].Scopes
 
 	out, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, preview, "", scopes)
@@ -50,9 +52,9 @@ func TestConfirmToolMismatchKeepsToken(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	g, _ := testGuard(t)
-	args := map[string]any{"destination": "Jita"}
+	args := map[string]any{"destination": testDestination}
 	scopes := append([]string{}, Capabilities()["waypoint"].Scopes...)
-	scopes = append(scopes, Capabilities()["mail_send"].Scopes...)
+	scopes = append(scopes, Capabilities()[CapMailSend].Scopes...)
 	out, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, "", Capabilities()["waypoint"].Scopes)
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +63,7 @@ func TestConfirmToolMismatchKeepsToken(t *testing.T) {
 	if !ok || token == "" {
 		t.Fatalf("preview %+v", out)
 	}
-	_, err = g.Authorize(ctx, "eve_mail_send", "mail_send", args, nil, token, scopes)
+	_, err = g.Authorize(ctx, "eve_mail_send", CapMailSend, args, nil, token, scopes)
 	var blocked BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "eve_ui_set_waypoint") {
 		t.Fatalf("mismatch %v", err)
@@ -77,7 +79,7 @@ func TestConfirmDigestMismatchDiscards(t *testing.T) {
 	ctx := context.Background()
 	g, _ := testGuard(t)
 	scopes := Capabilities()["waypoint"].Scopes
-	out, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", map[string]any{"d": "Jita"}, nil, "", scopes)
+	out, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", map[string]any{"d": testDestination}, nil, "", scopes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +92,7 @@ func TestConfirmDigestMismatchDiscards(t *testing.T) {
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "arguments changed") {
 		t.Fatalf("digest %v", err)
 	}
-	_, err = g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", map[string]any{"d": "Jita"}, nil, token, scopes)
+	_, err = g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", map[string]any{"d": testDestination}, nil, token, scopes)
 	if !errors.As(err, &blocked) {
 		t.Fatalf("discarded token still worked: %v", err)
 	}
@@ -100,7 +102,7 @@ func TestConfirmExpiry(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	g, mem := testGuard(t)
-	args := map[string]any{"d": "Jita"}
+	args := map[string]any{"d": testDestination}
 	digest, err := digestArgs(args)
 	if err != nil {
 		t.Fatal(err)
@@ -122,11 +124,11 @@ func TestSixthMailIsBlocked(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	g, _ := testGuard(t)
-	scopes := Capabilities()["mail_send"].Scopes
+	scopes := Capabilities()[CapMailSend].Scopes
 	for range 5 {
-		g.Record(ctx, "eve_mail_send", "mail_send", nil, "ok")
+		g.Record(ctx, "eve_mail_send", CapMailSend, nil, "ok")
 	}
-	_, err := g.Authorize(ctx, "eve_mail_send", "mail_send", nil, nil, "", scopes)
+	_, err := g.Authorize(ctx, "eve_mail_send", CapMailSend, nil, nil, "", scopes)
 	var blocked BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "Mail budget exhausted") {
 		t.Fatalf("sixth mail %v", err)

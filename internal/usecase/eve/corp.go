@@ -33,25 +33,25 @@ func hangarDivision(flag string) (int, bool) {
 
 func corpScope(key string) string {
 	switch key {
-	case "assets":
+	case fAssets:
 		return "esi-assets.read_corporation_assets.v1"
-	case "blueprints":
+	case fBlueprints:
 		return "esi-corporations.read_blueprints.v1"
-	case "wallets":
+	case fWallets:
 		return "esi-wallet.read_corporation_wallets.v1"
-	case "jobs":
+	case fJobs:
 		return "esi-industry.read_corporation_jobs.v1"
 	case "mining":
 		return "esi-industry.read_corporation_mining.v1"
-	case "orders":
+	case fOrders:
 		return "esi-markets.read_corporation_orders.v1"
-	case "contracts":
+	case fContracts:
 		return "esi-contracts.read_corporation_contracts.v1"
-	case "killmails":
+	case fKillmails:
 		return "esi-killmails.read_corporation_killmails.v1"
-	case "structures":
+	case fStructures:
 		return "esi-corporations.read_structures.v1"
-	case "members":
+	case fMembers:
 		return "esi-corporations.read_corporation_membership.v1"
 	case "divisions":
 		return "esi-corporations.read_divisions.v1"
@@ -62,18 +62,18 @@ func corpScope(key string) string {
 
 func corpRole(key string) []string {
 	switch key {
-	case "assets", "blueprints", "killmails", "divisions":
-		return []string{"Director"}
-	case "wallets":
-		return []string{"Accountant", "Junior_Accountant"}
-	case "jobs":
+	case fAssets, fBlueprints, fKillmails, "divisions":
+		return []string{roleDirector}
+	case fWallets:
+		return []string{roleAccountant, "Junior_Accountant"}
+	case fJobs:
 		return []string{"Factory_Manager"}
-	case "orders":
-		return []string{"Accountant", "Trader"}
-	case "structures", "mining_extractions":
-		return []string{"Station_Manager"}
+	case fOrders:
+		return []string{roleAccountant, "Trader"}
+	case fStructures, "mining_extractions":
+		return []string{roleStationManager}
 	case "mining_ledger":
-		return []string{"Accountant"}
+		return []string{roleAccountant}
 	default:
 		return nil
 	}
@@ -81,7 +81,7 @@ func corpRole(key string) []string {
 
 func esiRole(name string) bool {
 	switch name {
-	case "Director", "Accountant", "Junior_Accountant", "Factory_Manager", "Station_Manager", "Trader":
+	case roleDirector, roleAccountant, "Junior_Accountant", "Factory_Manager", roleStationManager, "Trader":
 		return true
 	default:
 		return false
@@ -228,10 +228,10 @@ func eveCorpOverview(ctx context.Context, a *session.Session, in corpCharIn) (an
 		return nil, err
 	}
 	if corp.IsNPC() {
-		out["note"] = "NPC corporations have no hangars, wallets or jobs on ESI. The other eve_corp_* tools will refuse this character."
+		out[fNote] = "NPC corporations have no hangars, wallets or jobs on ESI. The other eve_corp_* tools will refuse this character."
 		out["available_tools"] = []string{}
 
-		return keepEmpty(out, "roles", "available_tools"), nil
+		return keepEmpty(out, fRoles, "available_tools"), nil
 	}
 	divs := corpDivisions(ctx, a, corp)
 	corpOverviewAttachDivisions(out, divs)
@@ -239,7 +239,7 @@ func eveCorpOverview(ctx context.Context, a *session.Session, in corpCharIn) (an
 	out["available_tools"] = availableCorpTools(corp)
 	corpOverviewNextStep(a, corp, out)
 
-	return keepEmpty(out, "roles", "available_tools"), nil
+	return keepEmpty(out, fRoles, "available_tools"), nil
 }
 
 func corpOverviewIdentity(ctx context.Context, a *session.Session, corp *character.Corporation) (map[string]any, error) {
@@ -251,34 +251,34 @@ func corpOverviewIdentity(ctx context.Context, a *session.Session, corp *charact
 	}
 
 	return merge(map[string]any{
-		"character": corp.CharacterName(), "corporation": corp.CorporationName,
+		fCharacter: corp.CharacterName(), fCorporation: corp.CorporationName,
 		"ticker": corp.Ticker, "corporation_id": corp.CorporationID,
 		"corporation_kind": map[bool]string{true: "npc", false: "player"}[corp.IsNPC()],
 		"member_count":     public["member_count"], "ceo": n[j.Int(public["ceo_id"])],
-		"alliance": n[j.Int(public["alliance_id"])],
-		"tax_pct":  mathRound(j.Float(public["tax_rate"])*percentScale, decimalPlaces),
+		fAlliance: n[j.Int(public["alliance_id"])],
+		"tax_pct": mathRound(j.Float(public["tax_rate"])*percentScale, decimalPlaces),
 	}, rolesForDisplay(corp)), nil
 }
 
 func corpOverviewAttachDivisions(out map[string]any, divs map[string]map[int]string) {
-	if len(divs["wallet"]) == 0 && len(divs["hangar"]) == 0 {
+	if len(divs[fWallet]) == 0 && len(divs[fHangar]) == 0 {
 		return
 	}
 	var wdiv, hdiv []map[string]any
 	for i := 1; i <= 7; i++ {
-		wdiv = append(wdiv, map[string]any{"division": i, "name": walletLabel(i, divs["wallet"])})
-		hn := divs["hangar"][i]
+		wdiv = append(wdiv, map[string]any{fDivision: i, fName: walletLabel(i, divs[fWallet])})
+		hn := divs[fHangar][i]
 		if hn == "" {
 			hn = fmt.Sprintf("Hangar %d", i)
 		}
-		hdiv = append(hdiv, map[string]any{"division": i, "name": hn})
+		hdiv = append(hdiv, map[string]any{fDivision: i, fName: hn})
 	}
 	out["wallet_divisions"] = wdiv
 	out["hangar_divisions"] = hdiv
 }
 
 func corpOverviewAttachWallets(ctx context.Context, a *session.Session, corp *character.Corporation, divs map[string]map[int]string, out map[string]any) {
-	if !corpCan(corp, "wallets", "wallets") {
+	if !corpCan(corp, fWallets, fWallets) {
 		return
 	}
 	wallets, err := a.ESI.Get(ctx, fmt.Sprintf("/corporations/%d/wallets", corp.CorporationID), &corp.Token.CharacterID, nil, nil)
@@ -287,8 +287,8 @@ func corpOverviewAttachWallets(ctx context.Context, a *session.Session, corp *ch
 
 		return
 	}
-	bal := corpWalletRows(wallets.Data, divs["wallet"])
-	out["wallets"] = bal.rows
+	bal := corpWalletRows(wallets.Data, divs[fWallet])
+	out[fWallets] = bal.rows
 	out["wallet_total"] = isk(bal.total)
 	out["wallet_age"] = wallets.StaleNote()
 }
@@ -308,7 +308,7 @@ func corpOverviewNextStep(a *session.Session, corp *character.Corporation, out m
 }
 
 func eveCorpAssetsList(ctx context.Context, a *session.Session, in corpAssetsListIn) (any, error) {
-	corp, err := openCorp(ctx, a, in.Character, "assets", "assets", "corporation assets")
+	corp, err := openCorp(ctx, a, in.Character, fAssets, fAssets, "corporation assets")
 	if err != nil {
 		return nil, err
 	}
@@ -318,7 +318,7 @@ func eveCorpAssetsList(ctx context.Context, a *session.Session, in corpAssetsLis
 	}
 	assets := j.Maps(result.Data)
 	if len(assets) == 0 {
-		return merge(who(corp), map[string]any{"locations": []any{}, "note": "The corporation hangar is empty (or this character cannot see it)."}), nil
+		return merge(who(corp), map[string]any{fLocations: []any{}, fNote: "The corporation hangar is empty (or this character cannot see it)."}), nil
 	}
 	divs := corpDivisions(ctx, a, corp)
 	roots := rootLocations(assets)
@@ -339,16 +339,16 @@ func eveCorpAssetsList(ctx context.Context, a *session.Session, in corpAssetsLis
 	sort.Slice(rows, func(i, k int) bool { return j.Float(rows[i]["value_isk"]) > j.Float(rows[k]["value_isk"]) })
 	visible, meta := page(rows, limitOr(in.Limit, limitShort), "Raise `limit`, or filter with `location` / `min_value`.")
 	out := merge(who(corp), merge(map[string]any{
-		"total_estimated_value": isk(corpAssetBucketTotal(buckets)), "total_locations": len(buckets),
-		"matching_locations": len(rows), "valuation_basis": "CCP global average price per type, not a hub quote",
-		"data_age":  result.StaleNote(),
-		"locations": project(visible, []string{"location", "value", "distinct_types", "units"}, concise(in.ResponseFormat)),
+		fTotalEstimatedValue: isk(corpAssetBucketTotal(buckets)), "total_locations": len(buckets),
+		"matching_locations": len(rows), fValuationBasis: valuationCCPAvg,
+		fDataAge:   result.StaleNote(),
+		fLocations: project(visible, []string{fLocation, fValue, fDistinctTypes, fUnits}, concise(in.ResponseFormat)),
 	}, meta))
 	if result.Truncated {
 		out["totals_caveat"] = fmt.Sprintf("Stopped after 80 pages; totals cover the first %d stacks, not the whole hangar.", len(assets))
 	}
-	if len(divs["hangar"]) > 0 {
-		out["hangar_names"] = divs["hangar"]
+	if len(divs[fHangar]) > 0 {
+		out["hangar_names"] = divs[fHangar]
 	}
 
 	return out, nil
@@ -357,7 +357,7 @@ func eveCorpAssetsList(ctx context.Context, a *session.Session, in corpAssetsLis
 func collectTypeIDs(items []map[string]any) []int {
 	typeIDs := make([]int, 0, len(items))
 	for _, i := range items {
-		typeIDs = append(typeIDs, j.Int(i["type_id"]))
+		typeIDs = append(typeIDs, j.Int(i[fTypeID]))
 	}
 
 	return typeIDs
@@ -376,7 +376,7 @@ func corpAssetBuckets(assets []map[string]any, roots map[int]int, prices map[int
 		if !ok {
 			continue
 		}
-		qty := j.Int(item["quantity"])
+		qty := j.Int(item[fQuantity])
 		if qty == 0 {
 			qty = 1
 		}
@@ -385,7 +385,7 @@ func corpAssetBuckets(assets []map[string]any, roots map[int]int, prices map[int
 			b = &corpAssetBucket{types: map[int]int{}}
 			buckets[root] = b
 		}
-		tid := j.Int(item["type_id"])
+		tid := j.Int(item[fTypeID])
 		b.value += unitPrice(prices, tid) * float64(qty)
 		b.units += qty
 		b.types[tid] += qty
@@ -408,8 +408,8 @@ func corpAssetLocationRows(buckets map[int]*corpAssetBucket, placeNames, typeNam
 		}
 		topItems := topItemLines(b.types, typeNames, prices, itemsN)
 		rows = append(rows, map[string]any{
-			"location": place, "value": isk(b.value), "value_isk": mathRound(b.value, decimalPlaces),
-			"distinct_types": len(b.types), "units": b.units, "location_id": placeID, "top_items": topItems,
+			fLocation: place, fValue: isk(b.value), "value_isk": mathRound(b.value, decimalPlaces),
+			fDistinctTypes: len(b.types), fUnits: b.units, "location_id": placeID, "top_items": topItems,
 		})
 	}
 
@@ -426,7 +426,7 @@ func corpAssetBucketTotal(buckets map[int]*corpAssetBucket) float64 {
 }
 
 func eveCorpAssetsFind(ctx context.Context, a *session.Session, in corpAssetsFindIn) (any, error) {
-	corp, err := openCorp(ctx, a, in.Character, "assets", "assets", "corporation assets")
+	corp, err := openCorp(ctx, a, in.Character, fAssets, fAssets, "corporation assets")
 	if err != nil {
 		return nil, err
 	}
@@ -441,7 +441,7 @@ func eveCorpAssetsFind(ctx context.Context, a *session.Session, in corpAssetsFin
 	}
 	matches := corpAssetFindMatches(items, typeNames, in.Name)
 	if len(matches) == 0 {
-		return merge(who(corp), map[string]any{"query": in.Name, "matches": []any{}, "note": "Nothing matching in corporation assets. Check the spelling with eve_universe_search, or look in personal hangars with eve_assets_find."}), nil
+		return merge(who(corp), map[string]any{fQuery: in.Name, fMatches: []any{}, fNote: "Nothing matching in corporation assets. Check the spelling with eve_universe_search, or look in personal hangars with eve_assets_find."}), nil
 	}
 	divs := corpDivisions(ctx, a, corp)
 	roots := rootLocations(items)
@@ -453,13 +453,13 @@ func eveCorpAssetsFind(ctx context.Context, a *session.Session, in corpAssetsFin
 	if err != nil {
 		return nil, err
 	}
-	rows := corpAssetFindRows(matches, itemsByID(items), roots, typeNames, placeNames, prices, divs["hangar"])
-	sort.Slice(rows, func(i, k int) bool { return j.Int(rows[i]["quantity"]) > j.Int(rows[k]["quantity"]) })
+	rows := corpAssetFindRows(matches, itemsByID(items), roots, typeNames, placeNames, prices, divs[fHangar])
+	sort.Slice(rows, func(i, k int) bool { return j.Int(rows[i][fQuantity]) > j.Int(rows[k][fQuantity]) })
 	visible, meta := page(rows, limitOr(in.Limit, limitMedium), "")
 	out := merge(who(corp), merge(map[string]any{
-		"query": in.Name, "total_units": sumIntField(rows, "quantity"), "total_stacks": len(rows),
-		"data_age": result.StaleNote(),
-		"matches":  project(visible, []string{"item", "quantity", "location", "hangar", "estimated_value"}, concise(in.ResponseFormat)),
+		fQuery: in.Name, "total_units": sumIntField(rows, fQuantity), "total_stacks": len(rows),
+		fDataAge: result.StaleNote(),
+		fMatches: project(visible, []string{fItem, fQuantity, fLocation, fHangar, fEstimatedValue}, concise(in.ResponseFormat)),
 	}, meta))
 	if result.Truncated {
 		out["totals_caveat"] = fmt.Sprintf("Search covered the first %d stacks only (80-page cap).", len(items))
@@ -481,7 +481,7 @@ func corpAssetFindMatches(items []map[string]any, typeNames map[int]string, name
 	needle := strings.ToLower(strings.TrimSpace(name))
 	var matches []map[string]any
 	for _, i := range items {
-		if strings.Contains(strings.ToLower(typeNames[j.Int(i["type_id"])]), needle) {
+		if strings.Contains(strings.ToLower(typeNames[j.Int(i[fTypeID])]), needle) {
 			matches = append(matches, i)
 		}
 	}
@@ -503,20 +503,20 @@ func corpAssetFindPlaceIDs(matches []map[string]any, roots map[int]int) []int {
 func corpAssetFindRows(matches []map[string]any, byID map[int]map[string]any, roots map[int]int, typeNames, placeNames map[int]string, prices map[int]map[string]float64, hangars map[int]string) []map[string]any {
 	rows := make([]map[string]any, 0, len(matches))
 	for _, item := range matches {
-		qty := j.Int(item["quantity"])
+		qty := j.Int(item[fQuantity])
 		if qty == 0 {
 			qty = 1
 		}
 		container := byID[j.Int(item["location_id"])]
 		var inside any
 		if container != nil {
-			inside = typeNames[j.Int(container["type_id"])]
+			inside = typeNames[j.Int(container[fTypeID])]
 		}
 		rows = append(rows, map[string]any{
-			"item": typeNames[j.Int(item["type_id"])], "quantity": qty,
-			"location": nameOr(placeNames, roots[j.Int(item["item_id"])]), "hangar": hangarLabel(j.Str(item["location_flag"]), hangars),
-			"estimated_value": isk(unitPrice(prices, j.Int(item["type_id"])) * float64(qty)),
-			"inside":          inside, "slot": item["location_flag"],
+			fItem: typeNames[j.Int(item[fTypeID])], fQuantity: qty,
+			fLocation: nameOr(placeNames, roots[j.Int(item["item_id"])]), fHangar: hangarLabel(j.Str(item["location_flag"]), hangars),
+			fEstimatedValue: isk(unitPrice(prices, j.Int(item[fTypeID])) * float64(qty)),
+			"inside":        inside, "slot": item["location_flag"],
 			"packaged": !j.Bool(item["is_singleton"]), "item_id": item["item_id"],
 		})
 	}
@@ -534,7 +534,7 @@ func sumIntField(rows []map[string]any, key string) int {
 }
 
 func eveCorpBlueprints(ctx context.Context, a *session.Session, in corpBlueprintsIn) (any, error) {
-	corp, err := openCorp(ctx, a, in.Character, "blueprints", "blueprints", "corporation blueprints")
+	corp, err := openCorp(ctx, a, in.Character, fBlueprints, fBlueprints, "corporation blueprints")
 	if err != nil {
 		return nil, err
 	}
@@ -544,26 +544,26 @@ func eveCorpBlueprints(ctx context.Context, a *session.Session, in corpBlueprint
 	}
 	bps := j.Maps(result.Data)
 	if len(bps) == 0 {
-		return merge(who(corp), map[string]any{"blueprints": []any{}, "note": "The corporation holds no blueprints."}), nil
+		return merge(who(corp), map[string]any{fBlueprints: []any{}, fNote: "The corporation holds no blueprints."}), nil
 	}
 	divs := corpDivisions(ctx, a, corp)
 	named, err := corpBlueprintNames(ctx, a, corp, bps)
 	if err != nil {
 		return nil, err
 	}
-	listed := corpBlueprintRows(bps, named.types, named.places, divs["hangar"])
+	listed := corpBlueprintRows(bps, named.types, named.places, divs[fHangar])
 	sort.Slice(listed.rows, func(i, k int) bool {
-		if j.Str(listed.rows[i]["kind"]) != j.Str(listed.rows[k]["kind"]) {
-			return j.Str(listed.rows[i]["kind"]) == "original"
+		if j.Str(listed.rows[i][fKind]) != j.Str(listed.rows[k][fKind]) {
+			return j.Str(listed.rows[i][fKind]) == vOriginal
 		}
 
-		return j.Int(listed.rows[i]["material_efficiency"]) > j.Int(listed.rows[k]["material_efficiency"])
+		return j.Int(listed.rows[i][fMaterialEfficiency]) > j.Int(listed.rows[k][fMaterialEfficiency])
 	})
 	visible, meta := page(listed.rows, limitOr(in.Limit, limitLong), "")
 
 	return merge(who(corp), merge(map[string]any{
-		"originals": listed.originals, "copies": listed.copies, "data_age": result.StaleNote(),
-		"blueprints": project(visible, []string{"blueprint", "kind", "material_efficiency", "time_efficiency", "runs_left", "hangar"}, concise(in.ResponseFormat)),
+		"originals": listed.originals, "copies": listed.copies, fDataAge: result.StaleNote(),
+		fBlueprints: project(visible, []string{fBlueprint, fKind, fMaterialEfficiency, fTimeEfficiency, fRunsLeft, fHangar}, concise(in.ResponseFormat)),
 	}, meta)), nil
 }
 
@@ -575,7 +575,7 @@ func corpBlueprintNames(ctx context.Context, a *session.Session, corp *character
 	typeIDs := make([]int, 0, len(bps))
 	placeIDs := make([]int, 0, len(bps))
 	for _, b := range bps {
-		typeIDs = append(typeIDs, j.Int(b["type_id"]))
+		typeIDs = append(typeIDs, j.Int(b[fTypeID]))
 		placeIDs = append(placeIDs, j.Int(b["location_id"]))
 	}
 	typeNames, err := a.Resolver.Names(ctx, typeIDs, nil)
@@ -599,7 +599,7 @@ func corpBlueprintRows(bps []map[string]any, typeNames, placeNames map[int]strin
 	rows := make([]map[string]any, 0, len(bps))
 	orig, copies := 0, 0
 	for _, b := range bps {
-		kind := "original"
+		kind := vOriginal
 		var runs any
 		if j.Float(b["runs"]) != -1 {
 			kind = "copy"
@@ -609,10 +609,10 @@ func corpBlueprintRows(bps []map[string]any, typeNames, placeNames map[int]strin
 			orig++
 		}
 		rows = append(rows, map[string]any{
-			"blueprint": typeNames[j.Int(b["type_id"])], "kind": kind,
-			"material_efficiency": b["material_efficiency"], "time_efficiency": b["time_efficiency"],
-			"runs_left": runs, "location": nameOr(placeNames, j.Int(b["location_id"])),
-			"hangar": hangarLabel(j.Str(b["location_flag"]), hangars), "quantity": b["quantity"],
+			fBlueprint: typeNames[j.Int(b[fTypeID])], fKind: kind,
+			fMaterialEfficiency: b[fMaterialEfficiency], fTimeEfficiency: b[fTimeEfficiency],
+			fRunsLeft: runs, fLocation: nameOr(placeNames, j.Int(b["location_id"])),
+			fHangar: hangarLabel(j.Str(b["location_flag"]), hangars), fQuantity: b[fQuantity],
 		})
 	}
 
@@ -620,7 +620,7 @@ func corpBlueprintRows(bps []map[string]any, typeNames, placeNames map[int]strin
 }
 
 func eveCorpWallet(ctx context.Context, a *session.Session, in corpWalletIn) (any, error) {
-	corp, err := openCorp(ctx, a, in.Character, "wallets", "wallets", "corporation wallets")
+	corp, err := openCorp(ctx, a, in.Character, fWallets, fWallets, "corporation wallets")
 	if err != nil {
 		return nil, err
 	}
@@ -651,7 +651,7 @@ func corpWalletRows(data any, names map[int]string) walletBalanceRows {
 	total := 0.0
 	for _, w := range wallets {
 		rows = append(rows, map[string]any{
-			"division": w["division"], "name": walletLabel(j.Int(w["division"]), names),
+			fDivision: w[fDivision], fName: walletLabel(j.Int(w[fDivision]), names),
 			"balance": isk(w["balance"]), "balance_isk": w["balance"],
 		})
 		total += j.Float(w["balance"])
@@ -665,40 +665,40 @@ func corpWalletBalances(ctx context.Context, a *session.Session, corp *character
 	if err != nil {
 		return nil, err
 	}
-	bal := corpWalletRows(wallets.Data, divs["wallet"])
+	bal := corpWalletRows(wallets.Data, divs[fWallet])
 
 	return merge(who(corp), map[string]any{
-		"wallet_total": isk(bal.total), "data_age": wallets.StaleNote(), "wallets": bal.rows,
-		"note": "Pass kind='journal' or kind='transactions' with a division (1-7) to see movements. ESI retains about 30 days.",
+		"wallet_total": isk(bal.total), fDataAge: wallets.StaleNote(), fWallets: bal.rows,
+		fNote: "Pass kind='journal' or kind='transactions' with a division (1-7) to see movements. ESI retains about 30 days.",
 	}), nil
 }
 
 func corpWalletMovements(ctx context.Context, a *session.Session, corp *character.Corporation, in corpWalletIn, kind string, div int, divs map[string]map[int]string) (any, error) {
 	out := merge(who(corp), map[string]any{
-		"division": div, "division_name": walletLabel(div, divs["wallet"]),
-		"period": "last ~30 days (ESI retention limit)",
+		fDivision: div, "division_name": walletLabel(div, divs[fWallet]),
+		fPeriod: "last ~30 days (ESI retention limit)",
 	})
-	if kind == "journal" || kind == "both" {
+	if kind == fJournal || kind == vBoth {
 		sec, err := corpWalletJournal(ctx, a, corp, div, in)
 		if err != nil {
 			return nil, err
 		}
 		out["journal_section"] = sec
 	}
-	if kind == "transactions" || kind == "both" {
+	if kind == fTransactions || kind == vBoth {
 		sec, err := transactionSection(ctx, a, fmt.Sprintf("/corporations/%d/wallets/%d/transactions", corp.CorporationID, div), corp.Token.CharacterID, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
 		if err != nil {
 			return nil, err
 		}
 		out["transactions_section"] = sec
 	}
-	if kind == "journal" {
+	if kind == fJournal {
 		sec := j.Map(out["journal_section"])
 		delete(out, "journal_section")
 
 		return merge(out, sec), nil
 	}
-	if kind == "transactions" {
+	if kind == fTransactions {
 		sec := j.Map(out["transactions_section"])
 		delete(out, "transactions_section")
 
@@ -718,7 +718,7 @@ func corpWalletJournal(ctx context.Context, a *session.Session, corp *character.
 }
 
 func eveCorpIndustryJobs(ctx context.Context, a *session.Session, in corpIndustryJobsIn) (any, error) {
-	corp, err := openCorp(ctx, a, in.Character, "jobs", "jobs", "corporation industry jobs")
+	corp, err := openCorp(ctx, a, in.Character, fJobs, fJobs, "corporation industry jobs")
 	if err != nil {
 		return nil, err
 	}
@@ -750,7 +750,7 @@ func eveCorpMining(ctx context.Context, a *session.Session, in corpMiningIn) (an
 	if err := corpMiningRequireRole(a, corp, canLedger, canExtract); err != nil {
 		return nil, err
 	}
-	out := merge(who(corp), map[string]any{"period": "last ~30 days"})
+	out := merge(who(corp), map[string]any{fPeriod: "last ~30 days"})
 	corpMiningAttachExtractions(ctx, a, corp, canExtract, out)
 	corpMiningAttachLedger(ctx, a, corp, in, canLedger, out)
 
@@ -762,7 +762,7 @@ func corpMiningRequireRole(a *session.Session, corp *character.Corporation, canL
 		return nil
 	}
 
-	return a.RequireCorpRole(corp, []string{"Accountant", "Station_Manager"}, "corporation mining (ledger needs Accountant, extractions need Station_Manager)")
+	return a.RequireCorpRole(corp, []string{roleAccountant, roleStationManager}, "corporation mining (ledger needs Accountant, extractions need Station_Manager)")
 }
 
 func corpMiningAttachExtractions(ctx context.Context, a *session.Session, corp *character.Corporation, canExtract bool, out map[string]any) {
@@ -796,7 +796,7 @@ func corpMiningAttachLedger(ctx context.Context, a *session.Session, corp *chara
 }
 
 func eveCorpOrders(ctx context.Context, a *session.Session, in corpOrdersIn) (any, error) {
-	corp, err := openCorp(ctx, a, in.Character, "orders", "orders", "corporation market orders")
+	corp, err := openCorp(ctx, a, in.Character, fOrders, fOrders, "corporation market orders")
 	if err != nil {
 		return nil, err
 	}
@@ -805,7 +805,7 @@ func eveCorpOrders(ctx context.Context, a *session.Session, in corpOrdersIn) (an
 		return nil, err
 	}
 	divs := corpDivisions(ctx, a, corp)
-	out, err := formatOrders(ctx, a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), limitOr(in.Limit, limitLong), concise(in.ResponseFormat), divs["wallet"])
+	out, err := formatOrders(ctx, a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), limitOr(in.Limit, limitLong), concise(in.ResponseFormat), divs[fWallet])
 	if err != nil {
 		return nil, err
 	}
@@ -814,7 +814,7 @@ func eveCorpOrders(ctx context.Context, a *session.Session, in corpOrdersIn) (an
 }
 
 func eveCorpContracts(ctx context.Context, a *session.Session, in corpContractsIn) (any, error) {
-	corp, err := openCorp(ctx, a, in.Character, "contracts", "", "corporation contracts")
+	corp, err := openCorp(ctx, a, in.Character, fContracts, "", "corporation contracts")
 	if err != nil {
 		return nil, err
 	}
@@ -831,7 +831,7 @@ func eveCorpContracts(ctx context.Context, a *session.Session, in corpContractsI
 }
 
 func eveCorpKillmails(ctx context.Context, a *session.Session, in corpKillmailsIn) (any, error) {
-	corp, err := openCorp(ctx, a, in.Character, "killmails", "killmails", "corporation killmails")
+	corp, err := openCorp(ctx, a, in.Character, fKillmails, fKillmails, "corporation killmails")
 	if err != nil {
 		return nil, err
 	}
@@ -844,7 +844,7 @@ func eveCorpKillmails(ctx context.Context, a *session.Session, in corpKillmailsI
 }
 
 func eveCorpStructures(ctx context.Context, a *session.Session, in corpStructuresIn) (any, error) {
-	corp, err := openCorp(ctx, a, in.Character, "structures", "structures", "corporation structures")
+	corp, err := openCorp(ctx, a, in.Character, fStructures, fStructures, "corporation structures")
 	if err != nil {
 		return nil, err
 	}
@@ -854,7 +854,7 @@ func eveCorpStructures(ctx context.Context, a *session.Session, in corpStructure
 	}
 	structures := j.Maps(result.Data)
 	if len(structures) == 0 {
-		return merge(who(corp), map[string]any{"structures": []any{}, "note": "This corporation owns no Upwell structures."}), nil
+		return merge(who(corp), map[string]any{fStructures: []any{}, fNote: "This corporation owns no Upwell structures."}), nil
 	}
 	names, err := a.Resolver.Names(ctx, corpStructureIDs(structures), &corp.Token.CharacterID)
 	if err != nil {
@@ -867,15 +867,15 @@ func eveCorpStructures(ctx context.Context, a *session.Session, in corpStructure
 	visible, meta := page(listed.rows, limitOr(in.Limit, limitDefault), "")
 
 	return merge(who(corp), merge(map[string]any{
-		"structure_count": len(listed.rows), "unfuelled": listed.unfuelled, "data_age": result.StaleNote(),
-		"structures": project(visible, []string{"structure", "type", "system", "state", "fuel_expires_in"}, concise(in.ResponseFormat)),
+		"structure_count": len(listed.rows), "unfuelled": listed.unfuelled, fDataAge: result.StaleNote(),
+		fStructures: project(visible, []string{fStructure, fType, fSystem, fState, "fuel_expires_in"}, concise(in.ResponseFormat)),
 	}, meta)), nil
 }
 
 func corpStructureIDs(structures []map[string]any) []int {
 	idSet := map[int]struct{}{}
 	for _, s := range structures {
-		for _, k := range []string{"type_id", "system_id", "structure_id"} {
+		for _, k := range []string{fTypeID, "system_id", "structure_id"} {
 			if j.Int(s[k]) != 0 {
 				idSet[j.Int(s[k])] = struct{}{}
 			}
@@ -900,8 +900,8 @@ func corpStructureRows(structures []map[string]any, names map[int]string) corpSt
 			unfuelled++
 		}
 		rows = append(rows, map[string]any{
-			"structure": names[j.Int(s["structure_id"])], "type": names[j.Int(s["type_id"])],
-			"system": names[j.Int(s["system_id"])], "state": s["state"],
+			fStructure: names[j.Int(s["structure_id"])], fType: names[j.Int(s[fTypeID])],
+			fSystem: names[j.Int(s["system_id"])], fState: s[fState],
 			"fuel_expires_in": expires, "fuel_expires": s["fuel_expires"],
 			"reinforce_hour": s["reinforce_hour"], "services": structureServices(s), "structure_id": s["structure_id"],
 		})
@@ -918,14 +918,14 @@ func structureFuelExpires(fuel *time.Time, now time.Time) (string, bool) {
 		return humanDelta(fuel.Sub(now)), false
 	}
 
-	return "unknown", false
+	return vUnknown, false
 }
 
 func structureServices(s map[string]any) any {
 	listed := j.Maps(s["services"])
 	services := make([]string, 0, len(listed))
 	for _, svc := range listed {
-		services = append(services, fmt.Sprintf("%v (%v)", svc["name"], svc["state"]))
+		services = append(services, fmt.Sprintf("%v (%v)", svc[fName], svc[fState]))
 	}
 	if len(services) == 0 {
 		return nil
@@ -935,7 +935,7 @@ func structureServices(s map[string]any) any {
 }
 
 func eveCorpMembers(ctx context.Context, a *session.Session, in corpMembersIn) (any, error) {
-	corp, err := openCorp(ctx, a, in.Character, "members", "", "corporation membership")
+	corp, err := openCorp(ctx, a, in.Character, fMembers, "", "corporation membership")
 	if err != nil {
 		return nil, err
 	}
@@ -945,7 +945,7 @@ func eveCorpMembers(ctx context.Context, a *session.Session, in corpMembersIn) (
 	}
 	memberIDs := corpMemberIDs(result.Data)
 	if len(memberIDs) == 0 {
-		return merge(who(corp), map[string]any{"members": []any{}, "note": "ESI returned an empty roster."}), nil
+		return merge(who(corp), map[string]any{fMembers: []any{}, fNote: "ESI returned an empty roster."}), nil
 	}
 	names, err := a.Resolver.Names(ctx, memberIDs, nil)
 	if err != nil {
@@ -953,13 +953,13 @@ func eveCorpMembers(ctx context.Context, a *session.Session, in corpMembersIn) (
 	}
 	rows := corpMemberRows(memberIDs, names, corpMemberRoleMap(ctx, a, corp, concise(in.ResponseFormat)))
 	sort.Slice(rows, func(i, k int) bool {
-		return strings.ToLower(j.Str(rows[i]["name"])) < strings.ToLower(j.Str(rows[k]["name"]))
+		return strings.ToLower(j.Str(rows[i][fName])) < strings.ToLower(j.Str(rows[k][fName]))
 	})
 	visible, meta := page(rows, limitOr(in.Limit, limitLong), "")
 
 	return merge(who(corp), merge(map[string]any{
-		"member_count": len(rows), "data_age": result.StaleNote(),
-		"members": project(visible, []string{"name"}, concise(in.ResponseFormat)),
+		"member_count": len(rows), fDataAge: result.StaleNote(),
+		fMembers: project(visible, []string{fName}, concise(in.ResponseFormat)),
 	}, meta)), nil
 }
 
@@ -976,7 +976,7 @@ func corpMemberIDs(data any) []int {
 
 func corpMemberRoleMap(ctx context.Context, a *session.Session, corp *character.Corporation, conciseMode bool) map[int][]string {
 	roleMap := map[int][]string{}
-	if conciseMode || !corp.HasRole("Director") {
+	if conciseMode || !corp.HasRole(roleDirector) {
 		return roleMap
 	}
 	rolesRes, err := a.ESI.Get(ctx, fmt.Sprintf("/corporations/%d/roles", corp.CorporationID), &corp.Token.CharacterID, nil, nil)
@@ -986,7 +986,7 @@ func corpMemberRoleMap(ctx context.Context, a *session.Session, corp *character.
 		return roleMap
 	}
 	for _, row := range j.Maps(rolesRes.Data) {
-		roleMap[j.Int(row["character_id"])] = corpRoleStrings(row["roles"])
+		roleMap[j.Int(row[fCharacterID])] = corpRoleStrings(row[fRoles])
 	}
 
 	return roleMap
@@ -1010,7 +1010,7 @@ func corpMemberRows(memberIDs []int, names map[int]string, roleMap map[int][]str
 		if r := roleMap[mid]; len(r) > 0 {
 			roles = r
 		}
-		rows = append(rows, map[string]any{"name": nameOr(names, mid), "character_id": mid, "roles": roles})
+		rows = append(rows, map[string]any{fName: nameOr(names, mid), fCharacterID: mid, fRoles: roles})
 	}
 
 	return rows
@@ -1043,7 +1043,7 @@ func who(corp *character.Corporation) map[string]any {
 		ticker = corp.Ticker
 	}
 
-	return map[string]any{"character": corp.CharacterName(), "corporation": corp.CorporationName, "ticker": ticker}
+	return map[string]any{fCharacter: corp.CharacterName(), fCorporation: corp.CorporationName, "ticker": ticker}
 }
 
 func corpCan(corp *character.Corporation, scopeKey, roleKey string) bool {
@@ -1053,9 +1053,9 @@ func corpCan(corp *character.Corporation, scopeKey, roleKey string) bool {
 }
 
 func rolesForDisplay(corp *character.Corporation) map[string]any {
-	if _, ok := corp.Roles["Director"]; ok {
+	if _, ok := corp.Roles[roleDirector]; ok {
 		return map[string]any{
-			"roles":     []string{"Director"},
+			fRoles:      []string{roleDirector},
 			"role_note": "Director unlocks every eve_corp_* endpoint. Only roles granted everywhere count; HQ/base/other grants do not.",
 		}
 	}
@@ -1067,7 +1067,7 @@ func rolesForDisplay(corp *character.Corporation) map[string]any {
 	}
 	sort.Strings(esi)
 	out := map[string]any{
-		"roles":     esi,
+		fRoles:      esi,
 		"role_note": "Only roles granted everywhere unlock ESI. HQ/base/other grants do not.",
 	}
 	if len(esi) == 0 {
@@ -1097,16 +1097,16 @@ func rolesForDisplay(corp *character.Corporation) map[string]any {
 
 func availableCorpTools(corp *character.Corporation) []string {
 	catalog := []struct{ name, scope, role string }{
-		{"eve_corp_assets_list", "assets", "assets"},
-		{"eve_corp_assets_find", "assets", "assets"},
-		{"eve_corp_blueprints", "blueprints", "blueprints"},
-		{"eve_corp_wallet", "wallets", "wallets"},
-		{"eve_corp_industry_jobs", "jobs", "jobs"},
-		{"eve_corp_orders", "orders", "orders"},
-		{"eve_corp_contracts", "contracts", ""},
-		{"eve_corp_killmails", "killmails", "killmails"},
-		{"eve_corp_structures", "structures", "structures"},
-		{"eve_corp_members", "members", ""},
+		{"eve_corp_assets_list", fAssets, fAssets},
+		{"eve_corp_assets_find", fAssets, fAssets},
+		{"eve_corp_blueprints", fBlueprints, fBlueprints},
+		{"eve_corp_wallet", fWallets, fWallets},
+		{"eve_corp_industry_jobs", fJobs, fJobs},
+		{"eve_corp_orders", fOrders, fOrders},
+		{"eve_corp_contracts", fContracts, ""},
+		{"eve_corp_killmails", fKillmails, fKillmails},
+		{"eve_corp_structures", fStructures, fStructures},
+		{"eve_corp_members", fMembers, ""},
 	}
 	out := []string{"eve_corp_overview"}
 	have := map[string]struct{}{}
@@ -1130,7 +1130,7 @@ func availableCorpTools(corp *character.Corporation) []string {
 }
 
 func corpDivisions(ctx context.Context, a *session.Session, corp *character.Corporation) map[string]map[int]string {
-	empty := map[string]map[int]string{"wallet": {}, "hangar": {}}
+	empty := map[string]map[int]string{fWallet: {}, fHangar: {}}
 	if !corpCan(corp, "divisions", "divisions") {
 		return empty
 	}
@@ -1140,15 +1140,15 @@ func corpDivisions(ctx context.Context, a *session.Session, corp *character.Corp
 
 		return empty
 	}
-	out := map[string]map[int]string{"wallet": {}, "hangar": {}}
+	out := map[string]map[int]string{fWallet: {}, fHangar: {}}
 	data := j.Map(result.Data)
-	for _, kind := range []string{"wallet", "hangar"} {
+	for _, kind := range []string{fWallet, fHangar} {
 		for _, row := range j.Maps(data[kind]) {
-			if j.Int(row["division"]) == 0 {
+			if j.Int(row[fDivision]) == 0 {
 				continue
 			}
-			if n := strings.TrimSpace(j.Str(row["name"])); n != "" {
-				out[kind][j.Int(row["division"])] = n
+			if n := strings.TrimSpace(j.Str(row[fName])); n != "" {
+				out[kind][j.Int(row[fDivision])] = n
 			}
 		}
 	}
@@ -1213,7 +1213,7 @@ func corpExtractionRow(e map[string]any, names map[int]string, now time.Time) ma
 	arrival, decay := parseTime(j.Str(e["chunk_arrival_time"])), parseTime(j.Str(e["natural_decay_time"]))
 
 	return map[string]any{
-		"structure": names[j.Int(e["structure_id"])], "moon": names[j.Int(e["moon_id"])],
+		fStructure: names[j.Int(e["structure_id"])], "moon": names[j.Int(e["moon_id"])],
 		"chunk_arrives_in": extractionDelta(arrival, now, "arrived"), "decays_in": extractionDelta(decay, now, "decayed"),
 		"chunk_arrival_time": e["chunk_arrival_time"], "natural_decay_time": e["natural_decay_time"],
 	}
@@ -1221,7 +1221,7 @@ func corpExtractionRow(e map[string]any, names map[int]string, now time.Time) ma
 
 func extractionDelta(t *time.Time, now time.Time, past string) string {
 	if t == nil {
-		return "unknown"
+		return vUnknown
 	}
 	if !t.After(now) {
 		return past
@@ -1244,7 +1244,7 @@ func corpMiningLedger(ctx context.Context, a *session.Session, corp *character.C
 	}
 	observers := j.Maps(observersRes.Data)
 	if len(observers) == 0 {
-		return map[string]any{"ores": []any{}, "note": "No mining observers with recorded events (idle refineries are hidden).", "data_age": observersRes.StaleNote()}, nil
+		return map[string]any{fOres: []any{}, fNote: "No mining observers with recorded events (idle refineries are hidden).", fDataAge: observersRes.StaleNote()}, nil
 	}
 	agg := fetchCorpMiningObservers(ctx, a, corp, observers, observersRes)
 	names, err := a.Resolver.Names(ctx, setToList(miningAggIDs(agg)), &corp.Token.CharacterID)
@@ -1258,10 +1258,10 @@ func corpMiningLedger(ctx context.Context, a *session.Session, corp *character.C
 	rows, grand := miningOreRows(agg.totals, names, prices)
 	visible, meta := page(rows, limit, "")
 	out := merge(map[string]any{
-		"total_estimated_value": isk(grand), "observer_count": len(observers),
+		fTotalEstimatedValue: isk(grand), "observer_count": len(observers),
 		"top_miners": topN(agg.byMiner, names, "miner"), "top_observers": topN(agg.byObserver, names, "observer"),
-		"valuation_basis": "CCP global average price per type, not a hub quote",
-		"data_age":        miningLedgerAge(observersRes, agg.oldest), "ores": visible,
+		fValuationBasis: valuationCCPAvg,
+		fDataAge:        miningLedgerAge(observersRes, agg.oldest), fOres: visible,
 	}, meta)
 	if agg.failed > 0 {
 		out["unavailable_observers"] = agg.failed
@@ -1350,10 +1350,10 @@ func absorbMiningObserver(agg *miningLedgerAgg, b miningObsBox) {
 	agg.truncated = agg.truncated || b.r.Truncated
 	oid := j.Int(b.obs["observer_id"])
 	for _, entry := range j.Maps(b.r.Data) {
-		qty := j.Int(entry["quantity"])
-		agg.totals[j.Int(entry["type_id"])] += qty
-		if j.Int(entry["character_id"]) != 0 {
-			agg.byMiner[j.Int(entry["character_id"])] += qty
+		qty := j.Int(entry[fQuantity])
+		agg.totals[j.Int(entry[fTypeID])] += qty
+		if j.Int(entry[fCharacterID]) != 0 {
+			agg.byMiner[j.Int(entry[fCharacterID])] += qty
 		}
 		if oid != 0 {
 			agg.byObserver[oid] += qty
@@ -1373,7 +1373,7 @@ func topN(m map[int]int, names map[int]string, label string) []map[string]any {
 	}
 	out := make([]map[string]any, 0, len(list))
 	for _, x := range list {
-		out = append(out, map[string]any{label: nameOr(names, x.id), "units": x.q})
+		out = append(out, map[string]any{label: nameOr(names, x.id), fUnits: x.q})
 	}
 
 	return out

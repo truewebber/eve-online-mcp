@@ -39,6 +39,16 @@ const (
 	clientIDBytes = 16
 	authCodeBytes = 24
 	jwtLeeway     = 30 * time.Second
+
+	grantAuthCode     = "authorization_code"
+	grantRefresh      = "refresh_token"
+	paramClientID     = "client_id"
+	paramCode         = "code"
+	paramCodeVerifier = "code_verifier"
+	paramRedirectURI  = "redirect_uri"
+	paramGrantType    = "grant_type"
+	typRefresh        = "refresh"
+	schemeHTTPS       = "https"
 )
 
 var (
@@ -159,8 +169,8 @@ func (s *Server) AuthServerMeta() *oauthex.AuthServerMeta {
 		AuthorizationEndpoint:             base + "/oauth/authorize",
 		TokenEndpoint:                     base + "/oauth/token",
 		RegistrationEndpoint:              base + "/oauth/register",
-		ResponseTypesSupported:            []string{"code"},
-		GrantTypesSupported:               []string{"authorization_code", "refresh_token"},
+		ResponseTypesSupported:            []string{paramCode},
+		GrantTypesSupported:               []string{grantAuthCode, grantRefresh},
 		CodeChallengeMethodsSupported:     []string{"S256"},
 		TokenEndpointAuthMethodsSupported: []string{"none", "client_secret_post", "client_secret_basic"},
 		ScopesSupported:                   []string{scopeEve},
@@ -222,10 +232,10 @@ func (s *Server) ServeRegister(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(map[string]any{
-		"client_id":                  id,
+		paramClientID:                id,
 		"redirect_uris":              allowed,
-		"grant_types":                []string{"authorization_code", "refresh_token"},
-		"response_types":             []string{"code"},
+		"grant_types":                []string{grantAuthCode, grantRefresh},
+		"response_types":             []string{paramCode},
 		"token_endpoint_auth_method": "none",
 		"client_name":                req.ClientName,
 	}); err != nil {
@@ -238,8 +248,8 @@ func (s *Server) ServeRegister(w http.ResponseWriter, r *http.Request) {
 // owns the one EVE application, the player only picks a character at CCP.
 func (s *Server) ServeAuthorize(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	mcpClient := q.Get("client_id")
-	redirect := q.Get("redirect_uri")
+	mcpClient := q.Get(paramClientID)
+	redirect := q.Get(paramRedirectURI)
 	state := q.Get("state")
 	challenge := q.Get("code_challenge")
 	if mcpClient == "" || redirect == "" || challenge == "" {
@@ -332,10 +342,10 @@ func (s *Server) ServeToken(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	switch r.Form.Get("grant_type") {
-	case "authorization_code":
+	switch r.Form.Get(paramGrantType) {
+	case grantAuthCode:
 		s.exchangeCode(w, r)
-	case "refresh_token":
+	case grantRefresh:
 		s.refresh(w, r)
 	default:
 		http.Error(w, `{"error":"unsupported_grant_type"}`, http.StatusBadRequest)
@@ -414,7 +424,7 @@ func (s *Server) finishMCP(ctx context.Context, p *store.LoginState, token *sso.
 		return "", err
 	}
 	q := u.Query()
-	q.Set("code", code)
+	q.Set(paramCode, code)
 	if p.MCPState != "" {
 		q.Set("state", p.MCPState)
 	}
@@ -460,9 +470,9 @@ func (s *Server) ownerOf(ctx context.Context, characterID int) (string, error) {
 }
 
 func (s *Server) exchangeCode(w http.ResponseWriter, r *http.Request) {
-	code := r.Form.Get("code")
-	verifier := r.Form.Get("code_verifier")
-	redirect := r.Form.Get("redirect_uri")
+	code := r.Form.Get(paramCode)
+	verifier := r.Form.Get(paramCodeVerifier)
+	redirect := r.Form.Get(paramRedirectURI)
 	ac, ok, err := s.db.TakeAuthCode(r.Context(), code)
 	if err != nil {
 		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
@@ -488,7 +498,7 @@ func (s *Server) exchangeCode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) refresh(w http.ResponseWriter, r *http.Request) {
-	raw := r.Form.Get("refresh_token")
+	raw := r.Form.Get(grantRefresh)
 	userID, err := s.parseRefresh(raw)
 	if err != nil {
 		http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
@@ -519,11 +529,11 @@ func (s *Server) writeTokens(w http.ResponseWriter, userID string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	if err := json.NewEncoder(w).Encode(map[string]any{
-		"access_token":  access,
-		"refresh_token": refresh,
-		"token_type":    "Bearer",
-		"expires_in":    int(accessTTL.Seconds()),
-		"scope":         scopeEve,
+		"access_token": access,
+		grantRefresh:   refresh,
+		"token_type":   "Bearer",
+		"expires_in":   int(accessTTL.Seconds()),
+		"scope":        scopeEve,
 	}); err != nil {
 		log.Printf("oauth: encode token response: %v", err)
 	}
@@ -547,7 +557,7 @@ func (s *Server) issueRefresh(userID string) (string, error) {
 	now := time.Now()
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": userID,
-		"typ": "refresh",
+		"typ": typRefresh,
 		"iss": s.Base(),
 		"iat": now.Unix(),
 		"exp": now.Add(refreshTTL).Unix(),
@@ -571,7 +581,7 @@ func (s *Server) parseRefresh(raw string) (string, error) {
 	if !ok {
 		return "", errInvalidToken
 	}
-	if claims["typ"] != "refresh" {
+	if claims["typ"] != typRefresh {
 		return "", errNotRefresh
 	}
 	sub, ok := claims["sub"].(string)
@@ -597,7 +607,7 @@ func (s *Server) verifyAccess(token string) (*mcpauth.TokenInfo, error) {
 	if !ok {
 		return nil, mcpauth.ErrInvalidToken
 	}
-	if claims["typ"] == "refresh" {
+	if claims["typ"] == typRefresh {
 		return nil, mcpauth.ErrInvalidToken
 	}
 	sub, ok := claims["sub"].(string)
@@ -650,11 +660,11 @@ func redirectOK(raw string) bool {
 	case host == "localhost" || host == "127.0.0.1" || host == "::1":
 		return u.Scheme == "http"
 	case host == "www.cursor.com" && strings.HasPrefix(u.Path, "/agents/mcp/oauth/callback"):
-		return u.Scheme == "https"
+		return u.Scheme == schemeHTTPS
 	case host == "cursor.com" && strings.HasPrefix(u.Path, "/agents/mcp/oauth/callback"):
-		return u.Scheme == "https"
+		return u.Scheme == schemeHTTPS
 	case host == "claude.ai" && strings.HasPrefix(u.Path, "/api/mcp/auth_callback"):
-		return u.Scheme == "https"
+		return u.Scheme == schemeHTTPS
 	default:
 		if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
 			return u.Scheme == "http"

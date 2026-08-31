@@ -16,14 +16,14 @@ import (
 
 func searchCategories() []string {
 	return []string{
-		"agent", "alliance", "character", "constellation", "corporation", "faction",
-		"inventory_type", "region", "solar_system", "station", "structure",
+		"agent", fAlliance, fCharacter, "constellation", fCorporation, "faction",
+		"inventory_type", fRegion, "solar_system", "station", fStructure,
 	}
 }
 
 func routePref(key string) (string, bool) {
 	switch key {
-	case "shorter":
+	case vShorter:
 		return "Shorter", true
 	case "safer":
 		return "Safer", true
@@ -87,11 +87,11 @@ func registerUniverse(s *mcp.Server) {
 
 func eveUniverseSearch(ctx context.Context, a *session.Session, in universeSearchIn) (any, error) {
 	if len(strings.TrimSpace(in.Query)) < esiSearchMinChars {
-		return map[string]any{"error": "query must be at least 3 characters"}, nil
+		return map[string]any{fError: "query must be at least 3 characters"}, nil
 	}
 	wanted := universeSearchWanted(in.Categories)
 	if invalid := universeSearchInvalid(wanted); len(invalid) > 0 {
-		return map[string]any{"error": fmt.Sprintf("Unknown categories %v. Valid values: %s", invalid, strings.Join(searchCategories(), ", "))}, nil
+		return map[string]any{fError: fmt.Sprintf("Unknown categories %v. Valid values: %s", invalid, strings.Join(searchCategories(), ", "))}, nil
 	}
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
@@ -109,7 +109,7 @@ func eveUniverseSearch(ctx context.Context, a *session.Session, in universeSearc
 }
 
 func universeSearchWanted(categories string) []string {
-	wanted := []string{"inventory_type", "solar_system", "station", "region"}
+	wanted := []string{"inventory_type", "solar_system", "station", fRegion}
 	if strings.TrimSpace(categories) == "" {
 		return wanted
 	}
@@ -146,20 +146,20 @@ func universeSearchAssemble(ctx context.Context, a *session.Session, characterID
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]any{"query": in.Query, "strict": boolDef(in.Strict, false)}
+	out := map[string]any{fQuery: in.Query, fStrict: boolDef(in.Strict, false)}
 	if used != in.Query {
 		out["matched_on_prefix"] = used
-		out["note"] = fmt.Sprintf("Nothing matched %q exactly. ESI matches on prefix, not fuzzily, so the search was retried with the shorter prefix %q. Check that the result below is really what was meant.", in.Query, used)
+		out[fNote] = fmt.Sprintf("Nothing matched %q exactly. ESI matches on prefix, not fuzzily, so the search was retried with the shorter prefix %q. Check that the result below is really what was meant.", in.Query, used)
 	}
 	anyHit := false
 	for cat, ids := range raw {
 		if len(ids) > 0 {
 			anyHit = true
 		}
-		out[cat] = map[string]any{"total": len(ids), "results": universeSearchRanked(ids, names, pool, limit)}
+		out[cat] = map[string]any{fTotal: len(ids), "results": universeSearchRanked(ids, names, pool, limit)}
 	}
 	if !anyHit {
-		out["note"] = fmt.Sprintf("No matches for %q even after shortening the prefix. ESI searches by prefix, so a typo in the first few characters cannot be recovered. Try a different part of the name, or widen `categories`.", in.Query)
+		out[fNote] = fmt.Sprintf("No matches for %q even after shortening the prefix. ESI searches by prefix, so a typo in the first few characters cannot be recovered. Try a different part of the name, or widen `categories`.", in.Query)
 	}
 
 	return out, nil
@@ -183,10 +183,10 @@ func universeSearchRanked(ids []int, names map[int]string, pool, limit int) []ma
 	var ranked []map[string]any
 	n := min(len(ids), pool)
 	for _, id := range ids[:n] {
-		ranked = append(ranked, map[string]any{"id": id, "name": nameOr(names, id)})
+		ranked = append(ranked, map[string]any{"id": id, fName: nameOr(names, id)})
 	}
 	sort.Slice(ranked, func(i, k int) bool {
-		ni, nk := j.Str(ranked[i]["name"]), j.Str(ranked[k]["name"])
+		ni, nk := j.Str(ranked[i][fName]), j.Str(ranked[k][fName])
 		if len(ni) != len(nk) {
 			return len(ni) < len(nk)
 		}
@@ -201,29 +201,29 @@ func universeSearchRanked(ids []int, names map[int]string, pool, limit int) []ma
 }
 
 func eveUniverseItem(ctx context.Context, a *session.Session, in universeItemIn) (any, error) {
-	resolved, err := a.Resolver.ResolveNames(ctx, []string{in.Item}, nil, []string{"inventory_types"})
+	resolved, err := a.Resolver.ResolveNames(ctx, []string{in.Item}, nil, []string{catInventoryTypes})
 	if err != nil {
 		return nil, err
 	}
 	match := resolved[strings.ToLower(strings.TrimSpace(in.Item))]
 	if match.Chosen == nil {
-		return map[string]any{"error": fmt.Sprintf("No item type is named exactly %q. Call eve_universe_search with this text to find the real name.", in.Item)}, nil
+		return map[string]any{fError: fmt.Sprintf("No item type is named exactly %q. Call eve_universe_search with this text to find the real name.", in.Item)}, nil
 	}
 	info, err := a.Resolver.TypeInfo(ctx, match.Chosen.ID)
 	if err != nil {
 		return nil, err
 	}
-	desc := j.Str(info["description"])
+	desc := j.Str(info[fDescription])
 	if len(desc) > typeDescPreview {
 		desc = desc[:typeDescPreview]
 	}
 	out := map[string]any{
-		"item": info["name"], "type_id": match.Chosen.ID,
+		fItem: info[fName], fTypeID: match.Chosen.ID,
 		"group":     a.Resolver.GroupName(ctx, j.Int(info["group_id"])),
 		"volume_m3": info["volume"], "packaged_volume_m3": info["packaged_volume"],
 		"mass_kg": info["mass"], "capacity_m3": info["capacity"],
 		"published": info["published"], "ccp_average_price": isk(a.Resolver.ReferencePrice(ctx, match.Chosen.ID)),
-		"description": desc,
+		fDescription: desc,
 	}
 	if match.Ambiguous() {
 		var others []string
@@ -241,13 +241,13 @@ type universeSystemESI struct {
 }
 
 func eveUniverseSystem(ctx context.Context, a *session.Session, in universeSystemIn) (any, error) {
-	resolved, err := a.Resolver.ResolveNames(ctx, []string{in.System}, nil, []string{"systems"})
+	resolved, err := a.Resolver.ResolveNames(ctx, []string{in.System}, nil, []string{fSystems})
 	if err != nil {
 		return nil, err
 	}
 	match := resolved[strings.ToLower(strings.TrimSpace(in.System))]
 	if match.Chosen == nil {
-		return map[string]any{"error": fmt.Sprintf("No solar system is named exactly %q. Call eve_universe_search with categories='solar_system'.", in.System)}, nil
+		return map[string]any{fError: fmt.Sprintf("No solar system is named exactly %q. Call eve_universe_search with categories='solar_system'.", in.System)}, nil
 	}
 	sid, name := match.Chosen.ID, match.Chosen.Name
 	got, err := universeSystemLookups(ctx, a, sid)
@@ -260,12 +260,12 @@ func eveUniverseSystem(ctx context.Context, a *session.Session, in universeSyste
 	sec := j.Float(info["security_status"])
 
 	return map[string]any{
-		"system": name, "system_id": sid, "region": universeRegionName(ctx, a, info),
+		fSystem: name, "system_id": sid, fRegion: universeRegionName(ctx, a, info),
 		"security_status": mathRound(sec, decimalPlaces), "security_class": secBand(sec),
-		"stations": len(j.Slice(info["stations"])), "stargates": len(j.Slice(info["stargates"])),
+		fStations: len(j.Slice(info[fStations])), "stargates": len(j.Slice(info["stargates"])),
 		"ship_kills_last_hour": j.Int(kills["ship_kills"]), "pod_kills_last_hour": j.Int(kills["pod_kills"]),
 		"npc_kills_last_hour": j.Int(kills["npc_kills"]), "jumps_last_hour": j.Int(jumps["ship_jumps"]),
-		"data_age": got.kills.StaleNote(),
+		fDataAge: got.kills.StaleNote(),
 	}, nil
 }
 
@@ -329,11 +329,11 @@ type universeRouteWalk struct {
 func eveUniverseRoute(ctx context.Context, a *session.Session, in universeRouteIn) (any, error) {
 	prefKey := strings.ToLower(strings.TrimSpace(in.Preference))
 	if prefKey == "" {
-		prefKey = "shorter"
+		prefKey = vShorter
 	}
 	pref, ok := routePref(prefKey)
 	if !ok {
-		return map[string]any{"error": fmt.Sprintf("preference must be one of %v", []string{"shorter", "safer", "less_secure"})}, nil
+		return map[string]any{fError: fmt.Sprintf("preference must be one of %v", []string{vShorter, "safer", "less_secure"})}, nil
 	}
 	found, err := universeResolveSystems(ctx, a, in)
 	if err != nil {
@@ -350,7 +350,7 @@ func eveUniverseRoute(ctx context.Context, a *session.Session, in universeRouteI
 	}
 	hops := universeRouteHops(route)
 	if len(hops) == 0 {
-		return map[string]any{"error": "No gate route exists between those systems. They may be in wormhole space, or every path is excluded by `avoid`."}, nil
+		return map[string]any{fError: "No gate route exists between those systems. They may be in wormhole space, or every path is excluded by `avoid`."}, nil
 	}
 
 	return universeRouteSummary(in, pref, req.avoided, universeWalkHops(ctx, a, hops)), nil
@@ -368,8 +368,8 @@ func universeResolveSystems(ctx context.Context, a *session.Session, in universe
 		return nil, err
 	}
 	found := map[string]int{}
-	for _, s := range j.Maps(lookup["systems"]) {
-		found[strings.ToLower(j.Str(s["name"]))] = j.Int(s["id"])
+	for _, s := range j.Maps(lookup[fSystems]) {
+		found[strings.ToLower(j.Str(s[fName]))] = j.Int(s["id"])
 	}
 
 	return found, nil
@@ -384,7 +384,7 @@ func universeRouteMissing(in universeRouteIn, oid, did int) map[string]any {
 		missing = append(missing, in.Destination)
 	}
 
-	return map[string]any{"error": fmt.Sprintf("Unknown system name(s): %v. Names must be exact — call eve_universe_search with categories='solar_system'.", missing)}
+	return map[string]any{fError: fmt.Sprintf("Unknown system name(s): %v. Names must be exact — call eve_universe_search with categories='solar_system'.", missing)}
 }
 
 func universeRouteBody(in universeRouteIn, found map[string]int, pref string) universeRouteAvoid {
@@ -434,7 +434,7 @@ func universeHopData(ctx context.Context, a *session.Session, hops []int) map[in
 		go func(sid int) {
 			r, err := a.ESI.Get(ctx, fmt.Sprintf("/universe/systems/%d", sid), nil, nil, nil)
 			if err != nil {
-				ch <- box{sid, map[string]any{"name": strconv.Itoa(sid)}}
+				ch <- box{sid, map[string]any{fName: strconv.Itoa(sid)}}
 
 				return
 			}
@@ -464,11 +464,11 @@ func universeWalkHops(ctx context.Context, a *session.Session, hops []int) unive
 		case "nullsec":
 			nullsec++
 		}
-		n := j.Str(data["name"])
+		n := j.Str(data[fName])
 		if n == "" {
 			n = strconv.Itoa(sid)
 		}
-		steps = append(steps, map[string]any{"system": n, "security": mathRound(sec, 1), "class": band})
+		steps = append(steps, map[string]any{fSystem: n, "security": mathRound(sec, 1), "class": band})
 	}
 
 	return universeRouteWalk{steps, lowsec, nullsec}
@@ -496,7 +496,7 @@ func universeDangerousHops(steps []map[string]any) []string {
 	var dang []string
 	for _, s := range steps {
 		if j.Str(s["class"]) != "highsec" {
-			dang = append(dang, j.Str(s["system"]))
+			dang = append(dang, j.Str(s[fSystem]))
 		}
 	}
 	if len(dang) > routeDangerMax {
@@ -530,20 +530,20 @@ func eveUniverseHotspots(ctx context.Context, a *session.Session, in universeHot
 	var outRows []map[string]any
 	for _, r := range rows {
 		outRows = append(outRows, map[string]any{
-			"system":     nameOr(names, j.Int(r["system_id"])),
+			fSystem:      nameOr(names, j.Int(r["system_id"])),
 			"ship_kills": r["ship_kills"], "pod_kills": r["pod_kills"], "npc_kills": r["npc_kills"],
 		})
 	}
 	visible, meta := page(outRows, limit, "")
 
-	return merge(map[string]any{"window": "last hour", "data_age": result.StaleNote(), "systems": visible}, meta), nil
+	return merge(map[string]any{"window": "last hour", fDataAge: result.StaleNote(), fSystems: visible}, meta), nil
 }
 
 func searchWithFallback(ctx context.Context, a *session.Session, characterID int, categories []string, query string, strict bool) (map[string][]int, string, error) {
 	attempt := strings.TrimSpace(query)
 	for {
 		result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/search", characterID), &characterID, map[string]any{
-			"categories": categories, "search": attempt, "strict": strict,
+			"categories": categories, "search": attempt, fStrict: strict,
 		}, nil)
 		if err != nil {
 			return nil, attempt, err

@@ -42,7 +42,7 @@ func eveServerStatus(ctx context.Context, a *session.Session, _ empty) (any, err
 		return nil, err
 	}
 	out := j.Map(result.Data)
-	out["data_age"] = result.StaleNote()
+	out[fDataAge] = result.StaleNote()
 
 	return out, nil
 }
@@ -62,14 +62,14 @@ func eveAuthStatus(ctx context.Context, a *session.Session, _ empty) (any, error
 	corps := write.CorpScopeSet()
 	if len(tokens) == 0 {
 		return merge(map[string]any{
-			"characters": []any{},
-			"next_step":  "Nobody is authorized. Call eve_auth_login_url and give the user the link to open in a browser.",
+			fCharacters: []any{},
+			"next_step": "Nobody is authorized. Call eve_auth_login_url and give the user the link to open in a browser.",
 		}, policy), nil
 	}
 	var chars []map[string]any
 	for _, t := range tokens {
 		chars = append(chars, map[string]any{
-			"name": t.CharacterName, "character_id": t.CharacterID,
+			fName: t.CharacterName, fCharacterID: t.CharacterID,
 			"scope_count":        len(t.Scopes),
 			"write_scopes":       sortStrings(intersect(t.Scopes, writes)),
 			"corporation_scopes": sortStrings(intersect(t.Scopes, corps)),
@@ -81,7 +81,7 @@ func eveAuthStatus(ctx context.Context, a *session.Session, _ empty) (any, error
 	}
 
 	return merge(map[string]any{
-		"characters": chars, "default_character": def,
+		fCharacters: chars, "default_character": def,
 	}, policy), nil
 }
 
@@ -94,7 +94,7 @@ func eveAuthLoginURL(ctx context.Context, a *session.Session, _ empty) (any, err
 	writes := write.CapabilityNames()
 
 	return map[string]any{
-		"login_url": login.URL, "state": login.State, "scope_count": len(scopes),
+		"login_url": login.URL, fState: login.State, "scope_count": len(scopes),
 		"write_capabilities_requested": writes,
 		"instructions":                 "Open login_url in a browser, pick the character, approve. The link is valid for 15 minutes and works once.",
 	}, nil
@@ -111,7 +111,7 @@ func eveAuthLogout(ctx context.Context, a *session.Session, in logoutIn) (any, e
 	}
 	a.SSO.Revoke(ctx, token.CharacterID)
 
-	return map[string]any{"removed": token.CharacterName, "character_id": token.CharacterID}, nil
+	return map[string]any{"removed": token.CharacterName, fCharacterID: token.CharacterID}, nil
 }
 
 type overviewIn struct {
@@ -130,7 +130,7 @@ func eveCharacterOverview(ctx context.Context, a *session.Session, in overviewIn
 	}
 	cid := token.CharacterID
 	got := fetchOverview(ctx, a, cid)
-	out := map[string]any{"character_id": cid, "name": token.CharacterName}
+	out := map[string]any{fCharacterID: cid, fName: token.CharacterName}
 	applyOverviewPublic(ctx, a, got.public, out)
 	applyOverviewWallet(got.wallet, out)
 	applyOverviewOnline(got.online, out)
@@ -180,9 +180,9 @@ func applyOverviewPublic(ctx context.Context, a *session.Session, public overvie
 	if err != nil {
 		return
 	}
-	out["corporation"] = n[j.Int(info["corporation_id"])]
+	out[fCorporation] = n[j.Int(info["corporation_id"])]
 	if j.Int(info["alliance_id"]) != 0 {
-		out["alliance"] = n[j.Int(info["alliance_id"])]
+		out[fAlliance] = n[j.Int(info["alliance_id"])]
 	}
 	out["security_status"] = mathRound(j.Float(info["security_status"]), decimalPlaces)
 	out["birthday"] = info["birthday"]
@@ -193,7 +193,7 @@ func applyOverviewWallet(wallet overviewBox, out map[string]any) {
 		return
 	}
 	out["wallet_isk"] = wallet.r.Data
-	out["wallet"] = isk(wallet.r.Data)
+	out[fWallet] = isk(wallet.r.Data)
 }
 
 func applyOverviewOnline(online overviewBox, out map[string]any) {
@@ -233,7 +233,7 @@ func applyOverviewShip(ctx context.Context, a *session.Session, ship overviewBox
 		return
 	}
 	sh := j.Map(ship.r.Data)
-	name, err := a.Resolver.Name(ctx, j.Int(sh["ship_type_id"]), nil)
+	name, err := a.Resolver.Name(ctx, j.Int(sh[fShipTypeID]), nil)
 	if err != nil {
 		return
 	}

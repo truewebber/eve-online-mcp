@@ -11,6 +11,8 @@ const (
 	MailCap = 5
 	// ConfirmTTL is how long a preview token stays valid.
 	ConfirmTTL = 300 * time.Second
+
+	CapMailSend = "mail_send"
 )
 
 type Capability struct {
@@ -42,8 +44,8 @@ func Capabilities() map[string]Capability {
 			Name: "mail_organize", Scopes: []string{"esi-mail.organize_mail.v1"},
 			Summary: "Mark mail read, manage labels, delete mail.",
 		},
-		"mail_send": {
-			Name: "mail_send", Scopes: []string{"esi-mail.send_mail.v1"},
+		CapMailSend: {
+			Name: CapMailSend, Scopes: []string{"esi-mail.send_mail.v1"},
 			Summary: "Send in-game EVE mail to other players.", OutwardFacing: true,
 		},
 		"contacts": {

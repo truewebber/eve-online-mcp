@@ -102,35 +102,35 @@ func eveMailList(ctx context.Context, a *session.Session, in mailListIn) (any, e
 		mails = filtered
 	}
 	if len(mails) == 0 {
-		return map[string]any{"character": token.CharacterName, "mails": []any{}, "note": "Nothing to show."}, nil
+		return map[string]any{fCharacter: token.CharacterName, "mails": []any{}, fNote: "Nothing to show."}, nil
 	}
 	senders := map[int]struct{}{}
 	for _, m := range mails {
-		if j.Int(m["from"]) != 0 {
-			senders[j.Int(m["from"])] = struct{}{}
+		if j.Int(m[fFrom]) != 0 {
+			senders[j.Int(m[fFrom])] = struct{}{}
 		}
 	}
 	names, err := a.Resolver.Names(ctx, setToList(senders), nil)
 	if err != nil {
 		return nil, err
 	}
-	sort.Slice(mails, func(i, k int) bool { return j.Str(mails[i]["timestamp"]) > j.Str(mails[k]["timestamp"]) })
+	sort.Slice(mails, func(i, k int) bool { return j.Str(mails[i][fTimestamp]) > j.Str(mails[k][fTimestamp]) })
 	var rows []map[string]any
 	for _, m := range mails {
-		from := names[j.Int(m["from"])]
+		from := names[j.Int(m[fFrom])]
 		if from == "" {
-			from = fmt.Sprintf("#%v", m["from"])
+			from = fmt.Sprintf("#%v", m[fFrom])
 		}
 		rows = append(rows, map[string]any{
-			"mail_id": m["mail_id"], "from": from, "subject": m["subject"],
-			"timestamp": m["timestamp"], "read": j.Bool(m["is_read"]), "labels": m["labels"],
+			fMailID: m[fMailID], fFrom: from, fSubject: m[fSubject],
+			fTimestamp: m[fTimestamp], fRead: j.Bool(m["is_read"]), "labels": m["labels"],
 		})
 	}
 	visible, meta := page(rows, limitOr(in.Limit, limitDefault), "")
 
 	return merge(map[string]any{
-		"character": token.CharacterName, "unread": unread, "data_age": result.StaleNote(),
-		"mails": project(visible, []string{"mail_id", "from", "subject", "timestamp", "read"}, concise(in.ResponseFormat)),
+		fCharacter: token.CharacterName, fUnread: unread, fDataAge: result.StaleNote(),
+		"mails": project(visible, []string{fMailID, fFrom, fSubject, fTimestamp, fRead}, concise(in.ResponseFormat)),
 	}, meta), nil
 }
 
@@ -149,8 +149,8 @@ func eveMailRead(ctx context.Context, a *session.Session, in mailReadIn) (any, e
 	}
 	mail := j.Map(result.Data)
 	idSet := map[int]struct{}{}
-	if j.Int(mail["from"]) != 0 {
-		idSet[j.Int(mail["from"])] = struct{}{}
+	if j.Int(mail[fFrom]) != 0 {
+		idSet[j.Int(mail[fFrom])] = struct{}{}
 	}
 	for _, r := range j.Maps(mail["recipients"]) {
 		if j.Int(r["recipient_id"]) != 0 {
@@ -167,9 +167,9 @@ func eveMailRead(ctx context.Context, a *session.Session, in mailReadIn) (any, e
 	}
 
 	return map[string]any{
-		"mail_id": in.MailID, "from": names[j.Int(mail["from"])], "to": to,
-		"subject": mail["subject"], "timestamp": mail["timestamp"],
-		"body": stripMarkup(j.Str(mail["body"])),
+		fMailID: in.MailID, fFrom: names[j.Int(mail[fFrom])], "to": to,
+		fSubject: mail[fSubject], fTimestamp: mail[fTimestamp],
+		fBody: stripMarkup(j.Str(mail[fBody])),
 	}, nil
 }
 
@@ -188,7 +188,7 @@ func eveSocialNotifications(ctx context.Context, a *session.Session, in notesIn)
 	}
 	notes := j.Maps(result.Data)
 	if len(notes) == 0 {
-		return map[string]any{"character": token.CharacterName, "notifications": []any{}}, nil
+		return map[string]any{fCharacter: token.CharacterName, "notifications": []any{}}, nil
 	}
 	senders := map[int]struct{}{}
 	for _, n := range notes {
@@ -200,7 +200,7 @@ func eveSocialNotifications(ctx context.Context, a *session.Session, in notesIn)
 	if err != nil {
 		return nil, err
 	}
-	sort.Slice(notes, func(i, k int) bool { return j.Str(notes[i]["timestamp"]) > j.Str(notes[k]["timestamp"]) })
+	sort.Slice(notes, func(i, k int) bool { return j.Str(notes[i][fTimestamp]) > j.Str(notes[k][fTimestamp]) })
 	var rows []map[string]any
 	unread := 0
 	for _, n := range notes {
@@ -221,15 +221,15 @@ func eveSocialNotifications(ctx context.Context, a *session.Session, in notesIn)
 			unread++
 		}
 		rows = append(rows, map[string]any{
-			"type": n["type"], "from": from, "timestamp": n["timestamp"],
-			"read": read, "detail": det,
+			fType: n[fType], fFrom: from, fTimestamp: n[fTimestamp],
+			fRead: read, "detail": det,
 		})
 	}
 	visible, meta := page(rows, limitOr(in.Limit, limitDefault), "")
 
 	return merge(map[string]any{
-		"character": token.CharacterName, "unread": unread, "data_age": result.StaleNote(),
-		"notifications": project(visible, []string{"type", "from", "timestamp", "read"}, concise(in.ResponseFormat)),
+		fCharacter: token.CharacterName, fUnread: unread, fDataAge: result.StaleNote(),
+		"notifications": project(visible, []string{fType, fFrom, fTimestamp, fRead}, concise(in.ResponseFormat)),
 	}, meta), nil
 }
 
@@ -238,7 +238,7 @@ func eveSocialKillmails(ctx context.Context, a *session.Session, in kmIn) (any, 
 	if err != nil {
 		return nil, err
 	}
-	if err := a.RequireScope(token, "esi-killmails.read_killmails.v1", "killmails"); err != nil {
+	if err := a.RequireScope(token, "esi-killmails.read_killmails.v1", fKillmails); err != nil {
 		return nil, err
 	}
 
@@ -260,13 +260,13 @@ func eveFittingList(ctx context.Context, a *session.Session, in fitIn) (any, err
 	}
 	fittings := j.Maps(result.Data)
 	if len(fittings) == 0 {
-		return map[string]any{"character": token.CharacterName, "fittings": []any{}, "note": "None saved."}, nil
+		return map[string]any{fCharacter: token.CharacterName, "fittings": []any{}, fNote: "None saved."}, nil
 	}
 	idSet := map[int]struct{}{}
 	for _, f := range fittings {
-		idSet[j.Int(f["ship_type_id"])] = struct{}{}
-		for _, i := range j.Maps(f["items"]) {
-			idSet[j.Int(i["type_id"])] = struct{}{}
+		idSet[j.Int(f[fShipTypeID])] = struct{}{}
+		for _, i := range j.Maps(f[fItems]) {
+			idSet[j.Int(i[fTypeID])] = struct{}{}
 		}
 	}
 	names, err := a.Resolver.Names(ctx, setToList(idSet), nil)
@@ -276,10 +276,10 @@ func eveFittingList(ctx context.Context, a *session.Session, in fitIn) (any, err
 	var rows []map[string]any
 	for _, f := range fittings {
 		var mods []string
-		for _, i := range j.Maps(f["items"]) {
-			mods = append(mods, fmt.Sprintf("%v x%v [%v]", nameOr(names, j.Int(i["type_id"])), i["quantity"], i["flag"]))
+		for _, i := range j.Maps(f[fItems]) {
+			mods = append(mods, fmt.Sprintf("%v x%v [%v]", nameOr(names, j.Int(i[fTypeID])), i[fQuantity], i["flag"]))
 		}
-		desc := j.Str(f["description"])
+		desc := j.Str(f[fDescription])
 		if len(desc) > fittingDescPreview {
 			desc = desc[:fittingDescPreview]
 		}
@@ -288,15 +288,15 @@ func eveFittingList(ctx context.Context, a *session.Session, in fitIn) (any, err
 			d = desc
 		}
 		rows = append(rows, map[string]any{
-			"fitting_id": f["fitting_id"], "name": f["name"], "ship": names[j.Int(f["ship_type_id"])],
-			"module_count": len(j.Slice(f["items"])), "description": d, "modules": mods,
+			fFittingID: f[fFittingID], fName: f[fName], "ship": names[j.Int(f[fShipTypeID])],
+			"module_count": len(j.Slice(f[fItems])), fDescription: d, fModules: mods,
 		})
 	}
 	visible, meta := page(rows, limitOr(in.Limit, limitShort), "")
 
 	return merge(map[string]any{
-		"character": token.CharacterName, "data_age": result.StaleNote(),
-		"fittings": project(visible, []string{"fitting_id", "name", "ship", "module_count"}, concise(in.ResponseFormat)),
+		fCharacter: token.CharacterName, fDataAge: result.StaleNote(),
+		"fittings": project(visible, []string{fFittingID, fName, "ship", "module_count"}, concise(in.ResponseFormat)),
 	}, meta), nil
 }
 
@@ -326,7 +326,7 @@ func formatKillmails(ctx context.Context, a *session.Session, character string, 
 		refs = refs[:limit]
 	}
 	if len(refs) == 0 {
-		return map[string]any{"character": character, "killmails": []any{}, "note": "Nothing recent."}, nil
+		return map[string]any{fCharacter: character, fKillmails: []any{}, fNote: "Nothing recent."}, nil
 	}
 	fetched := fetchKillmailBodies(ctx, a, refs)
 	built, err := buildKillmailRows(ctx, a, fetched.kills, characterID, corpID)
@@ -337,14 +337,14 @@ func formatKillmails(ctx context.Context, a *session.Session, character string, 
 	visible, meta := page(built.rows, limit, "")
 	if len(available) > limit {
 		meta = map[string]any{
-			"returned": len(visible), "total_available": len(available), "truncated": true,
+			fReturned: len(visible), "total_available": len(available), fTruncated: true,
 			"how_to_see_more": fmt.Sprintf("Raise `limit` (currently %d).", limit),
 		}
 	}
 	out := merge(map[string]any{
-		"character": character, "kills": built.kills, "losses": built.losses,
+		fCharacter: character, "kills": built.kills, "losses": built.losses,
 		"hull_value_caveat": "Hull only — fitted modules and cargo are not included.",
-		"killmails":         project(visible, []string{"role", "time", "system", "victim", "ship_lost"}, conciseMode),
+		fKillmails:          project(visible, []string{"role", "time", fSystem, "victim", "ship_lost"}, conciseMode),
 	}, meta)
 	if len(fetched.failed) > 0 {
 		out["unavailable"] = len(fetched.failed)
@@ -391,7 +391,7 @@ func buildKillmailRows(ctx context.Context, a *session.Session, kills []map[stri
 	idSet := map[int]struct{}{}
 	for _, kill := range kills {
 		victim := j.Map(kill["victim"])
-		for _, k := range []string{"character_id", "corporation_id", "ship_type_id"} {
+		for _, k := range []string{fCharacterID, "corporation_id", fShipTypeID} {
 			if j.Int(victim[k]) != 0 {
 				idSet[j.Int(victim[k])] = struct{}{}
 			}
@@ -416,7 +416,7 @@ func buildKillmailRows(ctx context.Context, a *session.Session, kills []map[stri
 		if corpID != 0 {
 			wasVictim = j.Int(victim["corporation_id"]) == corpID
 		} else {
-			wasVictim = j.Int(victim["character_id"]) == characterID
+			wasVictim = j.Int(victim[fCharacterID]) == characterID
 		}
 		role := "kill"
 		if wasVictim {
@@ -425,14 +425,14 @@ func buildKillmailRows(ctx context.Context, a *session.Session, kills []map[stri
 		} else {
 			killsN++
 		}
-		who := names[j.Int(victim["character_id"])]
+		who := names[j.Int(victim[fCharacterID])]
 		if who == "" {
 			who = names[j.Int(victim["corporation_id"])]
 		}
 		rows = append(rows, map[string]any{
-			"role": role, "time": kill["killmail_time"], "system": names[j.Int(kill["solar_system_id"])],
-			"victim": who, "ship_lost": names[j.Int(victim["ship_type_id"])],
-			"hull_value": isk(unitPrice(prices, j.Int(victim["ship_type_id"]))),
+			"role": role, "time": kill["killmail_time"], fSystem: names[j.Int(kill["solar_system_id"])],
+			"victim": who, "ship_lost": names[j.Int(victim[fShipTypeID])],
+			"hull_value": isk(unitPrice(prices, j.Int(victim[fShipTypeID]))),
 			"attackers":  len(j.Slice(kill["attackers"])),
 			"zkill":      fmt.Sprintf("https://zkillboard.com/kill/%v/", kill["killmail_id"]),
 		})

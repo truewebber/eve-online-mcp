@@ -65,8 +65,8 @@ func TestAuthorizePersistsMCPLoginState(t *testing.T) {
 	s := testServer(t, db)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/oauth/authorize?"+url.Values{
-		"client_id":      {"mcp-client"},
-		"redirect_uri":   {"http://localhost:1/cb"},
+		paramClientID:    {"mcp-client"},
+		paramRedirectURI: {redirect},
 		"state":          {"mcp-state"},
 		"code_challenge": {"E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"},
 	}.Encode(), nil)
@@ -87,7 +87,7 @@ func TestAuthorizePersistsMCPLoginState(t *testing.T) {
 		t.Fatalf("ok %v err %v", ok, err)
 	}
 	if st.Kind != store.LoginMCP || st.UserID != "" || st.MCPClientID != "mcp-client" ||
-		st.RedirectURI != "http://localhost:1/cb" || st.MCPState != "mcp-state" ||
+		st.RedirectURI != redirect || st.MCPState != "mcp-state" ||
 		st.CodeChallenge == "" || st.PKCEVerifier == "" {
 		t.Fatalf("login state %+v", st)
 	}
@@ -96,7 +96,7 @@ func TestAuthorizePersistsMCPLoginState(t *testing.T) {
 func TestCompleteCallbackUnknownState(t *testing.T) {
 	t.Parallel()
 	s := testServer(t, openDB(t))
-	_, err := s.CompleteCallback(context.Background(), "code", "missing")
+	_, err := s.CompleteCallback(context.Background(), paramCode, "missing")
 	if !errors.Is(err, ErrUnknownLogin) {
 		t.Fatalf("got %v", err)
 	}
@@ -111,7 +111,7 @@ func TestFinishAltUsesRecordedUser(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := testServer(t, db)
-	tok := &sso.CharacterToken{CharacterID: 7, CharacterName: "Alt", RefreshToken: "rt"}
+	tok := &sso.CharacterToken{CharacterID: 7, CharacterName: altName, RefreshToken: "rt"}
 	if err := s.finishAlt(ctx, &store.LoginState{UserID: u.ID}, tok); err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,6 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 	const (
 		verifier  = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
 		challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
-		redirect  = "http://localhost:1/cb"
 	)
 	db := openDB(t)
 	ctx := context.Background()
@@ -168,10 +167,10 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 				put(t, "good", time.Now().Add(2*time.Minute))
 
 				return url.Values{
-					"grant_type":    {"authorization_code"},
-					"code":          {"good"},
-					"code_verifier": {verifier},
-					"redirect_uri":  {redirect},
+					paramGrantType:    {grantAuthCode},
+					paramCode:         {"good"},
+					paramCodeVerifier: {verifier},
+					paramRedirectURI:  {redirect},
 				}
 			},
 			status: 200,
@@ -198,10 +197,10 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 				put(t, "bad-v", time.Now().Add(2*time.Minute))
 
 				return url.Values{
-					"grant_type":    {"authorization_code"},
-					"code":          {"bad-v"},
-					"code_verifier": {"nope"},
-					"redirect_uri":  {redirect},
+					paramGrantType:    {grantAuthCode},
+					paramCode:         {"bad-v"},
+					paramCodeVerifier: {"nope"},
+					paramRedirectURI:  {redirect},
 				}
 			},
 			status: 400,
@@ -213,10 +212,10 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 				put(t, "bad-r", time.Now().Add(2*time.Minute))
 
 				return url.Values{
-					"grant_type":    {"authorization_code"},
-					"code":          {"bad-r"},
-					"code_verifier": {verifier},
-					"redirect_uri":  {"http://localhost:9/other"},
+					paramGrantType:    {grantAuthCode},
+					paramCode:         {"bad-r"},
+					paramCodeVerifier: {verifier},
+					paramRedirectURI:  {"http://localhost:9/other"},
 				}
 			},
 			status: 400,
@@ -228,10 +227,10 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 				put(t, "old", time.Now().Add(-time.Minute))
 
 				return url.Values{
-					"grant_type":    {"authorization_code"},
-					"code":          {"old"},
-					"code_verifier": {verifier},
-					"redirect_uri":  {redirect},
+					paramGrantType:    {grantAuthCode},
+					paramCode:         {"old"},
+					paramCodeVerifier: {verifier},
+					paramRedirectURI:  {redirect},
 				}
 			},
 			status: 400,
@@ -242,10 +241,10 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 				t.Helper()
 				put(t, "once", time.Now().Add(2*time.Minute))
 				ok := url.Values{
-					"grant_type":    {"authorization_code"},
-					"code":          {"once"},
-					"code_verifier": {verifier},
-					"redirect_uri":  {redirect},
+					paramGrantType:    {grantAuthCode},
+					paramCode:         {"once"},
+					paramCodeVerifier: {verifier},
+					paramRedirectURI:  {redirect},
 				}
 				rec := post(ok)
 				if rec.Code != 200 {

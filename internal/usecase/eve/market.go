@@ -52,21 +52,21 @@ func registerMarket(s *mcp.Server) {
 
 func eveMarketPrice(ctx context.Context, a *session.Session, in marketPriceIn) (any, error) {
 	if strings.TrimSpace(in.Item) == "" {
-		return map[string]any{"error": "item is required"}, nil
+		return map[string]any{fError: "item is required"}, nil
 	}
-	match, err := resolveNamed(ctx, a, in.Item, []string{"inventory_types"})
+	match, err := resolveNamed(ctx, a, in.Item, []string{catInventoryTypes})
 	if err != nil {
 		return nil, err
 	}
 	if match.Chosen == nil {
-		return map[string]any{"error": fmt.Sprintf("No item type is named exactly %q. EVE names are exact — call eve_universe_search with this text to find the real spelling.", in.Item)}, nil
+		return map[string]any{fError: fmt.Sprintf("No item type is named exactly %q. EVE names are exact — call eve_universe_search with this text to find the real spelling.", in.Item)}, nil
 	}
 	place, err := marketPlace(ctx, a, in)
 	if err != nil {
 		return nil, err
 	}
 	if place.err != "" {
-		return map[string]any{"error": place.err}, nil
+		return map[string]any{fError: place.err}, nil
 	}
 	quotes, err := a.Resolver.HubQuotes(ctx, match.Chosen.ID, place.regionID, place.station)
 	if err != nil {
@@ -137,15 +137,15 @@ func marketQuoteView(ctx context.Context, a *session.Session, match names.NameRe
 		vol = info["volume"]
 	}
 	out := compact(map[string]any{
-		"item": match.Chosen.Name, "priced_at": priced,
+		fItem: match.Chosen.Name, "priced_at": priced,
 		"best_sell": isk(quotes["best_sell"]), "best_sell_isk": quotes["best_sell"],
 		"best_buy": isk(quotes["best_buy"]), "best_buy_isk": quotes["best_buy"],
 		"spread_pct": marketSpread(quotes), "sell_volume_available": quotes["sell_volume"],
 		"buy_volume_wanted": quotes["buy_volume"], "ccp_average_price": isk(average),
-		"packaged_volume_m3": vol, "data_age": quotes["data_age"],
+		"packaged_volume_m3": vol, fDataAge: quotes[fDataAge],
 	})
 	if quotes["best_sell"] == nil && quotes["best_buy"] == nil {
-		out["note"] = "No orders at all here. Try whole_region=true, or a different region — not everything is traded outside the main hubs."
+		out[fNote] = "No orders at all here. Try whole_region=true, or a different region — not everything is traded outside the main hubs."
 	}
 	if match.Ambiguous() {
 		others := make([]string, 0, len(match.Alternatives))
@@ -192,7 +192,7 @@ func eveMarketContracts(ctx context.Context, a *session.Session, in marketContra
 	if err != nil {
 		return nil, err
 	}
-	if err := a.RequireScope(token, "esi-contracts.read_character_contracts.v1", "contracts"); err != nil {
+	if err := a.RequireScope(token, "esi-contracts.read_character_contracts.v1", fContracts); err != nil {
 		return nil, err
 	}
 	cid := token.CharacterID
@@ -205,7 +205,7 @@ func eveMarketContracts(ctx context.Context, a *session.Session, in marketContra
 }
 
 func marketHistory(ctx context.Context, a *session.Session, typeID, regionID, days int) (map[string]any, error) {
-	result, err := a.ESI.Get(ctx, fmt.Sprintf("/markets/%d/history", regionID), nil, map[string]any{"type_id": typeID}, nil)
+	result, err := a.ESI.Get(ctx, fmt.Sprintf("/markets/%d/history", regionID), nil, map[string]any{fTypeID: typeID}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +215,7 @@ func marketHistory(ctx context.Context, a *session.Session, typeID, regionID, da
 	}
 	recent := history[len(history)-days:]
 	if len(recent) == 0 {
-		return map[string]any{"note": "No trade history for this item in this region."}, nil
+		return map[string]any{fNote: "No trade history for this item in this region."}, nil
 	}
 	var avg, volume, first float64
 	low, high := j.Float(recent[0]["lowest"]), j.Float(recent[0]["highest"])
@@ -247,11 +247,11 @@ func marketHistory(ctx context.Context, a *session.Session, typeID, regionID, da
 func formatOrders(ctx context.Context, a *session.Session, character string, cid int, data any, stale string, limit int, conciseMode bool, walletNames map[int]string) (map[string]any, error) {
 	orders := j.Maps(data)
 	if len(orders) == 0 {
-		return map[string]any{"character": character, "orders": []any{}, "note": "No open market orders."}, nil
+		return map[string]any{fCharacter: character, fOrders: []any{}, fNote: "No open market orders."}, nil
 	}
 	typeSet, placeSet := map[int]struct{}{}, map[int]struct{}{}
 	for _, o := range orders {
-		typeSet[j.Int(o["type_id"])] = struct{}{}
+		typeSet[j.Int(o[fTypeID])] = struct{}{}
 		placeSet[j.Int(o["location_id"])] = struct{}{}
 	}
 	names, err := a.Resolver.Names(ctx, setToList(typeSet), nil)
@@ -271,10 +271,10 @@ func formatOrders(ctx context.Context, a *session.Session, character string, cid
 		if isBuy {
 			buyEscrow += j.Float(o["escrow"])
 		} else {
-			sellValue += j.Float(o["price"]) * float64(remaining)
+			sellValue += j.Float(o[fPrice]) * float64(remaining)
 		}
 		issued := parseTime(j.Str(o["issued"]))
-		expiresIn := "unknown"
+		expiresIn := vUnknown
 		if issued != nil {
 			expires := issued.Add(time.Duration(j.Int(o["duration"])) * 24 * time.Hour)
 			expiresIn = humanDelta(expires.Sub(now))
@@ -288,36 +288,36 @@ func formatOrders(ctx context.Context, a *session.Session, character string, cid
 			side = "buy"
 		}
 		row := map[string]any{
-			"side": side, "item": names[j.Int(o["type_id"])], "price": isk(o["price"]),
+			fSide: side, fItem: names[j.Int(o[fTypeID])], fPrice: isk(o[fPrice]),
 			"remaining": remaining, "filled_pct": filled,
-			"location": nameOr(places, j.Int(o["location_id"])), "expires_in": expiresIn,
+			fLocation: nameOr(places, j.Int(o["location_id"])), "expires_in": expiresIn,
 		}
 		if isBuy {
 			row["range"] = o["range"]
 			row["escrow"] = isk(o["escrow"])
 		}
 		if walletNames != nil {
-			row["wallet"] = walletLabel(j.Int(o["wallet_division"]), walletNames)
+			row[fWallet] = walletLabel(j.Int(o["wallet_division"]), walletNames)
 		}
 		rows = append(rows, row)
 	}
 	sort.Slice(rows, func(i, k int) bool {
-		if j.Str(rows[i]["side"]) != j.Str(rows[k]["side"]) {
-			return j.Str(rows[i]["side"]) < j.Str(rows[k]["side"])
+		if j.Str(rows[i][fSide]) != j.Str(rows[k][fSide]) {
+			return j.Str(rows[i][fSide]) < j.Str(rows[k][fSide])
 		}
 
-		return j.Str(rows[i]["item"]) < j.Str(rows[k]["item"])
+		return j.Str(rows[i][fItem]) < j.Str(rows[k][fItem])
 	})
 	visible, meta := page(rows, limit, "")
-	keep := []string{"side", "item", "price", "remaining", "filled_pct", "location", "expires_in"}
+	keep := []string{fSide, fItem, fPrice, "remaining", "filled_pct", fLocation, "expires_in"}
 	if walletNames != nil {
-		keep = append(keep, "wallet")
+		keep = append(keep, fWallet)
 	}
 
 	return merge(map[string]any{
-		"character": character, "open_orders": len(rows),
+		fCharacter: character, "open_orders": len(rows),
 		"sell_side_value": isk(sellValue), "buy_escrow_locked": isk(buyEscrow),
-		"data_age": stale, "orders": project(visible, keep, conciseMode),
+		fDataAge: stale, fOrders: project(visible, keep, conciseMode),
 	}, meta), nil
 }
 
@@ -326,7 +326,7 @@ func formatContracts(ctx context.Context, a *session.Session, character string, 
 	if outstandingOnly {
 		var filtered []map[string]any
 		for _, c := range contracts {
-			if j.Str(c["status"]) == "outstanding" {
+			if j.Str(c[fStatus]) == vOutstanding {
 				filtered = append(filtered, c)
 			}
 		}
@@ -341,7 +341,7 @@ func formatContracts(ctx context.Context, a *session.Session, character string, 
 			note = "No outstanding corporation contracts. Pass outstanding_only=false to include finished and expired ones."
 		}
 
-		return map[string]any{"character": character, "contracts": []any{}, "note": note}, nil
+		return map[string]any{fCharacter: character, fContracts: []any{}, fNote: note}, nil
 	}
 	idSet := map[int]struct{}{}
 	for _, c := range contracts {
@@ -359,7 +359,7 @@ func formatContracts(ctx context.Context, a *session.Session, character string, 
 	var rows []map[string]any
 	outstanding := 0
 	for _, c := range contracts {
-		if j.Str(c["status"]) == "outstanding" {
+		if j.Str(c[fStatus]) == vOutstanding {
 			outstanding++
 		}
 		issuer := names[j.Int(c["issuer_id"])]
@@ -367,10 +367,10 @@ func formatContracts(ctx context.Context, a *session.Session, character string, 
 			issuer = names[j.Int(c["issuer_corporation_id"])]
 		}
 		row := map[string]any{
-			"type": c["type"], "status": c["status"], "title": c["title"], "issuer": issuer,
-			"price": nilIfZero(c["price"]), "reward": nilIfZero(c["reward"]), "collateral": nilIfZero(c["collateral"]),
-			"from": names[j.Int(c["start_location_id"])], "to": names[j.Int(c["end_location_id"])],
-			"expires": c["date_expired"], "volume_m3": c["volume"], "issued": c["date_issued"],
+			fType: c[fType], fStatus: c[fStatus], fTitle: c[fTitle], "issuer": issuer,
+			fPrice: nilIfZero(c[fPrice]), fReward: nilIfZero(c[fReward]), fCollateral: nilIfZero(c[fCollateral]),
+			fFrom: names[j.Int(c["start_location_id"])], "to": names[j.Int(c["end_location_id"])],
+			fExpires: c["date_expired"], "volume_m3": c["volume"], "issued": c["date_issued"],
 			"contract_id": c["contract_id"],
 		}
 		if corp {
@@ -379,14 +379,14 @@ func formatContracts(ctx context.Context, a *session.Session, character string, 
 		rows = append(rows, row)
 	}
 	visible, meta := page(rows, limit, "")
-	keep := []string{"type", "status", "title", "price", "reward", "collateral", "from", "to", "expires"}
+	keep := []string{fType, fStatus, fTitle, fPrice, fReward, fCollateral, fFrom, "to", fExpires}
 	if corp {
-		keep = []string{"type", "status", "title", "issuer", "price", "reward", "collateral", "from", "to", "expires"}
+		keep = []string{fType, fStatus, fTitle, "issuer", fPrice, fReward, fCollateral, fFrom, "to", fExpires}
 	}
 
 	return merge(map[string]any{
-		"character": character, "total": len(rows), "outstanding": outstanding,
-		"data_age": stale, "contracts": project(visible, keep, conciseMode),
+		fCharacter: character, fTotal: len(rows), vOutstanding: outstanding,
+		fDataAge: stale, fContracts: project(visible, keep, conciseMode),
 	}, meta), nil
 }
 
@@ -400,7 +400,7 @@ func nilIfZero(v any) any {
 
 func walletLabel(division int, names map[int]string) string {
 	if division == 0 {
-		return "unknown"
+		return vUnknown
 	}
 	if n, ok := names[division]; ok && n != "" {
 		return n

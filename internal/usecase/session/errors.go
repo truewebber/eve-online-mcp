@@ -10,6 +10,11 @@ import (
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 )
 
+const (
+	fieldError = "error"
+	fieldKind  = "kind"
+)
+
 // MapError turns adapter/domain errors into the JSON the model already knows.
 func MapError(err error) map[string]any {
 	var ae sso.Error
@@ -20,23 +25,23 @@ func MapError(err error) map[string]any {
 	var ee esi.Error
 	switch {
 	case errors.As(err, &ae):
-		return map[string]any{"error": ae.Error(), "kind": "AuthError"}
+		return map[string]any{fieldError: ae.Error(), fieldKind: "AuthError"}
 	case errors.As(err, &nf):
-		return map[string]any{"error": nf.Error(), "kind": "CharacterNotFound"}
+		return map[string]any{fieldError: nf.Error(), fieldKind: "CharacterNotFound"}
 	case errors.As(err, &wb):
-		return map[string]any{"error": wb.Error(), "kind": "WriteBlocked"}
+		return map[string]any{fieldError: wb.Error(), fieldKind: "WriteBlocked"}
 	case errors.As(err, &ul):
 		return map[string]any{
-			"error":               ul.Error(),
-			"kind":                "UserRateLimited",
+			fieldError:            ul.Error(),
+			fieldKind:             "UserRateLimited",
 			"retry_after_seconds": ul.RetrySec,
 			"retry_at":            ul.RetryAt.UTC().Format(time.RFC3339),
 			"hint":                "Wait until retry_at, then call the same tool once. Do not retry in a loop.",
 		}
 	case errors.As(err, &rl):
 		out := map[string]any{
-			"error":               rl.Error(),
-			"kind":                "EsiRateLimited",
+			fieldError:            rl.Error(),
+			fieldKind:             "EsiRateLimited",
 			"status":              rl.Status,
 			"retry_after_seconds": rl.RetrySec,
 			"retry_at":            rl.RetryAt.UTC().Format(time.RFC3339),
@@ -51,8 +56,8 @@ func MapError(err error) map[string]any {
 
 		return out
 	case errors.As(err, &ee):
-		return map[string]any{"error": ee.Error(), "kind": "EsiError", "status": ee.Status}
+		return map[string]any{fieldError: ee.Error(), fieldKind: "EsiError", "status": ee.Status}
 	default:
-		return map[string]any{"error": err.Error(), "kind": "Error"}
+		return map[string]any{fieldError: err.Error(), fieldKind: "Error"}
 	}
 }

@@ -13,6 +13,13 @@ import (
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 )
 
+const (
+	redirect = "http://localhost:1/cb"
+	janeDoe  = "Jane Doe"
+	newRT    = "new-rt"
+	altName  = "Alt"
+)
+
 func openDB(t *testing.T) *store.Store {
 	t.Helper()
 	dsn := os.Getenv("DATABASE_URL")
@@ -68,22 +75,22 @@ func TestFinishMCPAttachesExistingOwner(t *testing.T) {
 	}
 	const charID int64 = 2112625428
 	if err := db.UpsertCharacter(ctx, u.ID, store.CharacterRow{
-		CharacterID: charID, Name: "Jane Doe", RefreshToken: "old-rt",
+		CharacterID: charID, Name: janeDoe, RefreshToken: "old-rt",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	s := testServer(t, db)
 	loc, err := s.finishMCP(ctx, &store.LoginState{
-		MCPClientID: "c", RedirectURI: "http://localhost:1/cb",
+		MCPClientID: "c", RedirectURI: redirect,
 		MCPState: "mcp", CodeChallenge: "x",
 	}, &sso.CharacterToken{
-		CharacterID: int(charID), CharacterName: "Jane Doe", RefreshToken: "new-rt",
+		CharacterID: int(charID), CharacterName: janeDoe, RefreshToken: newRT,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	got, err := url.Parse(loc)
-	if err != nil || got.Query().Get("code") == "" {
+	if err != nil || got.Query().Get(paramCode) == "" {
 		t.Fatalf("redirect %s err %v", loc, err)
 	}
 	owner, ok, err := db.OwnerOf(ctx, charID)
@@ -94,7 +101,7 @@ func TestFinishMCPAttachesExistingOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row.RefreshToken != "new-rt" {
+	if row.RefreshToken != newRT {
 		t.Fatalf("refresh %s", row.RefreshToken)
 	}
 	if tok := s.SessionFor(u.ID).SSO.Store.Get(ctx, int(charID)); tok == nil {
@@ -108,7 +115,7 @@ func TestFinishMCPCreatesUser(t *testing.T) {
 	s := testServer(t, db)
 	const charID int64 = 42
 	loc, err := s.finishMCP(context.Background(), &store.LoginState{
-		MCPClientID: "c", RedirectURI: "http://localhost:1/cb",
+		MCPClientID: "c", RedirectURI: redirect,
 	}, &sso.CharacterToken{
 		CharacterID: int(charID), CharacterName: "New", RefreshToken: "rt",
 	})
@@ -141,13 +148,13 @@ func TestFinishAltRefusesOtherUser(t *testing.T) {
 	}
 	const charID int64 = 2112625428
 	if err := db.UpsertCharacter(ctx, a.ID, store.CharacterRow{
-		CharacterID: charID, Name: "Jane Doe", RefreshToken: "a-rt",
+		CharacterID: charID, Name: janeDoe, RefreshToken: "a-rt",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	s := testServer(t, db)
 	err = s.finishAlt(ctx, &store.LoginState{UserID: b.ID}, &sso.CharacterToken{
-		CharacterID: int(charID), CharacterName: "Jane Doe", RefreshToken: "b-rt",
+		CharacterID: int(charID), CharacterName: janeDoe, RefreshToken: "b-rt",
 	})
 	if !errors.As(err, new(CharacterOwnedError)) {
 		t.Fatalf("want CharacterOwnedError, got %v", err)
@@ -181,13 +188,13 @@ func TestFinishAltRefreshesOwnCharacter(t *testing.T) {
 	}
 	const charID int64 = 99
 	if err := db.UpsertCharacter(ctx, u.ID, store.CharacterRow{
-		CharacterID: charID, Name: "Alt", RefreshToken: "old-rt",
+		CharacterID: charID, Name: altName, RefreshToken: "old-rt",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	s := testServer(t, db)
 	if err := s.finishAlt(ctx, &store.LoginState{UserID: u.ID}, &sso.CharacterToken{
-		CharacterID: int(charID), CharacterName: "Alt", RefreshToken: "new-rt",
+		CharacterID: int(charID), CharacterName: altName, RefreshToken: newRT,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +206,7 @@ func TestFinishAltRefreshesOwnCharacter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row.RefreshToken != "new-rt" {
+	if row.RefreshToken != newRT {
 		t.Fatalf("refresh %s", row.RefreshToken)
 	}
 	n, err := db.ListCharacters(ctx, u.ID)

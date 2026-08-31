@@ -37,31 +37,31 @@ func walletHistory(ctx context.Context, a *session.Session, in walletHistIn) (an
 	}
 	kind := in.Kind
 	if kind == "" {
-		kind = "journal"
+		kind = fJournal
 	}
 	cid := token.CharacterID
-	out := map[string]any{"character": token.CharacterName, "period": "last ~30 days (ESI retention limit)"}
-	if kind == "journal" || kind == "both" {
+	out := map[string]any{fCharacter: token.CharacterName, fPeriod: "last ~30 days (ESI retention limit)"}
+	if kind == fJournal || kind == vBoth {
 		sec, err := journalSection(ctx, a, cid, in.RefType, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
 		if err != nil {
 			return nil, err
 		}
 		out["journal_section"] = sec
 	}
-	if kind == "transactions" || kind == "both" {
+	if kind == fTransactions || kind == vBoth {
 		sec, err := transactionSection(ctx, a, fmt.Sprintf("/characters/%d/wallet/transactions", cid), cid, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
 		if err != nil {
 			return nil, err
 		}
 		out["transactions_section"] = sec
 	}
-	if kind == "journal" {
+	if kind == fJournal {
 		sec := j.Map(out["journal_section"])
 		delete(out, "journal_section")
 
 		return merge(out, sec), nil
 	}
-	if kind == "transactions" {
+	if kind == fTransactions {
 		sec := j.Map(out["transactions_section"])
 		delete(out, "transactions_section")
 
@@ -93,12 +93,12 @@ func summarizeJournal(data any, stale string, truncated bool, pageCap int, refTy
 				msg = fmt.Sprintf("No journal entries with ref_type %q in %s. Codes actually present: %v", refType, divisionNote, available)
 			}
 
-			return map[string]any{"journal": []any{}, "error": msg}, nil
+			return map[string]any{fJournal: []any{}, fError: msg}, nil
 		}
 		entries = filtered
 	}
 	totals, byCat := tallyJournal(entries)
-	sort.Slice(entries, func(i, k int) bool { return j.Str(entries[i]["date"]) > j.Str(entries[k]["date"]) })
+	sort.Slice(entries, func(i, k int) bool { return j.Str(entries[i][fDate]) > j.Str(entries[k][fDate]) })
 	rows := journalRows(entries)
 	visible, meta := page(rows, limit, "Raise `limit`, or narrow with `ref_type`.")
 	var gin, gout float64
@@ -108,8 +108,8 @@ func summarizeJournal(data any, stale string, truncated bool, pageCap int, refTy
 	}
 	out := merge(map[string]any{
 		"total_income": isk(gin), "total_spending": isk(gout), "net": isk(gin + gout),
-		"by_category": byCat, "data_age": stale,
-		"journal": project(visible, []string{"date", "ref_type", "amount", "description"}, conciseMode),
+		"by_category": byCat, fDataAge: stale,
+		fJournal: project(visible, []string{fDate, fRefType, "amount", fDescription}, conciseMode),
 	}, meta)
 	if truncated {
 		out["totals_caveat"] = fmt.Sprintf("Hit the %d-page read cap: the totals and by_category above cover the newest %s entries, not the full window.", pageCap, formatInt(len(entries)))
@@ -121,12 +121,12 @@ func summarizeJournal(data any, stale string, truncated bool, pageCap int, refTy
 func journalRefTypes(entries []map[string]any) []string {
 	codes := map[string]struct{}{}
 	for _, e := range entries {
-		codes[j.Str(e["ref_type"])] = struct{}{}
+		codes[j.Str(e[fRefType])] = struct{}{}
 	}
 	available := make([]string, 0, len(codes))
 	for c := range codes {
 		if c == "" {
-			c = "unknown"
+			c = vUnknown
 		}
 		available = append(available, c)
 	}
@@ -138,7 +138,7 @@ func journalRefTypes(entries []map[string]any) []string {
 func filterJournalByRef(entries []map[string]any, refType string) []map[string]any {
 	var filtered []map[string]any
 	for _, e := range entries {
-		if j.Str(e["ref_type"]) == refType {
+		if j.Str(e[fRefType]) == refType {
 			filtered = append(filtered, e)
 		}
 	}
@@ -150,9 +150,9 @@ func tallyJournal(entries []map[string]any) (map[string]*journalTot, []map[strin
 	totals := map[string]*journalTot{}
 	for _, e := range entries {
 		amount := j.Float(e["amount"])
-		name := j.Str(e["ref_type"])
+		name := j.Str(e[fRefType])
 		if name == "" {
-			name = "unknown"
+			name = vUnknown
 		}
 		b := totals[name]
 		if b == nil {
@@ -169,7 +169,7 @@ func tallyJournal(entries []map[string]any) (map[string]*journalTot, []map[strin
 	var byCat []map[string]any
 	for name, b := range totals {
 		byCat = append(byCat, map[string]any{
-			"ref_type": name, "entries": int(b.n), "income": isk(b.in), "spending": isk(b.out),
+			fRefType: name, "entries": int(b.n), "income": isk(b.in), "spending": isk(b.out),
 			"net_isk": mathRound(b.in+b.out, decimalPlaces),
 		})
 	}
@@ -195,8 +195,8 @@ func journalRows(entries []map[string]any) []map[string]any {
 	rows := make([]map[string]any, 0, len(entries))
 	for _, e := range entries {
 		rows = append(rows, map[string]any{
-			"date": e["date"], "ref_type": e["ref_type"], "amount": isk(e["amount"]),
-			"description": e["description"], "amount_isk": e["amount"],
+			fDate: e[fDate], fRefType: e[fRefType], "amount": isk(e["amount"]),
+			fDescription: e[fDescription], "amount_isk": e["amount"],
 			"balance_after": isk(e["balance"]), "reason": e["reason"],
 		})
 	}
@@ -216,11 +216,11 @@ func transactionSection(ctx context.Context, a *session.Session, path string, ci
 func summarizeTransactions(ctx context.Context, a *session.Session, cid int, data any, stale string, truncated bool, limit int, conciseMode bool) (map[string]any, error) {
 	entries := j.Maps(data)
 	if len(entries) == 0 {
-		return map[string]any{"transactions": []any{}, "note": "No market trades in the retained window."}, nil
+		return map[string]any{fTransactions: []any{}, fNote: "No market trades in the retained window."}, nil
 	}
 	typeSet, placeSet := map[int]struct{}{}, map[int]struct{}{}
 	for _, t := range entries {
-		typeSet[j.Int(t["type_id"])] = struct{}{}
+		typeSet[j.Int(t[fTypeID])] = struct{}{}
 		placeSet[j.Int(t["location_id"])] = struct{}{}
 	}
 	typeNames, err := a.Resolver.Names(ctx, setToList(typeSet), nil)
@@ -233,14 +233,14 @@ func summarizeTransactions(ctx context.Context, a *session.Session, cid int, dat
 	}
 	var bought, sold float64
 	for _, t := range entries {
-		total := j.Float(t["unit_price"]) * j.Float(t["quantity"])
+		total := j.Float(t["unit_price"]) * j.Float(t[fQuantity])
 		if j.Bool(t["is_buy"]) {
 			bought += total
 		} else {
 			sold += total
 		}
 	}
-	sort.Slice(entries, func(i, k int) bool { return j.Str(entries[i]["date"]) > j.Str(entries[k]["date"]) })
+	sort.Slice(entries, func(i, k int) bool { return j.Str(entries[i][fDate]) > j.Str(entries[k][fDate]) })
 	var rows []map[string]any
 	for _, t := range entries {
 		side := "sell"
@@ -248,18 +248,18 @@ func summarizeTransactions(ctx context.Context, a *session.Session, cid int, dat
 			side = "buy"
 		}
 		rows = append(rows, map[string]any{
-			"date": t["date"], "side": side, "item": typeNames[j.Int(t["type_id"])],
-			"quantity": t["quantity"], "total": isk(j.Float(t["unit_price"]) * j.Float(t["quantity"])),
-			"unit_price": isk(t["unit_price"]), "location": nameOr(placeNames, j.Int(t["location_id"])),
+			fDate: t[fDate], fSide: side, fItem: typeNames[j.Int(t[fTypeID])],
+			fQuantity: t[fQuantity], fTotal: isk(j.Float(t["unit_price"]) * j.Float(t[fQuantity])),
+			"unit_price": isk(t["unit_price"]), fLocation: nameOr(placeNames, j.Int(t["location_id"])),
 		})
 	}
 	visible, meta := page(rows, limit, "")
 	out := merge(map[string]any{
 		"total_bought": isk(bought), "total_sold": isk(sold), "gross_margin": isk(sold - bought),
-		"covers":        fmt.Sprintf("%v to %v (%s trades)", rows[len(rows)-1]["date"], rows[0]["date"], formatInt(len(entries))),
+		"covers":        fmt.Sprintf("%v to %v (%s trades)", rows[len(rows)-1][fDate], rows[0][fDate], formatInt(len(entries))),
 		"margin_caveat": "Sold minus bought over the trades in `covers`, not per-item profit.",
-		"data_age":      stale,
-		"transactions":  project(visible, []string{"date", "side", "item", "quantity", "total"}, conciseMode),
+		fDataAge:        stale,
+		fTransactions:   project(visible, []string{fDate, fSide, fItem, fQuantity, fTotal}, conciseMode),
 	}, meta)
 	if truncated {
 		out["totals_caveat"] = fmt.Sprintf("Only the newest %s trades were read, so the totals cover `covers` and not the full retention window.", formatInt(len(entries)))

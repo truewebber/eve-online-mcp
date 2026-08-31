@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+const errConfirmUnknown = "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."
+
 type BlockedError struct{ Msg string }
 
 func (e BlockedError) Error() string { return e.Msg }
@@ -65,7 +67,7 @@ func (g *Guard) Authorize(ctx context.Context, tool, capability string, args map
 	if err != nil {
 		return Decision{}, err
 	}
-	if capability == "mail_send" {
+	if capability == CapMailSend {
 		err = g.checkMailCap(ctx)
 		if err != nil {
 			return Decision{}, err
@@ -107,7 +109,7 @@ func (g *Guard) Authorize(ctx context.Context, tool, capability string, args map
 }
 
 func (g *Guard) Record(ctx context.Context, _ string, capability string, _ map[string]any, _ any) {
-	if capability == "mail_send" && g.persist != nil {
+	if capability == CapMailSend && g.persist != nil {
 		err := g.persist.InsertMail(ctx, g.userID, time.Now().UTC())
 		if err != nil {
 			log.Printf("could not record mail_log: %v", err)
@@ -161,21 +163,21 @@ func (g *Guard) checkMailCap(ctx context.Context) error {
 
 func (g *Guard) consumeConfirm(ctx context.Context, tool, digest, confirmToken string) error {
 	if g.persist == nil {
-		return BlockedError{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
+		return BlockedError{Msg: errConfirmUnknown}
 	}
 	pending, ok, err := g.persist.GetConfirm(ctx, confirmToken)
 	if err != nil {
 		return err
 	}
 	if !ok || pending.UserID != g.userID {
-		return BlockedError{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
+		return BlockedError{Msg: errConfirmUnknown}
 	}
 	if time.Since(pending.CreatedAt) > ConfirmTTL {
 		if err := g.persist.DeleteConfirm(ctx, confirmToken); err != nil {
 			return err
 		}
 
-		return BlockedError{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
+		return BlockedError{Msg: errConfirmUnknown}
 	}
 	if pending.Tool != tool {
 		return BlockedError{Msg: fmt.Sprintf("confirm_token was issued for %q, not %q.", pending.Tool, tool)}
