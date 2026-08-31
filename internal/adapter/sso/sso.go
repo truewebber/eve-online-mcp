@@ -176,6 +176,37 @@ func (c *Client) AccessToken(characterID int) (*CharacterToken, error) {
 	return c.refresh(token)
 }
 
+func (c *Client) Revoke(characterID int) {
+	token := c.Store.Get(characterID)
+	if token == nil {
+		return
+	}
+	data := url.Values{
+		"token_type_hint": {"refresh_token"},
+		"token":           {token.RefreshToken},
+		"client_id":       {c.opts.ClientID},
+	}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, RevokeURL, strings.NewReader(data.Encode()))
+	if err != nil {
+		log.Printf("revoke request for %d: %v", characterID, err)
+		c.Store.Remove(characterID)
+
+		return
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", c.opts.UserAgent)
+	if c.opts.ClientSecret != "" {
+		req.SetBasicAuth(c.opts.ClientID, c.opts.ClientSecret)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		log.Printf("revoke call failed for %d: %v", characterID, err)
+	} else {
+		resp.Body.Close()
+	}
+	c.Store.Remove(characterID)
+}
+
 func (c *Client) refresh(token *CharacterToken) (*CharacterToken, error) {
 	if c.Store.durable() {
 		return c.refreshLocked(token)
@@ -242,37 +273,6 @@ func (c *Client) exchangeRefresh(refreshToken string, fallback *CharacterToken) 
 	}
 
 	return c.tokenFromPayload(payload, fallback)
-}
-
-func (c *Client) Revoke(characterID int) {
-	token := c.Store.Get(characterID)
-	if token == nil {
-		return
-	}
-	data := url.Values{
-		"token_type_hint": {"refresh_token"},
-		"token":           {token.RefreshToken},
-		"client_id":       {c.opts.ClientID},
-	}
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, RevokeURL, strings.NewReader(data.Encode()))
-	if err != nil {
-		log.Printf("revoke request for %d: %v", characterID, err)
-		c.Store.Remove(characterID)
-
-		return
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("User-Agent", c.opts.UserAgent)
-	if c.opts.ClientSecret != "" {
-		req.SetBasicAuth(c.opts.ClientID, c.opts.ClientSecret)
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		log.Printf("revoke call failed for %d: %v", characterID, err)
-	} else {
-		resp.Body.Close()
-	}
-	c.Store.Remove(characterID)
 }
 
 func (c *Client) tokenRequest(data url.Values, clientID, secret string) (map[string]any, error) {

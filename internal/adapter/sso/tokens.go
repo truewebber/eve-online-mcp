@@ -42,10 +42,6 @@ func newTokenStore(db *store.Store, userID string) *TokenStore {
 	}
 }
 
-func (s *TokenStore) durable() bool {
-	return s != nil && s.db != nil && s.userID != ""
-}
-
 func (s *TokenStore) Upsert(token *CharacterToken) error {
 	if token == nil || token.CharacterID == 0 {
 		return ErrMissingCharacterID
@@ -75,26 +71,6 @@ func (s *TokenStore) Upsert(token *CharacterToken) error {
 			AccessExpiresAt: token.AccessExpiresAt,
 		}
 	}
-
-	return nil
-}
-
-func (s *TokenStore) upsertMemory(token *CharacterToken) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if existing := s.tokens[token.CharacterID]; existing != nil {
-		if token.AccessToken == "" {
-			token.AccessToken = existing.AccessToken
-			token.AccessExpiresAt = existing.AccessExpiresAt
-		}
-		if token.AddedAt == 0 {
-			token.AddedAt = existing.AddedAt
-		}
-	}
-	if token.AddedAt == 0 {
-		token.AddedAt = float64(time.Now().Unix())
-	}
-	s.tokens[token.CharacterID] = token
 
 	return nil
 }
@@ -186,6 +162,30 @@ func (s *TokenStore) FindByName(name string) *CharacterToken {
 			return t
 		}
 	}
+
+	return nil
+}
+
+func (s *TokenStore) durable() bool {
+	return s != nil && s.db != nil && s.userID != ""
+}
+
+func (s *TokenStore) upsertMemory(token *CharacterToken) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if existing := s.tokens[token.CharacterID]; existing != nil {
+		if token.AccessToken == "" {
+			token.AccessToken = existing.AccessToken
+			token.AccessExpiresAt = existing.AccessExpiresAt
+		}
+		if token.AddedAt == 0 {
+			token.AddedAt = existing.AddedAt
+		}
+	}
+	if token.AddedAt == 0 {
+		token.AddedAt = float64(time.Now().Unix())
+	}
+	s.tokens[token.CharacterID] = token
 
 	return nil
 }

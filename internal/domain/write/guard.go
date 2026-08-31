@@ -56,21 +56,6 @@ func (g *Guard) CheckScope(capability string, granted []string) error {
 	return nil
 }
 
-func (g *Guard) checkMailCap(ctx context.Context) error {
-	if g.persist == nil {
-		return nil
-	}
-	n, err := g.persist.CountMailSince(ctx, g.userID, time.Now().Add(-time.Hour))
-	if err != nil {
-		return err
-	}
-	if n >= MailCap {
-		return BlockedError{Msg: fmt.Sprintf("Mail budget exhausted: %d mails in the last hour. Wait until an earlier send drops out of the rolling hour, then try again.", MailCap)}
-	}
-
-	return nil
-}
-
 func (g *Guard) Authorize(ctx context.Context, tool, capability string, args map[string]any, preview map[string]any, confirmToken string, granted []string) (Decision, error) {
 	err := g.CheckCapability(capability)
 	if err != nil {
@@ -115,35 +100,6 @@ func (g *Guard) Authorize(ctx context.Context, tool, capability string, args map
 	}}, nil
 }
 
-func (g *Guard) consumeConfirm(ctx context.Context, tool, digest, confirmToken string) error {
-	if g.persist == nil {
-		return BlockedError{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
-	}
-	pending, ok, err := g.persist.GetConfirm(ctx, confirmToken)
-	if err != nil {
-		return err
-	}
-	if !ok || pending.UserID != g.userID {
-		return BlockedError{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
-	}
-	if time.Since(pending.CreatedAt) > ConfirmTTL {
-		_ = g.persist.DeleteConfirm(ctx, confirmToken)
-
-		return BlockedError{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
-	}
-	if pending.Tool != tool {
-		return BlockedError{Msg: fmt.Sprintf("confirm_token was issued for %q, not %q.", pending.Tool, tool)}
-	}
-	if pending.ArgsDigest != digest {
-		_ = g.persist.DeleteConfirm(ctx, confirmToken)
-
-		return BlockedError{Msg: "The arguments changed since the preview was generated, so the token was discarded. Request a new preview and confirm that one."}
-	}
-	_ = g.persist.DeleteConfirm(ctx, confirmToken)
-
-	return nil
-}
-
 func (g *Guard) Record(ctx context.Context, _ string, capability string, _ map[string]any, _ any) {
 	if capability == "mail_send" && g.persist != nil {
 		err := g.persist.InsertMail(ctx, g.userID, time.Now().UTC())
@@ -180,6 +136,50 @@ func (g *Guard) Status(ctx context.Context) map[string]any {
 		"confirm_ttl_seconds":       int(ConfirmTTL / time.Second),
 		"confirm":                   "Each mutating tool returns a preview and confirm_token on the first call; a second call with identical arguments plus the token executes it. Mail is capped at 5 per rolling hour.",
 	}
+}
+
+func (g *Guard) checkMailCap(ctx context.Context) error {
+	if g.persist == nil {
+		return nil
+	}
+	n, err := g.persist.CountMailSince(ctx, g.userID, time.Now().Add(-time.Hour))
+	if err != nil {
+		return err
+	}
+	if n >= MailCap {
+		return BlockedError{Msg: fmt.Sprintf("Mail budget exhausted: %d mails in the last hour. Wait until an earlier send drops out of the rolling hour, then try again.", MailCap)}
+	}
+
+	return nil
+}
+
+func (g *Guard) consumeConfirm(ctx context.Context, tool, digest, confirmToken string) error {
+	if g.persist == nil {
+		return BlockedError{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
+	}
+	pending, ok, err := g.persist.GetConfirm(ctx, confirmToken)
+	if err != nil {
+		return err
+	}
+	if !ok || pending.UserID != g.userID {
+		return BlockedError{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
+	}
+	if time.Since(pending.CreatedAt) > ConfirmTTL {
+		_ = g.persist.DeleteConfirm(ctx, confirmToken)
+
+		return BlockedError{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
+	}
+	if pending.Tool != tool {
+		return BlockedError{Msg: fmt.Sprintf("confirm_token was issued for %q, not %q.", pending.Tool, tool)}
+	}
+	if pending.ArgsDigest != digest {
+		_ = g.persist.DeleteConfirm(ctx, confirmToken)
+
+		return BlockedError{Msg: "The arguments changed since the preview was generated, so the token was discarded. Request a new preview and confirm that one."}
+	}
+	_ = g.persist.DeleteConfirm(ctx, confirmToken)
+
+	return nil
 }
 
 func digestArgs(payload any) string {

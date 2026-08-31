@@ -313,6 +313,68 @@ func (s *Server) CompleteCallback(ctx context.Context, code, eveState string) (C
 	}
 }
 
+func (s *Server) ServeToken(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+
+		return
+	}
+	s.purge(r.Context())
+	err := r.ParseForm()
+	if err != nil {
+		http.Error(w, `{"error":"invalid_request"}`, http.StatusBadRequest)
+
+		return
+	}
+	switch r.Form.Get("grant_type") {
+	case "authorization_code":
+		s.exchangeCode(w, r)
+	case "refresh_token":
+		s.refresh(w, r)
+	default:
+		http.Error(w, `{"error":"unsupported_grant_type"}`, http.StatusBadRequest)
+	}
+}
+
+func (s *Server) VerifyAccess(_ context.Context, token string, _ *http.Request) (*mcpauth.TokenInfo, error) {
+	return s.verifyAccess(token)
+}
+
+// SessionFor returns the cached per-user session, creating it on first use.
+func (s *Server) SessionFor(userID string) *session.Session {
+	if v, ok := s.sessions.Load(userID); ok {
+		return v.(*session.Session)
+	}
+	sess := s.runtime.ForUser(userID)
+	s.sessions.Store(userID, sess)
+
+	return sess
+}
+
+func (s *Server) ProtectMCP(next http.Handler) http.Handler {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ti := mcpauth.TokenInfoFromContext(r.Context())
+		if ti == nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+
+			return
+		}
+		if _, err := s.db.GetUser(r.Context(), ti.UserID); err != nil {
+			http.Error(w, "unknown user", http.StatusUnauthorized)
+
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(session.With(r.Context(), s.SessionFor(ti.UserID))))
+	})
+
+	return mcpauth.RequireBearerToken(s.VerifyAccess, &mcpauth.RequireBearerTokenOptions{
+		ResourceMetadataURL: s.MetadataURL(),
+		Scopes:              []string{scopeEve},
+		ClockSkew:           30 * time.Second,
+	})(inner)
+}
+
 func (s *Server) finishMCP(ctx context.Context, p *store.LoginState, token *sso.CharacterToken) (string, error) {
 	userID, err := s.ownerOf(ctx, token.CharacterID)
 	if err != nil {
@@ -378,7 +440,6 @@ func (s *Server) finishAlt(ctx context.Context, st *store.LoginState, token *sso
 	return nil
 }
 
-// ownerOf finds the user who already holds this character, if any.
 func (s *Server) ownerOf(ctx context.Context, characterID int) (string, error) {
 	userID, ok, err := s.db.OwnerOf(ctx, int64(characterID))
 	if err != nil {
@@ -389,30 +450,6 @@ func (s *Server) ownerOf(ctx context.Context, characterID int) (string, error) {
 	}
 
 	return userID, nil
-}
-
-func (s *Server) ServeToken(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-
-		return
-	}
-	s.purge(r.Context())
-	err := r.ParseForm()
-	if err != nil {
-		http.Error(w, `{"error":"invalid_request"}`, http.StatusBadRequest)
-
-		return
-	}
-	switch r.Form.Get("grant_type") {
-	case "authorization_code":
-		s.exchangeCode(w, r)
-	case "refresh_token":
-		s.refresh(w, r)
-	default:
-		http.Error(w, `{"error":"unsupported_grant_type"}`, http.StatusBadRequest)
-	}
 }
 
 func (s *Server) exchangeCode(w http.ResponseWriter, r *http.Request) {
@@ -533,10 +570,6 @@ func (s *Server) parseRefresh(raw string) (string, error) {
 	return sub, nil
 }
 
-func (s *Server) VerifyAccess(_ context.Context, token string, _ *http.Request) (*mcpauth.TokenInfo, error) {
-	return s.verifyAccess(token)
-}
-
 func (s *Server) verifyAccess(token string) (*mcpauth.TokenInfo, error) {
 	tok, err := jwt.Parse(token, func(t *jwt.Token) (any, error) {
 		if t.Method != jwt.SigningMethodHS256 {
@@ -563,40 +596,6 @@ func (s *Server) verifyAccess(token string) (*mcpauth.TokenInfo, error) {
 		Expiration: time.Unix(int64(exp), 0),
 		UserID:     sub,
 	}, nil
-}
-
-// SessionFor returns the cached per-user session, creating it on first use.
-func (s *Server) SessionFor(userID string) *session.Session {
-	if v, ok := s.sessions.Load(userID); ok {
-		return v.(*session.Session)
-	}
-	sess := s.runtime.ForUser(userID)
-	s.sessions.Store(userID, sess)
-
-	return sess
-}
-
-func (s *Server) ProtectMCP(next http.Handler) http.Handler {
-	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ti := mcpauth.TokenInfoFromContext(r.Context())
-		if ti == nil {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-
-			return
-		}
-		if _, err := s.db.GetUser(r.Context(), ti.UserID); err != nil {
-			http.Error(w, "unknown user", http.StatusUnauthorized)
-
-			return
-		}
-		next.ServeHTTP(w, r.WithContext(session.With(r.Context(), s.SessionFor(ti.UserID))))
-	})
-
-	return mcpauth.RequireBearerToken(s.VerifyAccess, &mcpauth.RequireBearerTokenOptions{
-		ResourceMetadataURL: s.MetadataURL(),
-		Scopes:              []string{scopeEve},
-		ClockSkew:           30 * time.Second,
-	})(inner)
 }
 
 func (s *Server) clientRedirectOK(ctx context.Context, clientID, redirect string) bool {

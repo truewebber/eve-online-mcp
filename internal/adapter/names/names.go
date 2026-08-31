@@ -210,19 +210,6 @@ func (r *Resolver) Name(id int, characterID *int) (string, error) {
 	return fmt.Sprintf("Unknown #%d", id), nil
 }
 
-func (r *Resolver) structureName(structureID, characterID int) (string, error) {
-	result, err := r.esi.Get(fmt.Sprintf("/universe/structures/%d", structureID), &characterID, nil, nil)
-	if err != nil {
-		return "", err
-	}
-	name := j.Str(j.Map(result.Data)["name"])
-	if name == "" {
-		return fmt.Sprintf("Structure #%d", structureID), nil
-	}
-
-	return name, nil
-}
-
 func (r *Resolver) IDsFromNames(names []string) (map[string]any, error) {
 	seen := map[string]struct{}{}
 	var unique []string
@@ -513,6 +500,19 @@ func (r *Resolver) HubQuotes(typeID, regionID int, stationID *int) (map[string]a
 	}
 
 	return out, nil
+}
+
+func (r *Resolver) structureName(structureID, characterID int) (string, error) {
+	result, err := r.esi.Get(fmt.Sprintf("/universe/structures/%d", structureID), &characterID, nil, nil)
+	if err != nil {
+		return "", err
+	}
+	name := j.Str(j.Map(result.Data)["name"])
+	if name == "" {
+		return fmt.Sprintf("Structure #%d", structureID), nil
+	}
+
+	return name, nil
 }
 
 func (r *Resolver) blob(key string, maxAge *time.Duration) (any, error) {

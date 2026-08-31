@@ -122,17 +122,6 @@ func New(opts Options, httpClient *http.Client, db *store.Store, ssoClient *sso.
 	}
 }
 
-func (c *Client) cache() httpCache {
-	if c.testCache != nil {
-		return c.testCache
-	}
-	if c.store != nil {
-		return c.store
-	}
-
-	return nil
-}
-
 func (c *Client) Get(path string, characterID *int, params map[string]any, cacheTTL *float64) (Result, error) {
 	if params == nil {
 		params = map[string]any{}
@@ -285,6 +274,17 @@ func (c *Client) Put(path string, characterID *int, params map[string]any, jsonB
 }
 func (c *Client) Delete(path string, characterID *int, params map[string]any, jsonBody any) (any, error) {
 	return c.write(http.MethodDelete, path, characterID, params, jsonBody)
+}
+
+func (c *Client) cache() httpCache {
+	if c.testCache != nil {
+		return c.testCache
+	}
+	if c.store != nil {
+		return c.store
+	}
+
+	return nil
 }
 
 func (c *Client) cacheKey(path string, characterID *int, params map[string]any) string {
