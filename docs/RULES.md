@@ -180,23 +180,30 @@ in a struct.
 A signature we do not own (generated code, an SDK callback) is not
 this rule.
 
-## 11. Each layer owns its types
+## 11. Domain and adapter are an entity and its contract
 
-`service`, `usecase`, `domain` and `adapter` each speak only their
-own types (SPEC §7). A public signature of a layer accepts and returns
-that layer's types: the service type is the service's representation
-to the outside, the usecase type is the usecase contract. Domain and
-adapter operate in their own types the same way.
+A `domain` or `adapter` package is first an entity (the type) and the
+way to talk to it (the interface). The implementation of that
+interface lives in a nested package — `pgx`, `http`, `api`. Examples:
+`domain/user` and `domain/user/pgx`; `adapter/esi` and
+`adapter/esi/http`.
 
-Crossing a boundary is a map, not a leak. `service` does not expose a
-usecase or adapter type; `usecase` does not take or return a domain
-or adapter type; nobody reaches through a layer to borrow its
-neighbor's struct. A type that leaks is an import that already
-violates `service → usecase → adapter | domain`.
+The difference is ownership. **Domain** is an entity we own. **Adapter**
+is an entity we do not — CCP, a vendor, a wire we did not invent.
+Each domain has its own contract and its own repository. Nobody
+reaches into a neighbor's type or implements someone else's
+repository.
 
-A signature we do not own (generated OpenAPI, an SDK callback) lives
-in `service`. `int`, `string` and other language builtins are not a
-layer's types.
+Postgres is not an entity. It is how a domain repository is
+implemented (`domain/user/pgx`). A package named `store` that talks
+to every table is every domain's repository glued together — that is
+not an adapter. ESI and SSO are adapters; the database is not.
+
+`service` and `usecase` still speak only their own types: the service
+type is the service's representation, the usecase type is the usecase
+contract. Crossing a boundary is a map, not a leak. A signature we do
+not own (generated OpenAPI, an SDK callback) lives in `service`.
+`int`, `string` and other language builtins are not a layer's types.
 
 ## 12. SQL is declared
 
@@ -225,9 +232,11 @@ Schema migrations are an operator step or CI/CD, never a path inside
 the running server. `Open` connects; it does not apply SQL. A pod
 that migrates on boot is a migrator wearing a server binary.
 
-The files still live with the schema they change (DB.md). Applying
-them is `goose`, a Makefile target, a pipeline job, or a pair of
-hands — not `Store.Open`.
+Every migration file lives in `sql/` at the repository root. There is
+no `Down`. We do not believe a migration can be rolled back. If the
+binary talks to more than one database, `sql/` splits by database
+(`sql/postgres/`, `sql/…`). Applying them is `goose`, a Makefile
+target, a pipeline job, or a pair of hands.
 
 ## 15. One function, one job
 
