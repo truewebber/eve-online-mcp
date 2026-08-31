@@ -21,7 +21,7 @@ func TestAuthorizePreviewAndConfirm(t *testing.T) {
 	g, _ := testGuard(t)
 	args := map[string]any{"destination": "Jita"}
 	preview := map[string]any{"will_set": "Jita"}
-	scopes := Capabilities["waypoint"].Scopes
+	scopes := Capabilities()["waypoint"].Scopes
 
 	out, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, preview, "", scopes)
 	if err != nil {
@@ -46,9 +46,9 @@ func TestConfirmToolMismatchKeepsToken(t *testing.T) {
 	ctx := context.Background()
 	g, _ := testGuard(t)
 	args := map[string]any{"destination": "Jita"}
-	scopes := append([]string{}, Capabilities["waypoint"].Scopes...)
-	scopes = append(scopes, Capabilities["mail_send"].Scopes...)
-	out, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, "", Capabilities["waypoint"].Scopes)
+	scopes := append([]string{}, Capabilities()["waypoint"].Scopes...)
+	scopes = append(scopes, Capabilities()["mail_send"].Scopes...)
+	out, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, "", Capabilities()["waypoint"].Scopes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestConfirmToolMismatchKeepsToken(t *testing.T) {
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "eve_ui_set_waypoint") {
 		t.Fatalf("mismatch %v", err)
 	}
-	done, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, token, Capabilities["waypoint"].Scopes)
+	done, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, token, Capabilities()["waypoint"].Scopes)
 	if err != nil || done.Required != nil {
 		t.Fatalf("token should still work: %v %v", done, err)
 	}
@@ -67,7 +67,7 @@ func TestConfirmToolMismatchKeepsToken(t *testing.T) {
 func TestConfirmDigestMismatchDiscards(t *testing.T) {
 	ctx := context.Background()
 	g, _ := testGuard(t)
-	scopes := Capabilities["waypoint"].Scopes
+	scopes := Capabilities()["waypoint"].Scopes
 	out, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", map[string]any{"d": "Jita"}, nil, "", scopes)
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +94,7 @@ func TestConfirmExpiry(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	_, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, "stale", Capabilities["waypoint"].Scopes)
+	_, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, "stale", Capabilities()["waypoint"].Scopes)
 	var blocked BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "expired") {
 		t.Fatalf("expiry %v", err)
@@ -104,7 +104,7 @@ func TestConfirmExpiry(t *testing.T) {
 func TestSixthMailIsBlocked(t *testing.T) {
 	ctx := context.Background()
 	g, _ := testGuard(t)
-	scopes := Capabilities["mail_send"].Scopes
+	scopes := Capabilities()["mail_send"].Scopes
 	for range 5 {
 		g.Record(ctx, "eve_mail_send", "mail_send", nil, "ok")
 	}
@@ -143,7 +143,7 @@ func TestStatusHasNoAuditOrBudget(t *testing.T) {
 		t.Fatalf("mail cap %+v", st["mail_cap_per_hour"])
 	}
 	caps, _ := st["capabilities"].([]string)
-	if len(caps) != len(Capabilities) {
+	if len(caps) != len(Capabilities()) {
 		t.Fatalf("capabilities %v", caps)
 	}
 }
@@ -151,13 +151,13 @@ func TestStatusHasNoAuditOrBudget(t *testing.T) {
 func TestRequestedScopesIncludesCorpAndWrites(t *testing.T) {
 	scopes := RequestedScopes()
 	want := map[string]struct{}{}
-	for _, s := range ReadScopes {
+	for _, s := range ReadScopes() {
 		want[s] = struct{}{}
 	}
-	for _, s := range CorpReadScopes {
+	for _, s := range CorpReadScopes() {
 		want[s] = struct{}{}
 	}
-	for _, cap := range Capabilities {
+	for _, cap := range Capabilities() {
 		for _, s := range cap.Scopes {
 			want[s] = struct{}{}
 		}

@@ -30,7 +30,7 @@ func NewGuard(persist Persist, userID string) *Guard {
 }
 
 func (g *Guard) CheckCapability(capability string) error {
-	if _, ok := Capabilities[capability]; !ok {
+	if _, ok := Capabilities()[capability]; !ok {
 		return BlockedError{Msg: fmt.Sprintf("Unknown write capability %q.", capability)}
 	}
 
@@ -38,7 +38,7 @@ func (g *Guard) CheckCapability(capability string) error {
 }
 
 func (g *Guard) CheckScope(capability string, granted []string) error {
-	need := Capabilities[capability]
+	need := Capabilities()[capability]
 	have := map[string]struct{}{}
 	for _, s := range granted {
 		have[s] = struct{}{}
@@ -156,7 +156,7 @@ func (g *Guard) Record(ctx context.Context, _ string, capability string, _ map[s
 func (g *Guard) Status(ctx context.Context) map[string]any {
 	now := time.Now()
 	ref := map[string]string{}
-	for name, cap := range Capabilities {
+	for name, cap := range Capabilities() {
 		ref[name] = cap.Summary
 	}
 	mails, pending := 0, 0

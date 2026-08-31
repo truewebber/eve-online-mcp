@@ -17,8 +17,17 @@ import (
 
 const clientCaveat = "Takes effect only while the EVE client is running and logged in on this character. With the client closed the call reports success and nothing visible happens."
 
-var recipientKeys = map[string]string{
-	"characters": "character", "corporations": "corporation", "alliances": "alliance",
+func recipientType(category string) string {
+	switch category {
+	case "characters":
+		return "character"
+	case "corporations":
+		return "corporation"
+	case "alliances":
+		return "alliance"
+	default:
+		return ""
+	}
 }
 
 func registerWrites(s *mcp.Server) {
@@ -415,7 +424,7 @@ func registerMailSend(s *mcp.Server) {
 				} else if _, ok := seen[match.Chosen.ID]; !ok {
 					seen[match.Chosen.ID] = struct{}{}
 					recipients = append(recipients, map[string]any{
-						"recipient_id": match.Chosen.ID, "recipient_type": recipientKeys[match.Chosen.Category],
+						"recipient_id": match.Chosen.ID, "recipient_type": recipientType(match.Chosen.Category),
 					})
 					resolvedNames = append(resolvedNames, fmt.Sprintf("%s (%s)", match.Chosen.Name, match.Chosen.Kind))
 				}

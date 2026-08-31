@@ -40,52 +40,52 @@ const (
 
 // Tools whose rows are already minimal — every field is high-signal, so a
 // concise/detailed split would return the same thing twice.
-var noResponseFormatNeeded = map[string]struct{}{
-	"eve_character_standings": {},
-	"eve_industry_mining":     {},
-	"eve_universe_search":     {},
-	"eve_universe_hotspots":   {},
+func needsResponseFormat(name string) bool {
+	switch name {
+	case "eve_character_standings", "eve_industry_mining", "eve_universe_search", "eve_universe_hotspots":
+		return false
+	default:
+		return true
+	}
 }
 
-// Tools that mutate game state, or need arguments only a human can supply.
-var skipInSmoke = map[string]struct{}{
-	"eve_auth_logout":      {},
-	"eve_auth_login_url":   {},
-	"eve_mail_read":        {},
-	"eve_ui_set_waypoint":  {},
-	"eve_ui_open_window":   {},
-	"eve_fitting_save":     {},
-	"eve_fitting_delete":   {},
-	"eve_mail_mark":        {},
-	"eve_mail_delete":      {},
-	"eve_mail_send":        {},
-	"eve_contacts_set":     {},
-	"eve_contacts_delete":  {},
-	"eve_calendar_respond": {},
+func skipInSmoke(name string) bool {
+	switch name {
+	case "eve_auth_logout", "eve_auth_login_url", "eve_mail_read",
+		"eve_ui_set_waypoint", "eve_ui_open_window",
+		"eve_fitting_save", "eve_fitting_delete",
+		"eve_mail_mark", "eve_mail_delete", "eve_mail_send",
+		"eve_contacts_set", "eve_contacts_delete", "eve_calendar_respond":
+		return true
 	// Corporation reads need in-game roles the default smoke character may lack.
-	// eve_corp_overview stays in smoke: it is public-info plus roles and must
-	// answer even for an NPC corp.
-	"eve_corp_assets_list":   {},
-	"eve_corp_assets_find":   {},
-	"eve_corp_blueprints":    {},
-	"eve_corp_wallet":        {},
-	"eve_corp_industry_jobs": {},
-	"eve_corp_mining":        {},
-	"eve_corp_orders":        {},
-	"eve_corp_contracts":     {},
-	"eve_corp_killmails":     {},
-	"eve_corp_structures":    {},
-	"eve_corp_members":       {},
+	// eve_corp_overview is not listed: it answers even for an NPC corp.
+	case "eve_corp_assets_list", "eve_corp_assets_find", "eve_corp_blueprints",
+		"eve_corp_wallet", "eve_corp_industry_jobs", "eve_corp_mining",
+		"eve_corp_orders", "eve_corp_contracts", "eve_corp_killmails",
+		"eve_corp_structures", "eve_corp_members":
+		return true
+	default:
+		return false
+	}
 }
 
-// Minimal arguments for tools that require some.
-var smokeArgs = map[string]map[string]any{
-	"eve_market_price":    {"item": "Tritanium"},
-	"eve_universe_item":   {"item": "Rifter"},
-	"eve_universe_system": {"system": "Jita"},
-	"eve_universe_route":  {"origin": "Jita", "destination": "Amarr"},
-	"eve_universe_search": {"query": "Rifter"},
-	"eve_assets_find":     {"name": "Drake"},
+func smokeArgs(name string) map[string]any {
+	switch name {
+	case "eve_market_price":
+		return map[string]any{"item": "Tritanium"}
+	case "eve_universe_item":
+		return map[string]any{"item": "Rifter"}
+	case "eve_universe_system":
+		return map[string]any{"system": "Jita"}
+	case "eve_universe_route":
+		return map[string]any{"origin": "Jita", "destination": "Amarr"}
+	case "eve_universe_search":
+		return map[string]any{"query": "Rifter"}
+	case "eve_assets_find":
+		return map[string]any{"name": "Drake"}
+	default:
+		return nil
+	}
 }
 
 const usage = `Eval harness for the EVE MCP server.
@@ -292,10 +292,8 @@ func lint(r *rpc) int {
 
 		if _, hasLimit := props["limit"]; hasLimit {
 			_, hasFormat := props["response_format"]
-			if !hasFormat {
-				if _, skip := noResponseFormatNeeded[name]; !skip {
-					warnings = append(warnings, name+": has `limit` but no `response_format`")
-				}
+			if !hasFormat && needsResponseFormat(name) {
+				warnings = append(warnings, name+": has `limit` but no `response_format`")
 			}
 		}
 	}
@@ -327,7 +325,7 @@ func smoke(r *rpc) int {
 	var tools []map[string]any
 	for _, t := range all {
 		name, _ := t["name"].(string)
-		if _, skip := skipInSmoke[name]; skip {
+		if skipInSmoke(name) {
 			continue
 		}
 		tools = append(tools, t)
@@ -344,7 +342,7 @@ func smoke(r *rpc) int {
 	var failures []string
 	for _, tool := range tools {
 		name, _ := tool["name"].(string)
-		text, err := r.toolCall(name, smokeArgs[name])
+		text, err := r.toolCall(name, smokeArgs(name))
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 

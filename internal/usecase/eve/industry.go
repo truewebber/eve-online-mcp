@@ -311,9 +311,22 @@ func colonyStored(a *session.Session, pins []map[string]any) map[string]int {
 }
 
 func activityName(id int) string {
-	if n, ok := activities[id]; ok {
-		return n
+	switch id {
+	case 1:
+		return "Manufacturing"
+	case 3:
+		return "Researching Time Efficiency"
+	case 4:
+		return "Researching Material Efficiency"
+	case 5:
+		return "Copying"
+	case 7:
+		return "Reverse Engineering"
+	case 8:
+		return "Invention"
+	case 9, 11:
+		return "Reactions"
+	default:
+		return fmt.Sprintf("#%d", id)
 	}
-
-	return fmt.Sprintf("#%d", id)
 }

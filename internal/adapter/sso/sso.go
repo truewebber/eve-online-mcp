@@ -14,7 +14,6 @@ import (
 	"math/big"
 	"net/http"
 	"net/url"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -33,7 +32,14 @@ const (
 	TokenAudience = "EVE Online"
 )
 
-var TokenIssuers = []string{"login.eveonline.com", "https://login.eveonline.com"}
+func knownIssuer(iss string) bool {
+	switch iss {
+	case "login.eveonline.com", "https://login.eveonline.com":
+		return true
+	default:
+		return false
+	}
+}
 
 // Options is the EVE SSO client config. Built at the composition root.
 type Options struct {
@@ -380,7 +386,7 @@ func (c *Client) decode(accessToken string) (jwt.MapClaims, error) {
 
 func (c *Client) checkIssuer(claims jwt.MapClaims) (jwt.MapClaims, error) {
 	iss, _ := claims["iss"].(string)
-	if slices.Contains(TokenIssuers, iss) {
+	if knownIssuer(iss) {
 		return claims, nil
 	}
 

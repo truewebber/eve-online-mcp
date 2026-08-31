@@ -341,9 +341,3 @@ func intersect(have []string, want map[string]struct{}) []string {
 
 	return out
 }
-
-var activities = map[int]string{
-	1: "Manufacturing", 3: "Researching Time Efficiency",
-	4: "Researching Material Efficiency", 5: "Copying",
-	7: "Reverse Engineering", 8: "Invention", 9: "Reactions", 11: "Reactions",
-}

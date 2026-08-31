@@ -23,11 +23,31 @@ const (
 	priceTTL         = 3600.0
 )
 
-var IDCategories = map[string]string{
-	"agents": "agent", "alliances": "alliance", "characters": "character",
-	"constellations": "constellation", "corporations": "corporation",
-	"factions": "faction", "inventory_types": "item type", "regions": "region",
-	"stations": "station", "systems": "solar system",
+func categoryKind(key string) string {
+	switch key {
+	case "agents":
+		return "agent"
+	case "alliances":
+		return "alliance"
+	case "characters":
+		return "character"
+	case "constellations":
+		return "constellation"
+	case "corporations":
+		return "corporation"
+	case "factions":
+		return "faction"
+	case "inventory_types":
+		return "item type"
+	case "regions":
+		return "region"
+	case "stations":
+		return "station"
+	case "systems":
+		return "solar system"
+	default:
+		return ""
+	}
 }
 
 type NameMatch struct {
@@ -252,7 +272,7 @@ func (r *Resolver) ResolveNames(names []string, prefer, only []string) (map[stri
 				continue
 			}
 		}
-		kind := IDCategories[key]
+		kind := categoryKind(key)
 		if kind == "" {
 			kind = key
 		}

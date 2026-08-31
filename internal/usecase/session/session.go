@@ -208,7 +208,7 @@ func (s *Session) RequireGranted(characterName string, scopes []string, scope, w
 		return nil
 	}
 	extra := ""
-	if slices.Contains(write.CorpReadScopes, scope) {
+	if slices.Contains(write.CorpReadScopes(), scope) {
 		extra = " That is a corporation scope: add the matching permissions on the EVE developer application and re-authorize this character with eve_auth_login_url."
 	}
 

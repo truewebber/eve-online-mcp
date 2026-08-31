@@ -38,7 +38,7 @@ func registerAccount(s *mcp.Server) {
 			tokens := a.SSO.Store.All()
 			policy := a.Guard.Status(ctx)
 			var outward []string
-			for name, cap := range write.Capabilities {
+			for name, cap := range write.Capabilities() {
 				if cap.OutwardFacing {
 					outward = append(outward, name)
 				}

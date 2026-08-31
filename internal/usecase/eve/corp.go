@@ -18,36 +18,82 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-var hangarFlags = map[string]int{
-	"CorpSAG1": 1, "CorpSAG2": 2, "CorpSAG3": 3, "CorpSAG4": 4,
-	"CorpSAG5": 5, "CorpSAG6": 6, "CorpSAG7": 7,
+func hangarDivision(flag string) (int, bool) {
+	switch flag {
+	case "CorpSAG1":
+		return 1, true
+	case "CorpSAG2":
+		return 2, true
+	case "CorpSAG3":
+		return 3, true
+	case "CorpSAG4":
+		return 4, true
+	case "CorpSAG5":
+		return 5, true
+	case "CorpSAG6":
+		return 6, true
+	case "CorpSAG7":
+		return 7, true
+	default:
+		return 0, false
+	}
 }
 
-var corpScopes = map[string]string{
-	"assets":     "esi-assets.read_corporation_assets.v1",
-	"blueprints": "esi-corporations.read_blueprints.v1",
-	"wallets":    "esi-wallet.read_corporation_wallets.v1",
-	"jobs":       "esi-industry.read_corporation_jobs.v1",
-	"mining":     "esi-industry.read_corporation_mining.v1",
-	"orders":     "esi-markets.read_corporation_orders.v1",
-	"contracts":  "esi-contracts.read_corporation_contracts.v1",
-	"killmails":  "esi-killmails.read_corporation_killmails.v1",
-	"structures": "esi-corporations.read_structures.v1",
-	"members":    "esi-corporations.read_corporation_membership.v1",
-	"divisions":  "esi-corporations.read_divisions.v1",
+func corpScope(key string) string {
+	switch key {
+	case "assets":
+		return "esi-assets.read_corporation_assets.v1"
+	case "blueprints":
+		return "esi-corporations.read_blueprints.v1"
+	case "wallets":
+		return "esi-wallet.read_corporation_wallets.v1"
+	case "jobs":
+		return "esi-industry.read_corporation_jobs.v1"
+	case "mining":
+		return "esi-industry.read_corporation_mining.v1"
+	case "orders":
+		return "esi-markets.read_corporation_orders.v1"
+	case "contracts":
+		return "esi-contracts.read_corporation_contracts.v1"
+	case "killmails":
+		return "esi-killmails.read_corporation_killmails.v1"
+	case "structures":
+		return "esi-corporations.read_structures.v1"
+	case "members":
+		return "esi-corporations.read_corporation_membership.v1"
+	case "divisions":
+		return "esi-corporations.read_divisions.v1"
+	default:
+		return ""
+	}
 }
 
-var corpRoles = map[string][]string{
-	"assets": {"Director"}, "blueprints": {"Director"},
-	"wallets": {"Accountant", "Junior_Accountant"}, "jobs": {"Factory_Manager"},
-	"orders": {"Accountant", "Trader"}, "killmails": {"Director"},
-	"structures": {"Station_Manager"}, "divisions": {"Director"},
-	"mining_ledger": {"Accountant"}, "mining_extractions": {"Station_Manager"},
+func corpRole(key string) []string {
+	switch key {
+	case "assets", "blueprints", "killmails", "divisions":
+		return []string{"Director"}
+	case "wallets":
+		return []string{"Accountant", "Junior_Accountant"}
+	case "jobs":
+		return []string{"Factory_Manager"}
+	case "orders":
+		return []string{"Accountant", "Trader"}
+	case "structures", "mining_extractions":
+		return []string{"Station_Manager"}
+	case "mining_ledger":
+		return []string{"Accountant"}
+	default:
+		return nil
+	}
 }
 
-var esiRoles = map[string]struct{}{
-	"Director": {}, "Accountant": {}, "Junior_Accountant": {},
-	"Factory_Manager": {}, "Station_Manager": {}, "Trader": {},
+func esiRole(name string) bool {
+	switch name {
+	case "Director", "Accountant", "Junior_Accountant", "Factory_Manager", "Station_Manager", "Trader":
+		return true
+	default:
+		return false
+	}
 }
 
 func registerCorp(s *mcp.Server) {
@@ -115,7 +161,7 @@ func registerCorp(s *mcp.Server) {
 			}
 			out["available_tools"] = availableCorpTools(corp)
 			var missing []string
-			for _, sc := range write.CorpReadScopes {
+			for _, sc := range write.CorpReadScopes() {
 				if !a.HasGranted(corp.Token.Scopes, sc) {
 					missing = append(missing, sc)
 				}
@@ -523,11 +569,11 @@ func registerCorp(s *mcp.Server) {
 			if err := a.RequirePlayerCorp(corp); err != nil {
 				return nil, err
 			}
-			if err := a.RequireGranted(corp.CharacterName(), corp.Token.Scopes, corpScopes["mining"], "the corporation mining ledger"); err != nil {
+			if err := a.RequireGranted(corp.CharacterName(), corp.Token.Scopes, corpScope("mining"), "the corporation mining ledger"); err != nil {
 				return nil, err
 			}
-			canLedger := corp.HasRole(corpRoles["mining_ledger"]...)
-			canExtract := corp.HasRole(corpRoles["mining_extractions"]...)
+			canLedger := corp.HasRole(corpRole("mining_ledger")...)
+			canExtract := corp.HasRole(corpRole("mining_extractions")...)
 			if !canLedger && !canExtract {
 				err := a.RequireCorpRole(corp, []string{"Accountant", "Station_Manager"}, "corporation mining (ledger needs Accountant, extractions need Station_Manager)")
 				if err != nil {
@@ -775,11 +821,11 @@ func openCorp(a *session.Session, character, scopeKey, roleKey, what string) (*c
 	if err := a.RequirePlayerCorp(corp); err != nil {
 		return nil, err
 	}
-	if err := a.RequireGranted(corp.CharacterName(), corp.Token.Scopes, corpScopes[scopeKey], what); err != nil {
+	if err := a.RequireGranted(corp.CharacterName(), corp.Token.Scopes, corpScope(scopeKey), what); err != nil {
 		return nil, err
 	}
 	if roleKey != "" {
-		err := a.RequireCorpRole(corp, corpRoles[roleKey], what)
+		err := a.RequireCorpRole(corp, corpRole(roleKey), what)
 		if err != nil {
 			return nil, err
 		}
@@ -798,9 +844,9 @@ func who(corp *character.Corporation) map[string]any {
 }
 
 func corpCan(corp *character.Corporation, scopeKey, roleKey string) bool {
-	have := slices.Contains(corp.Token.Scopes, corpScopes[scopeKey])
+	have := slices.Contains(corp.Token.Scopes, corpScope(scopeKey))
 
-	return have && corp.HasRole(corpRoles[roleKey]...)
+	return have && corp.HasRole(corpRole(roleKey)...)
 }
 
 func rolesForDisplay(corp *character.Corporation) map[string]any {
@@ -812,7 +858,7 @@ func rolesForDisplay(corp *character.Corporation) map[string]any {
 	}
 	var esi []string
 	for r := range corp.Roles {
-		if _, ok := esiRoles[r]; ok {
+		if esiRole(r) {
 			esi = append(esi, r)
 		}
 	}
@@ -827,7 +873,7 @@ func rolesForDisplay(corp *character.Corporation) map[string]any {
 	addLoc := func(key string, src map[string]struct{}) {
 		var extra []string
 		for r := range src {
-			if _, ok := esiRoles[r]; !ok {
+			if !esiRole(r) {
 				continue
 			}
 			if _, everywhere := corp.Roles[r]; !everywhere {
@@ -865,15 +911,15 @@ func availableCorpTools(corp *character.Corporation) []string {
 		have[s] = struct{}{}
 	}
 	for _, c := range catalog {
-		if _, ok := have[corpScopes[c.scope]]; !ok {
+		if _, ok := have[corpScope(c.scope)]; !ok {
 			continue
 		}
-		if c.role != "" && !corp.HasRole(corpRoles[c.role]...) {
+		if c.role != "" && !corp.HasRole(corpRole(c.role)...) {
 			continue
 		}
 		out = append(out, c.name)
 	}
-	if _, ok := have[corpScopes["mining"]]; ok && (corp.HasRole(corpRoles["mining_ledger"]...) || corp.HasRole(corpRoles["mining_extractions"]...)) {
+	if _, ok := have[corpScope("mining")]; ok && (corp.HasRole(corpRole("mining_ledger")...) || corp.HasRole(corpRole("mining_extractions")...)) {
 		out = append(out, "eve_corp_mining")
 	}
 
@@ -911,7 +957,7 @@ func hangarLabel(flag string, names map[int]string) any {
 	if flag == "" {
 		return nil
 	}
-	if n, ok := hangarFlags[flag]; ok {
+	if n, ok := hangarDivision(flag); ok {
 		if names[n] != "" {
 			return names[n]
 		}

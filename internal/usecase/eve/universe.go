@@ -14,12 +14,25 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-var searchCategories = []string{
-	"agent", "alliance", "character", "constellation", "corporation", "faction",
-	"inventory_type", "region", "solar_system", "station", "structure",
+func searchCategories() []string {
+	return []string{
+		"agent", "alliance", "character", "constellation", "corporation", "faction",
+		"inventory_type", "region", "solar_system", "station", "structure",
+	}
 }
 
-var routePrefs = map[string]string{"shorter": "Shorter", "safer": "Safer", "less_secure": "LessSecure"}
+func routePref(key string) (string, bool) {
+	switch key {
+	case "shorter":
+		return "Shorter", true
+	case "safer":
+		return "Safer", true
+	case "less_secure":
+		return "LessSecure", true
+	default:
+		return "", false
+	}
+}
 
 func registerUniverse(s *mcp.Server) {
 	type searchIn struct {
@@ -48,7 +61,7 @@ func registerUniverse(s *mcp.Server) {
 				}
 			}
 			valid := map[string]struct{}{}
-			for _, c := range searchCategories {
+			for _, c := range searchCategories() {
 				valid[c] = struct{}{}
 			}
 			var invalid []string
@@ -58,7 +71,7 @@ func registerUniverse(s *mcp.Server) {
 				}
 			}
 			if len(invalid) > 0 {
-				return map[string]any{"error": fmt.Sprintf("Unknown categories %v. Valid values: %s", invalid, strings.Join(searchCategories, ", "))}, nil
+				return map[string]any{"error": fmt.Sprintf("Unknown categories %v. Valid values: %s", invalid, strings.Join(searchCategories(), ", "))}, nil
 			}
 			token, err := a.ResolveCharacter(in.Character)
 			if err != nil {
@@ -259,7 +272,7 @@ func registerUniverse(s *mcp.Server) {
 			if prefKey == "" {
 				prefKey = "shorter"
 			}
-			pref, ok := routePrefs[prefKey]
+			pref, ok := routePref(prefKey)
 			if !ok {
 				return map[string]any{"error": fmt.Sprintf("preference must be one of %v", []string{"shorter", "safer", "less_secure"})}, nil
 			}
