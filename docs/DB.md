@@ -8,15 +8,15 @@ Anything not listed here does not exist.
 ## Migrations
 
 Managed by a migration tool (goose, `github.com/pressly/goose/v3`),
-embedded SQL in `internal/adapter/store/sql/`, applied at startup.
-Forward-only. The tool's own bookkeeping table is its business, not
-part of this schema.
+SQL in `internal/adapter/store/sql/`. Forward-only. The tool's own
+bookkeeping table is its business, not part of this schema.
 
-Startup takes a Postgres advisory lock around the migration run. With
-rolling updates several pods start at once (SPEC §1), so the lock is
-what keeps forward-only migrations from racing. A migration must also be
-readable by the pods still serving the previous image; anything that is
-not is split across two deploys.
+Applying them is an operator step or CI/CD, never a path inside the
+running server (RULES.md §14). `Store.Open` connects; it does not
+run SQL. A lock around the apply job (if two applies can race) belongs
+to that job, not to pod startup. A migration must also be readable by
+the pods still serving the previous image; anything that is not is
+split across two deploys.
 
 There are no migrations from earlier layouts (files, the `users`-table
 era) — players re-authenticate once. Concretely: the first goose

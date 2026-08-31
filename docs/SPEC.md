@@ -22,8 +22,9 @@ started, or a tool call from a session another pod created.
 not in memory: one live session per character (partial unique index plus
 the exchange transaction, §3.1), confirm tokens, the EVE token refresh
 (`FOR UPDATE` plus post-lock re-read, §3.2), the mail cap (counted and
-recorded under one lock, §5.4), the audit log, migrations and sweeps
-(advisory locks, DB.md).
+recorded under one lock, §5.4), the audit log, and sweeps
+(advisory locks, DB.md). Schema apply is outside the binary
+(RULES.md §14).
 
 **Per pod, and therefore approximate when N > 1:** the ESI response
 cache, the per-character request allowance and the per-character error
@@ -740,8 +741,8 @@ Dependencies: `modelcontextprotocol/go-sdk`, `golang-jwt/jwt/v5`,
 
 The full normative schema — every column, constraint, index, TTL and
 sweep rule — is **[DB.md](DB.md)**; a schema change lands in the same
-commit as its DB.md change and migration (goose, embedded SQL, applied
-at startup under a Postgres advisory lock).
+commit as its DB.md change and migration (goose SQL, applied by
+CI/CD or by hand — not at process start, RULES.md §14).
 
 Shape in one breath: `characters` (identity = CCP id, soft-deleted) →
 `sessions` (one live per character; carries the sign-in's EVE grant,
@@ -810,9 +811,9 @@ the mail cap counts from (§5.4). It stores no message bodies.
   ignored in favour of the socket address.
 - **Local dev:** any reachable Postgres (e.g. `docker run postgres`),
   `DATABASE_URL` in `./.env`, `./eve-mcp` in the foreground.
-- **Rollout:** migrations are forward-only and run at startup under an
-  advisory lock — with rolling updates several pods start at once, so
-  the lock is load-bearing, not paranoia. A migration must therefore be
+- **Rollout:** migrations are forward-only and run in the deploy
+  pipeline (or by hand) before the new image serves traffic — never
+  inside `Open` (RULES.md §14). A migration must therefore be
   compatible with the pods still serving the previous image; anything
   that is not gets split across two deploys.
 
@@ -876,8 +877,9 @@ Remaining, in dependency order:
    half before doing anything. Every authorization verdict is charged to
    the `sid` that produced it. Small, and the only thing standing between
    items 1–2 and a sign-in that revokes itself on the next pod.
-4. **Schema per DB.md**: migrate the migrator to goose under an advisory
-   lock, with a first migration that creates the target schema outright
+4. **Schema per DB.md**: the migrator becomes goose, applied by CI/CD
+   or by hand (not at boot), with a first migration that creates the
+   target schema outright
    — nothing transforms the `users` era, that database is dropped once by
    hand; soft deletes on entities; drop `users`, `http_cache`, `names`,
    `blobs` and `app_secrets`; add `sessions` and `mutations`; the JWT

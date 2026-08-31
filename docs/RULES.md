@@ -215,3 +215,13 @@ generate. `internal/logtest` is that anti-pattern.
 Keep generated mocks in one package where that is the natural home,
 so tests import fewer packages and `go test` builds less. A real
 Postgres, `httptest` or `synctest` is not a mock.
+
+## 14. The application does not migrate
+
+Schema migrations are an operator step or CI/CD, never a path inside
+the running server. `Open` connects; it does not apply SQL. A pod
+that migrates on boot is a migrator wearing a server binary.
+
+The files still live with the schema they change (DB.md). Applying
+them is `goose`, a Makefile target, a pipeline job, or a pair of
+hands — not `Store.Open`.

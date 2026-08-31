@@ -59,7 +59,7 @@ Status values: `todo` · `done` · `later`.
 | [T09](T09-user-esi-bucket.md) | Per-user ESI token bucket | done | M | T07 | §5.2 |
 | [T10](T10-character-ownership.md) | Alt-add ownership refuse | done | S | T05 T06 | §3.3 |
 | [T11](T11-test-foundation.md) | ESI fixtures and a test database | todo | M | — | §12.0 |
-| [T12](T12-goose-and-hmac-key.md) | goose under an advisory lock; `HMAC_KEY` out of the DB | todo | M | T11 | §2, §12.4 |
+| [T12](T12-goose-and-hmac-key.md) | goose in CI/CD; `HMAC_KEY` out of the DB | todo | M | T11 | §2, §12.4 |
 | [T13](T13-in-memory-caches.md) | In-memory caches; drop the cache tables | todo | M | T12 | §5.1, §12.5 |
 | [T14](T14-character-is-the-user.md) | The character is the user; drop `users` | todo | L | T12 | §3.3, §12.1 |
 | [T15](T15-sessions-own-the-grant.md) | Sessions own the EVE grant; runtime by `sid` | todo | L | T14 | §3.1–3.4, §12.2–3 |
@@ -76,7 +76,8 @@ Status values: `todo` · `done` · `later`.
 | [T26](T26-metrics.md) | Prometheus `/metrics` | later | M | T24 | §11, §12.15 |
 
 Every §12 item maps to exactly one task except **§12.4, the schema**,
-which is deliberately spread: T12 brings goose and the advisory lock,
+which is deliberately spread: T12 brings goose (applied outside the
+binary) and takes `HMAC_KEY` out of the database,
 T13 drops the cache tables, T14 drops `users`, T15 adds `sessions`, T17
 adds `mutations`. A schema change rides with the code that needs it, so
 §12.4 is only finished when T17 is.
@@ -132,7 +133,7 @@ What is still true today and what the remaining tasks change:
 
 | Now | Target | Task |
 |---|---|---|
-| Hand-rolled migrator, JWT key in `app_secrets` | goose under an advisory lock, `HMAC_KEY` env | T12 |
+| Hand-rolled migrator at boot, JWT key in `app_secrets` | goose in CI/CD, `HMAC_KEY` env | T12 |
 | ESI cache, names and prices in Postgres | bounded pod memory, ETag revalidation | T13 |
 | `users` table; a connection can hold several characters | the character **is** the identity, one per connection | T14 |
 | EVE grant on the character row | grant on the session row, one live session per character | T15 |

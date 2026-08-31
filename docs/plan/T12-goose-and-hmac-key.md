@@ -1,31 +1,33 @@
-# T12 — goose under an advisory lock; `HMAC_KEY` out of the database
+# T12 — goose in CI/CD; `HMAC_KEY` out of the database
 
 - Status: `todo`
 - Size: M
 - Depends on: T11
-- SPEC: §2 (`HMAC_KEY`), §12.4; DB.md "Migrations"
+- SPEC: §2 (`HMAC_KEY`), §12.4; DB.md "Migrations"; RULES.md §14
 
 ## Goal
 
-Two startup concerns, both infrastructure, neither touching product
-behaviour:
+Two infrastructure changes, neither touching product behaviour:
 
 1. The hand-rolled `schema_migrations` migrator becomes **goose**
-   (`github.com/pressly/goose/v3`) with embedded SQL, and the whole run
-   is wrapped in a Postgres **advisory lock**. Rolling updates start
-   several pods at once, so the lock is load-bearing, not paranoia.
+   (`github.com/pressly/goose/v3`) with SQL in `store/sql/`. Applying
+   those files is an operator step or CI/CD, never a path inside the
+   running server (RULES.md §14). `Store.Open` connects; it does not
+   run SQL.
 2. The MCP JWT signing key stops living in `app_secrets` and comes from
    the required `HMAC_KEY` env instead. The table goes away.
 
 ## Why this is one Composer session
 
-Both are `cmd` + `adapter/store` changes with a single blast radius:
-startup. Neither changes a table that product code reads, and after this
-task the running server behaves identically except that everybody
-re-authenticates once (a new signing key invalidates old JWTs).
+Both are `cmd` + `adapter/store` + a Makefile/CI hook. Neither changes
+a table that product code reads, and after this task the running server
+behaves identically except that everybody re-authenticates once (a new
+signing key invalidates old JWTs).
 
 ## Do not
 
+- Call `goose.Up` (or the old `migrate`) from `Store.Open`, `main`, or
+  any other process path that serves traffic.
 - Change the schema's *shape* here beyond dropping `app_secrets`. The
   target layout lands in T13 (cache tables out) and T14/T15 (sessions
   in).
@@ -39,8 +41,8 @@ re-authenticates once (a new signing key invalidates old JWTs).
 ## Context
 
 `internal/adapter/store/migrate.go` today creates `schema_migrations`
-and applies `sql/*.sql` in name order inside a transaction, with no
-locking. Migrations are embedded already, which is the part to keep.
+and applies `sql/*.sql` in name order from `Open`. That call is the
+thing this task deletes. The SQL files stay; the apply step moves out.
 
 `GetOrCreateSecret(ctx, name)` in `oauth.go` reads or generates the HMAC
 key from `app_secrets`; `usecase/oauth` consumes it. After this task the
@@ -53,30 +55,30 @@ restart = every client re-authenticates, EVE grants unaffected.
 
 ## Work
 
-1. Add `github.com/pressly/goose/v3`. Keep `sql/` embedded; rename files
-   to goose's convention with `-- +goose Up` sections.
-2. `migrate(ctx)`: take `pg_advisory_lock` on a fixed key, run
-   `goose.Up`, release. Fail the boot on error — a pod that cannot
-   migrate must not serve.
+1. Add `github.com/pressly/goose/v3`. Keep `sql/`; rename files to
+   goose's convention with `-- +goose Up` sections.
+2. Delete `migrate` from `Store.Open`. A Makefile target (and the same
+   command in CI) runs goose against `DATABASE_URL`. A lock around that
+   job belongs to the job, not to the server, if two applies can race.
 3. New migration dropping `app_secrets`.
 4. `HMAC_KEY` becomes required in `cmd/eve-mcp/config.go`, validated for
    length, mapped into `oauth.Options`. Delete `GetOrCreateSecret` and
    its callers.
-5. Migration test (T11 gives the harness): apply from an empty database,
-   assert the expected table set; apply twice, assert idempotence.
-6. Concurrency test or a documented manual check: two processes
-   migrating at once, one waits, neither errors.
+5. Migration test (T11 gives the harness): apply from an empty database
+   via the same command CI will use, assert the expected table set;
+   apply twice, assert idempotence.
 
 ## Files
 
 - Edit: `internal/adapter/store/migrate.go`, `internal/adapter/store/oauth.go`,
-  `internal/adapter/store/sql/*`, `internal/usecase/oauth/oauth.go`,
-  `cmd/eve-mcp/config.go`, `cmd/eve-mcp/main.go`, `go.mod`
+  `internal/adapter/store/sql/*`, `internal/adapter/store/store.go`,
+  `internal/usecase/oauth/oauth.go`, `cmd/eve-mcp/config.go`,
+  `cmd/eve-mcp/main.go`, `Makefile`, `go.mod`
 - Add: one migration file
 
 ## Acceptance
 
-- [ ] goose applies the embedded SQL under an advisory lock
+- [ ] goose applies the SQL from a Makefile/CI command, not from `Open`
 - [ ] Applying twice is a no-op; applying from empty yields the expected
       tables, asserted by a test
 - [ ] `app_secrets` is gone; no code reads a key from the database
@@ -86,7 +88,7 @@ restart = every client re-authenticates, EVE grants unaffected.
 ## Verify
 
 ```bash
-rg -n 'app_secrets|GetOrCreateSecret' --glob '*.go'
+rg -n 'app_secrets|GetOrCreateSecret|func \(s \*Store\) migrate' --glob '*.go'
 go test ./internal/adapter/store -count=1
 HMAC_KEY= ./eve-mcp   # must refuse to start
 ```
