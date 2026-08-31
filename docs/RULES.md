@@ -203,3 +203,15 @@ call is not a query; it is an undeclared one.
 
 A migration file is already a declared query. `$1` is a parameter,
 not concatenation.
+
+## 13. Mocks are generated
+
+A test double for an interface is `mockgen` output
+(`go.uber.org/mock`), driven by `go:generate` — ours or a
+dependency's. A handwritten `Silent`, `memFoo` or stub that
+implements the interface is a mock typed by hand; delete it and
+generate. `internal/logtest` is that anti-pattern.
+
+Keep generated mocks in one package where that is the natural home,
+so tests import fewer packages and `go test` builds less. A real
+Postgres, `httptest` or `synctest` is not a mock.
