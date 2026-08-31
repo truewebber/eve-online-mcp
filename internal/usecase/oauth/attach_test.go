@@ -31,10 +31,11 @@ import (
 )
 
 const (
-	redirect = "http://localhost:1/cb"
-	janeDoe  = "Jane Doe"
-	newRT    = "new-rt"
-	altName  = "Alt"
+	redirect    = "http://localhost:1/cb"
+	janeDoe     = "Jane Doe"
+	newRT       = "new-rt"
+	altName     = "Alt"
+	testHMACKey = "0123456789abcdef0123456789abcdef"
 )
 
 func openDB(t *testing.T) *store.Store {
@@ -93,7 +94,7 @@ func testServer(t *testing.T, db *store.Store) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := Open(Host{Listen: "127.0.0.1:8765"}, runtime, db, logger)
+	s, err := Open(Host{Listen: "127.0.0.1:8765"}, runtime, db, Options{HMACKey: []byte(testHMACKey)}, logger)
 	if err != nil {
 		t.Fatal(err)
 	}

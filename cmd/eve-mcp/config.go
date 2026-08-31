@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -16,11 +17,15 @@ const (
 	version           = "0.3.0"
 	defaultCompatDate = "2026-08-18"
 	dotEnvFile        = ".env"
+	hmacMinBytes      = 32
 )
 
 var (
-	errListen   = errors.New("LISTEN must be host:port")
-	errDatabase = errors.New("DATABASE_URL is required (Postgres DSN; run make postgres)")
+	errListen       = errors.New("LISTEN must be host:port")
+	errDatabase     = errors.New("DATABASE_URL is required (Postgres DSN; run make postgres)")
+	errHMACRequired = errors.New("HMAC_KEY is required (openssl rand -hex 32)")
+	errHMACTooShort = errors.New("HMAC_KEY must decode to at least 32 bytes (openssl rand -hex 32)")
+	errHMACHex      = errors.New("HMAC_KEY must be hex (openssl rand -hex 32)")
 )
 
 // The instance owns exactly one EVE application; users sign in via browser.
@@ -33,10 +38,12 @@ type config struct {
 	InternalListen string `env:"INTERNAL_LISTEN"`
 	PublicURL      string `env:"PUBLIC_URL"`
 	DatabaseURL    string `env:"DATABASE_URL"`
+	HMACKey        string `env:"HMAC_KEY"`
 
 	// Derived, not env.
 	CallbackURL string
 	UserAgent   string
+	hmacKey     []byte
 }
 
 func loadConfig() (config, error) {
@@ -66,10 +73,31 @@ func loadConfig() (config, error) {
 	return c, nil
 }
 
+func decodeHMACKey(raw string) ([]byte, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, errHMACRequired
+	}
+	key, err := hex.DecodeString(raw)
+	if err != nil {
+		return nil, errHMACHex
+	}
+	if len(key) < hmacMinBytes {
+		return nil, errHMACTooShort
+	}
+
+	return key, nil
+}
+
 func (c *config) validate() error {
 	if c.DatabaseURL == "" {
 		return errDatabase
 	}
+	key, err := decodeHMACKey(c.HMACKey)
+	if err != nil {
+		return err
+	}
+	c.hmacKey = key
 	_, port, err := net.SplitHostPort(c.Listen)
 	if err != nil {
 		return fmt.Errorf("%w: %w", errListen, err)

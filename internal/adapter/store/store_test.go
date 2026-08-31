@@ -64,29 +64,6 @@ func TestCreateUserAndGet(t *testing.T) {
 	}
 }
 
-func TestGetOrCreateSecretStable(t *testing.T) {
-	t.Parallel()
-	s := openTest(t)
-	ctx := context.Background()
-	a, err := s.GetOrCreateSecret(ctx, "mcp_jwt_hmac")
-	if err != nil || len(a) != SecretBytes {
-		t.Fatalf("a %v %v", a, err)
-	}
-	b, err := s.GetOrCreateSecret(ctx, "mcp_jwt_hmac")
-	if err != nil || string(a) != string(b) {
-		t.Fatalf("unstable in same Open")
-	}
-	s2, err := Open(ctx, os.Getenv("DATABASE_URL"), mocks.QuietLogger(gomock.NewController(t)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(s2.Close)
-	c, err := s2.GetOrCreateSecret(ctx, "mcp_jwt_hmac")
-	if err != nil || string(a) != string(c) {
-		t.Fatalf("unstable across Open")
-	}
-}
-
 func TestMailLog(t *testing.T) {
 	t.Parallel()
 	s := openTest(t)

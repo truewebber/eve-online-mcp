@@ -12,9 +12,18 @@ import (
 	"time"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
 	"github.com/truewebber/eve-online-mcp/internal/domain/authcode"
 	"github.com/truewebber/eve-online-mcp/internal/domain/loginstate"
 )
+
+func TestOpenHMACTooShort(t *testing.T) {
+	t.Parallel()
+	_, err := Open(Host{}, nil, &store.Store{}, Options{HMACKey: make([]byte, 16)}, nil)
+	if !errors.Is(err, ErrHMACTooShort) {
+		t.Fatalf("got %v", err)
+	}
+}
 
 func TestHMACStableAcrossOpen(t *testing.T) {
 	t.Parallel()

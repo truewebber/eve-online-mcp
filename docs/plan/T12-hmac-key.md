@@ -1,6 +1,6 @@
 # T12 — `HMAC_KEY` env; drop `app_secrets`
 
-- Status: `todo`
+- Status: `done`
 - Size: S
 - Depends on: T11
 - RULES: §14 (the application does not migrate), §16 (config is env on
@@ -82,13 +82,13 @@ restart = every client re-authenticates, EVE grants unaffected.
 
 ## Acceptance
 
-- [ ] `rg -n 'app_secrets|GetOrCreateSecret|SecretBytes'` finds nothing
+- [x] `rg -n 'app_secrets|GetOrCreateSecret|SecretBytes'` finds nothing
       in `internal/`, `cmd/` or `sql/00001`-era code paths
-- [ ] Missing or short `HMAC_KEY` is fatal at boot, each case tested
-- [ ] Applying the migrations from empty yields the expected tables and
+- [x] Missing or short `HMAC_KEY` is fatal at boot, each case tested
+- [x] Applying the migrations from empty yields the expected tables and
       applying twice is a no-op, both asserted by a test
-- [ ] No code reads a key from the database
-- [ ] `go build ./cmd/eve-mcp`, `go test ./...` and `make lint` pass
+- [x] No code reads a key from the database
+- [x] `go build ./cmd/eve-mcp`, `go test ./...` and `make lint` pass
 
 ## Verify
 

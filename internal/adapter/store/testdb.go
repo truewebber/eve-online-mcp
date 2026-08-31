@@ -34,11 +34,13 @@ func (s *Store) HoldTestLock(ctx context.Context) (func(), error) {
 	}, nil
 }
 
+const resetTablesSQL = `
+	TRUNCATE mail_log, confirm_tokens, auth_codes, login_states,
+	         oauth_clients, characters, users CASCADE`
+
 // Integration tests only.
 func (s *Store) ResetTables(ctx context.Context) error {
-	_, err := s.pool.Exec(ctx, `
-		TRUNCATE mail_log, confirm_tokens, auth_codes, login_states,
-		         oauth_clients, app_secrets, characters, users CASCADE`)
+	_, err := s.pool.Exec(ctx, resetTablesSQL)
 
 	return wrap("ResetTables", err)
 }

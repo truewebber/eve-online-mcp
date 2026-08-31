@@ -39,7 +39,6 @@ const (
 	refreshTTL    = 30 * 24 * time.Hour
 	codeTTL       = 2 * time.Minute
 	scopeEve      = "eve"
-	jwtSecretName = "mcp_jwt_hmac" //nolint:gosec // app_secrets row name, not a credential
 	hmacMinBytes  = 32
 	clientIDBytes = 16
 	authCodeBytes = 24
@@ -60,7 +59,7 @@ const (
 var (
 	ErrUnknownLogin     = errors.New("unknown or expired login state")
 	ErrStoreRequired    = errors.New("oauth: postgres store is required")
-	ErrHMACTooShort     = errors.New("oauth: mcp_jwt_hmac is too short")
+	ErrHMACTooShort     = errors.New("oauth: HMAC key is too short")
 	ErrUnknownLoginKind = errors.New("unknown login kind")
 	errAltMissingUser   = errors.New("alt login is missing user_id")
 	errBadAlg           = errors.New("alg")
@@ -113,6 +112,10 @@ func (h Host) URL(elem ...string) string {
 	return u.JoinPath(elem...).String()
 }
 
+type Options struct {
+	HMACKey []byte
+}
+
 type Server struct {
 	pub      Host
 	db       *store.Store
@@ -126,18 +129,14 @@ type Server struct {
 	logger   log.Logger
 }
 
-func Open(pub Host, runtime *session.Session, db *store.Store, logger log.Logger) (*Server, error) {
+func Open(pub Host, runtime *session.Session, db *store.Store, opts Options, logger log.Logger) (*Server, error) {
 	if pub.MCPPath == "" {
 		pub.MCPPath = "/mcp"
 	}
 	if db == nil {
 		return nil, ErrStoreRequired
 	}
-	key, err := db.GetOrCreateSecret(context.Background(), jwtSecretName)
-	if err != nil {
-		return nil, wrap("Open", err)
-	}
-	if len(key) < hmacMinBytes {
+	if len(opts.HMACKey) < hmacMinBytes {
 		return nil, ErrHMACTooShort
 	}
 
@@ -149,7 +148,7 @@ func Open(pub Host, runtime *session.Session, db *store.Store, logger log.Logger
 		logins:  runtime.Logins,
 		codes:   runtime.Codes,
 		login:   runtime.Opts.SSO.ForUser("", nil),
-		hmacKey: key,
+		hmacKey: opts.HMACKey,
 		logger:  logger,
 	}, nil
 }

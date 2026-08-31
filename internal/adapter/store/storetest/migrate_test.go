@@ -54,7 +54,6 @@ func TestGooseAppliesFromEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"app_secrets",
 		"auth_codes",
 		"characters",
 		"confirm_tokens",

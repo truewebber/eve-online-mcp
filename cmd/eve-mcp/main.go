@@ -95,7 +95,7 @@ func start(logger log.Logger) error {
 		MCPPath:     "/mcp",
 		CallbackURL: cfg.CallbackURL,
 	}
-	oauthServer, err := oauth.Open(host, runtime, db, logger)
+	oauthServer, err := oauth.Open(host, runtime, db, oauth.Options{HMACKey: cfg.hmacKey}, logger)
 	if err != nil {
 		return fmt.Errorf("open oauth: %w", err)
 	}
@@ -120,7 +120,8 @@ Usage:
   eve-mcp                  run the server (config from env / ./.env)
 
 Required env: CLIENT_ID — the EVE application from developers.eveonline.com.
-DATABASE_URL — Postgres DSN (make postgres). See .env.example.
+DATABASE_URL — Postgres DSN (make postgres). HMAC_KEY — MCP JWT signing
+key, min 32 bytes (openssl rand -hex 32). See .env.example.
 See .env.example for the full list. Clients connect to http://127.0.0.1:8765/mcp
 and sign in with their EVE account in the browser.
 `
