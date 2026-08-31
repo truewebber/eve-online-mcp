@@ -275,9 +275,6 @@ func (s *Server) ServeAuthorize(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, prep.URL, http.StatusFound)
 }
 
-// CompleteCallback finishes an EVE SSO callback using the login_states
-// row: MCP authorize issues a client redirect; alt login attaches the
-// character to the user recorded on the row.
 type Callback struct {
 	Redirect string
 	Token    *sso.CharacterToken

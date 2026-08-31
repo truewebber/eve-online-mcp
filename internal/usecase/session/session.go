@@ -121,9 +121,6 @@ func (s *Session) ForUser(userID string) *Session {
 	}
 }
 
-// StartAltLogin begins an EVE SSO handshake for an extra character on
-// this user. The PKCE verifier is stored in login_states with kind=alt
-// so any replica can finish the callback.
 type AltLogin struct {
 	URL   string
 	State string
