@@ -223,8 +223,14 @@ func summarizeTransactions(ctx context.Context, a *session.Session, cid int, dat
 		typeSet[j.Int(t["type_id"])] = struct{}{}
 		placeSet[j.Int(t["location_id"])] = struct{}{}
 	}
-	typeNames, _ := a.Resolver.Names(ctx, setToList(typeSet), nil)
-	placeNames, _ := a.Resolver.Names(ctx, setToList(placeSet), &cid)
+	typeNames, err := a.Resolver.Names(ctx, setToList(typeSet), nil)
+	if err != nil {
+		return nil, err
+	}
+	placeNames, err := a.Resolver.Names(ctx, setToList(placeSet), &cid)
+	if err != nil {
+		return nil, err
+	}
 	var bought, sold float64
 	for _, t := range entries {
 		total := j.Float(t["unit_price"]) * j.Float(t["quantity"])

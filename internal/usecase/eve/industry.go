@@ -58,7 +58,7 @@ func eveIndustryJobs(ctx context.Context, a *session.Session, in industryJobsIn)
 		return nil, err
 	}
 
-	return industryJobsResult(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, 20), concise(in.ResponseFormat), false), nil
+	return industryJobsResult(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, 20), concise(in.ResponseFormat), false)
 }
 
 func eveIndustryPlanets(ctx context.Context, a *session.Session, in industryPlanetsIn) (any, error) {
@@ -83,7 +83,10 @@ func eveIndustryPlanets(ctx context.Context, a *session.Session, in industryPlan
 		idSet[j.Int(c["planet_id"])] = struct{}{}
 		idSet[j.Int(c["solar_system_id"])] = struct{}{}
 	}
-	names, _ := a.Resolver.Names(ctx, setToList(idSet), nil)
+	names, err := a.Resolver.Names(ctx, setToList(idSet), nil)
+	if err != nil {
+		return nil, err
+	}
 	var rows []map[string]any
 	for _, c := range colonies {
 		rows = append(rows, map[string]any{
@@ -120,8 +123,14 @@ func eveIndustryMining(ctx context.Context, a *session.Session, in industryMinin
 		return map[string]any{"character": token.CharacterName, "ores": []any{}, "note": "Nothing mined recently."}, nil
 	}
 	totals, bySystem := sumMining(entries)
-	names, _ := a.Resolver.Names(ctx, append(keys(totals), keys(bySystem)...), nil)
-	prices, _ := a.Resolver.ReferencePrices(ctx)
+	names, err := a.Resolver.Names(ctx, append(keys(totals), keys(bySystem)...), nil)
+	if err != nil {
+		return nil, err
+	}
+	prices, err := a.Resolver.ReferencePrices(ctx)
+	if err != nil {
+		return nil, err
+	}
 	rows, grand := miningOreRows(totals, names, prices)
 	visible, meta := page(rows, limitOr(in.Limit, 15), "")
 
@@ -174,13 +183,13 @@ func topMiningSystems(bySystem map[int]int, names map[int]string, n int) []map[s
 	return top
 }
 
-func industryJobsResult(ctx context.Context, a *session.Session, character string, cid int, data any, stale string, limit int, conciseMode, withInstaller bool) map[string]any {
+func industryJobsResult(ctx context.Context, a *session.Session, character string, cid int, data any, stale string, limit int, conciseMode, withInstaller bool) (map[string]any, error) {
 	jobs := j.Maps(data)
 	if len(jobs) == 0 {
 		return map[string]any{
 			"character": character, "jobs": []any{},
 			"note": "No industry jobs. Pass include_completed=true to see finished ones.",
-		}
+		}, nil
 	}
 	idSet := map[int]struct{}{}
 	placeSet := map[int]struct{}{}
@@ -201,8 +210,14 @@ func industryJobsResult(ctx context.Context, a *session.Session, character strin
 			people[j.Int(job["installer_id"])] = struct{}{}
 		}
 	}
-	names, _ := a.Resolver.Names(ctx, append(setToList(idSet), setToList(people)...), nil)
-	places, _ := a.Resolver.Names(ctx, setToList(placeSet), &cid)
+	names, err := a.Resolver.Names(ctx, append(setToList(idSet), setToList(people)...), nil)
+	if err != nil {
+		return nil, err
+	}
+	places, err := a.Resolver.Names(ctx, setToList(placeSet), &cid)
+	if err != nil {
+		return nil, err
+	}
 	now := time.Now().UTC()
 	var rows []map[string]any
 	for _, job := range jobs {
@@ -252,7 +267,7 @@ func industryJobsResult(ctx context.Context, a *session.Session, character strin
 	return merge(map[string]any{
 		"character": character, "active_jobs": active, "ready_to_deliver": readyN,
 		"data_age": stale, "jobs": project(visible, keep, conciseMode),
-	}, meta)
+	}, meta), nil
 }
 
 func decorateColonyDetails(ctx context.Context, a *session.Session, cid int, colonies, rows []map[string]any) {
@@ -271,7 +286,11 @@ func decorateColonyDetail(ctx context.Context, a *session.Session, cid int, colo
 	if expiry := colonyExtractorExpiry(pins, now); expiry != "" {
 		row["extractor_expires_in"] = expiry
 	}
-	if stored := colonyStored(ctx, a, pins); len(stored) > 0 {
+	stored, err := colonyStored(ctx, a, pins)
+	if err != nil {
+		return
+	}
+	if len(stored) > 0 {
 		row["stored"] = stored
 	}
 }
@@ -297,7 +316,7 @@ func colonyExtractorExpiry(pins []map[string]any, now time.Time) string {
 	return humanDelta(soonest.Sub(now))
 }
 
-func colonyStored(ctx context.Context, a *session.Session, pins []map[string]any) map[string]int {
+func colonyStored(ctx context.Context, a *session.Session, pins []map[string]any) (map[string]int, error) {
 	stored := map[int]int{}
 	for _, p := range pins {
 		for _, content := range j.Maps(p["contents"]) {
@@ -305,9 +324,12 @@ func colonyStored(ctx context.Context, a *session.Session, pins []map[string]any
 		}
 	}
 	if len(stored) == 0 {
-		return nil
+		return nil, nil
 	}
-	pn, _ := a.Resolver.Names(ctx, keys(stored), nil)
+	pn, err := a.Resolver.Names(ctx, keys(stored), nil)
+	if err != nil {
+		return nil, err
+	}
 	type kv struct {
 		n string
 		q int
@@ -325,7 +347,7 @@ func colonyStored(ctx context.Context, a *session.Session, pins []map[string]any
 		out[x.n] = x.q
 	}
 
-	return out
+	return out, nil
 }
 
 func activityName(id int) string {

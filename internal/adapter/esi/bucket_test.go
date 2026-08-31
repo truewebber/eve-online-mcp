@@ -76,7 +76,7 @@ func TestFreshCacheHitDoesNotTakeToken(t *testing.T) {
 	now := time.Now()
 	c.bucket.now = func() time.Time { return now }
 	c.testCache = &memCache{m: map[string]*store.CachedResponse{
-		c.cacheKey("/status", nil, map[string]any{}): {
+		mustCacheKey(t, c, "/status", nil, map[string]any{}): {
 			Body:      json.RawMessage(`{"players":1}`),
 			ExpiresAt: time.Now().Add(time.Hour),
 			StoredAt:  time.Now(),
@@ -101,7 +101,9 @@ func TestNetworkGetTakesToken(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":true}`))
+		if _, err := w.Write([]byte(`{"ok":true}`)); err != nil {
+			t.Fatal(err)
+		}
 	}))
 	t.Cleanup(srv.Close)
 	c := New(Options{BaseURL: srv.URL, CompatDate: "2026-08-18"}, srv.Client(), nil, nil)
@@ -120,7 +122,7 @@ func TestNetworkGetTakesToken(t *testing.T) {
 		}
 	}
 	_, err := c.Get(t.Context(), "/status", nil, nil, nil)
-	if _, ok := errors.AsType[UserLimitedError](err); !ok {
+	if !errors.As(err, new(UserLimitedError)) {
 		t.Fatalf("empty bucket Get: %v", err)
 	}
 }
@@ -138,7 +140,7 @@ func TestNotModifiedRefundsToken(t *testing.T) {
 	now := time.Now()
 	c.bucket.now = func() time.Time { return now }
 	c.testCache = &memCache{m: map[string]*store.CachedResponse{
-		c.cacheKey("/status", nil, map[string]any{}): {
+		mustCacheKey(t, c, "/status", nil, map[string]any{}): {
 			Body:      json.RawMessage(`{"players":1}`),
 			ETag:      `"abc"`,
 			ExpiresAt: time.Now().Add(-time.Minute),
@@ -194,4 +196,14 @@ func (m *memCache) CacheTouch(_ context.Context, key string, expiresAt time.Time
 	}
 
 	return nil
+}
+
+func mustCacheKey(t *testing.T, c *Client, path string, characterID *int, params map[string]any) string {
+	t.Helper()
+	key, err := c.cacheKey(path, characterID, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return key
 }

@@ -433,8 +433,14 @@ func jsonEqual(a, b []byte) bool {
 	if json.Unmarshal(a, &x) != nil || json.Unmarshal(b, &y) != nil {
 		return false
 	}
-	aj, _ := json.Marshal(x)
-	bj, _ := json.Marshal(y)
+	aj, err := json.Marshal(x)
+	if err != nil {
+		return false
+	}
+	bj, err := json.Marshal(y)
+	if err != nil {
+		return false
+	}
 
 	return string(aj) == string(bj)
 }

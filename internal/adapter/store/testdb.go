@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 )
 
@@ -27,7 +28,9 @@ func (s *Store) HoldTestLock(ctx context.Context) (func(), error) {
 
 	return func() {
 		once.Do(func() {
-			_, _ = conn.Exec(unlockCtx, `SELECT pg_advisory_unlock($1)`, testAdvisoryKey)
+			if _, err := conn.Exec(unlockCtx, `SELECT pg_advisory_unlock($1)`, testAdvisoryKey); err != nil {
+				log.Printf("store: test lock unlock: %v", err)
+			}
 			conn.Release()
 		})
 	}, nil

@@ -176,7 +176,10 @@ func applyOverviewPublic(ctx context.Context, a *session.Session, public overvie
 	}
 	info := j.Map(public.r.Data)
 	ids := idsFrom(info["corporation_id"], info["alliance_id"])
-	n, _ := a.Resolver.Names(ctx, ids, nil)
+	n, err := a.Resolver.Names(ctx, ids, nil)
+	if err != nil {
+		return
+	}
 	out["corporation"] = n[j.Int(info["corporation_id"])]
 	if j.Int(info["alliance_id"]) != 0 {
 		out["alliance"] = n[j.Int(info["alliance_id"])]
@@ -208,7 +211,10 @@ func applyOverviewLocation(ctx context.Context, a *session.Session, cid int, loc
 	}
 	loc := j.Map(location.r.Data)
 	placeIDs := idsFrom(loc["solar_system_id"], loc["station_id"], loc["structure_id"])
-	n, _ := a.Resolver.Names(ctx, placeIDs, &cid)
+	n, err := a.Resolver.Names(ctx, placeIDs, &cid)
+	if err != nil {
+		return
+	}
 	out["solar_system"] = n[j.Int(loc["solar_system_id"])]
 	docked := j.Int(loc["station_id"])
 	if docked == 0 {
@@ -227,7 +233,10 @@ func applyOverviewShip(ctx context.Context, a *session.Session, ship overviewBox
 		return
 	}
 	sh := j.Map(ship.r.Data)
-	name, _ := a.Resolver.Name(ctx, j.Int(sh["ship_type_id"]), nil)
+	name, err := a.Resolver.Name(ctx, j.Int(sh["ship_type_id"]), nil)
+	if err != nil {
+		return
+	}
 	out["ship_type"] = name
 	if sn := j.Str(sh["ship_name"]); sn != "" && sn != name {
 		out["ship_name"] = sn
@@ -250,7 +259,10 @@ func applyOverviewQueue(ctx context.Context, a *session.Session, queue overviewB
 		return
 	}
 	first := entries[0]
-	skill, _ := a.Resolver.Name(ctx, j.Int(first["skill_id"]), nil)
+	skill, err := a.Resolver.Name(ctx, j.Int(first["skill_id"]), nil)
+	if err != nil {
+		return
+	}
 	out["training_now"] = skill + " " + roman(j.Int(first["finished_level"]))
 	out["training_finishes"] = first["finish_date"]
 	out["queue_length"] = len(entries)

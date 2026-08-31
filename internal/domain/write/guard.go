@@ -66,12 +66,15 @@ func (g *Guard) Authorize(ctx context.Context, tool, capability string, args map
 		return Decision{}, err
 	}
 	if capability == "mail_send" {
-		err := g.checkMailCap(ctx)
+		err = g.checkMailCap(ctx)
 		if err != nil {
 			return Decision{}, err
 		}
 	}
-	digest := digestArgs(args)
+	digest, err := digestArgs(args)
+	if err != nil {
+		return Decision{}, err
+	}
 	if confirmToken != "" {
 		err := g.consumeConfirm(ctx, tool, digest, confirmToken)
 		if err != nil {
@@ -80,7 +83,10 @@ func (g *Guard) Authorize(ctx context.Context, tool, capability string, args map
 
 		return Decision{}, nil
 	}
-	token := randomToken()
+	token, err := randomToken()
+	if err != nil {
+		return Decision{}, err
+	}
 	if g.persist != nil {
 		err := g.persist.PutConfirm(ctx, Confirm{
 			Token: token, UserID: g.userID, Tool: tool,
@@ -165,7 +171,9 @@ func (g *Guard) consumeConfirm(ctx context.Context, tool, digest, confirmToken s
 		return BlockedError{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
 	}
 	if time.Since(pending.CreatedAt) > ConfirmTTL {
-		_ = g.persist.DeleteConfirm(ctx, confirmToken)
+		if err := g.persist.DeleteConfirm(ctx, confirmToken); err != nil {
+			return err
+		}
 
 		return BlockedError{Msg: "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."}
 	}
@@ -173,25 +181,34 @@ func (g *Guard) consumeConfirm(ctx context.Context, tool, digest, confirmToken s
 		return BlockedError{Msg: fmt.Sprintf("confirm_token was issued for %q, not %q.", pending.Tool, tool)}
 	}
 	if pending.ArgsDigest != digest {
-		_ = g.persist.DeleteConfirm(ctx, confirmToken)
+		if err := g.persist.DeleteConfirm(ctx, confirmToken); err != nil {
+			return err
+		}
 
 		return BlockedError{Msg: "The arguments changed since the preview was generated, so the token was discarded. Request a new preview and confirm that one."}
 	}
-	_ = g.persist.DeleteConfirm(ctx, confirmToken)
+	if err := g.persist.DeleteConfirm(ctx, confirmToken); err != nil {
+		return err
+	}
 
 	return nil
 }
 
-func digestArgs(payload any) string {
-	raw, _ := json.Marshal(payload)
+func digestArgs(payload any) (string, error) {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
 	sum := sha256.Sum256(raw)
 
-	return hex.EncodeToString(sum[:])[:16]
+	return hex.EncodeToString(sum[:])[:16], nil
 }
 
-func randomToken() string {
+func randomToken() (string, error) {
 	var b [9]byte
-	_, _ = rand.Read(b[:])
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
 
-	return strings.TrimRight(hex.EncodeToString(b[:]), "=")
+	return strings.TrimRight(hex.EncodeToString(b[:]), "="), nil
 }

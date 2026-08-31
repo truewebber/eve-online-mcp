@@ -31,14 +31,17 @@ func TestAuthorizePreviewAndConfirm(t *testing.T) {
 	if out.Required["status"] != "confirmation_required" || out.Required["will_do"] == nil || out.Required["confirm_token"] == "" {
 		t.Fatalf("preview %+v", out)
 	}
-	token, _ := out.Required["confirm_token"].(string)
+	token, ok := out.Required["confirm_token"].(string)
+	if !ok || token == "" {
+		t.Fatalf("preview %+v", out)
+	}
 
 	done, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, preview, token, scopes)
 	if err != nil || done.Required != nil {
 		t.Fatalf("confirm %v %v", done, err)
 	}
 	_, err = g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, preview, token, scopes)
-	if _, ok := errors.AsType[BlockedError](err); !ok {
+	if !errors.As(err, new(BlockedError)) {
 		t.Fatalf("replay want BlockedError, got %v", err)
 	}
 }
@@ -54,7 +57,10 @@ func TestConfirmToolMismatchKeepsToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, _ := out.Required["confirm_token"].(string)
+	token, ok := out.Required["confirm_token"].(string)
+	if !ok || token == "" {
+		t.Fatalf("preview %+v", out)
+	}
 	_, err = g.Authorize(ctx, "eve_mail_send", "mail_send", args, nil, token, scopes)
 	var blocked BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "eve_ui_set_waypoint") {
@@ -75,7 +81,10 @@ func TestConfirmDigestMismatchDiscards(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, _ := out.Required["confirm_token"].(string)
+	token, ok := out.Required["confirm_token"].(string)
+	if !ok || token == "" {
+		t.Fatalf("preview %+v", out)
+	}
 	_, err = g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", map[string]any{"d": "Amarr"}, nil, token, scopes)
 	var blocked BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "arguments changed") {
@@ -92,13 +101,17 @@ func TestConfirmExpiry(t *testing.T) {
 	ctx := context.Background()
 	g, mem := testGuard(t)
 	args := map[string]any{"d": "Jita"}
+	digest, err := digestArgs(args)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := mem.PutConfirm(ctx, Confirm{
 		Token: "stale", UserID: "user-1", Tool: "eve_ui_set_waypoint",
-		ArgsDigest: digestArgs(args), CreatedAt: time.Now().Add(-10 * time.Minute),
+		ArgsDigest: digest, CreatedAt: time.Now().Add(-10 * time.Minute),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	_, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, "stale", Capabilities()["waypoint"].Scopes)
+	_, err = g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, "stale", Capabilities()["waypoint"].Scopes)
 	var blocked BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "expired") {
 		t.Fatalf("expiry %v", err)
@@ -149,7 +162,10 @@ func TestStatusHasNoAuditOrBudget(t *testing.T) {
 	if st["mail_cap_per_hour"] != MailCap {
 		t.Fatalf("mail cap %+v", st["mail_cap_per_hour"])
 	}
-	caps, _ := st["capabilities"].([]string)
+	caps, ok := st["capabilities"].([]string)
+	if !ok {
+		t.Fatalf("capabilities %+v", st["capabilities"])
+	}
 	if len(caps) != len(Capabilities()) {
 		t.Fatalf("capabilities %v", caps)
 	}

@@ -316,15 +316,18 @@ func (c *Client) cache() httpCache {
 	return nil
 }
 
-func (c *Client) cacheKey(path string, characterID *int, params map[string]any) string {
+func (c *Client) cacheKey(path string, characterID *int, params map[string]any) (string, error) {
 	var cid any
 	if characterID != nil {
 		cid = *characterID
 	}
-	canonical, _ := json.Marshal(map[string]any{"p": path, "c": cid, "q": normalise(params), "d": c.opts.CompatDate})
+	canonical, err := json.Marshal(map[string]any{"p": path, "c": cid, "q": normalise(params), "d": c.opts.CompatDate})
+	if err != nil {
+		return "", err
+	}
 	sum := sha256.Sum256(canonical)
 
-	return hex.EncodeToString(sum[:])
+	return hex.EncodeToString(sum[:]), nil
 }
 
 func (c *Client) headers(ctx context.Context, characterID *int) (http.Header, error) {
@@ -344,7 +347,10 @@ func (c *Client) headers(ctx context.Context, characterID *int) (http.Header, er
 }
 
 func (c *Client) cachedGet(ctx context.Context, path string, characterID *int, params map[string]any, cacheTTL *float64) (Result, error) {
-	key := c.cacheKey(path, characterID, params)
+	key, err := c.cacheKey(path, characterID, params)
+	if err != nil {
+		return Result{}, err
+	}
 	var cached *store.CachedResponse
 	if cache := c.cache(); cache != nil {
 		var err error
@@ -368,13 +374,18 @@ func (c *Client) cachedGet(ctx context.Context, path string, characterID *int, p
 		return Result{}, err
 	}
 	defer resp.Body.Close()
-	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	if err != nil {
+		return Result{}, err
+	}
 
 	if resp.StatusCode == http.StatusNotModified && cached != nil {
 		c.bucket.refund()
 		expiresAt := expiresAt(resp, cacheTTL)
 		if cache := c.cache(); cache != nil {
-			_ = cache.CacheTouch(ctx, key, unixTime(expiresAt))
+			if err := cache.CacheTouch(ctx, key, unixTime(expiresAt)); err != nil {
+				log.Printf("cache touch %s: %v", key, err)
+			}
 		}
 
 		return Result{Data: cached.Data(), FromCache: true, AgeSeconds: 0, ExpiresAt: expiresAt, Pages: cached.Pages}, nil
@@ -396,9 +407,11 @@ func (c *Client) cachedGet(ctx context.Context, path string, characterID *int, p
 		return Result{}, err
 	}
 	if cache := c.cache(); cache != nil {
-		_ = cache.CachePut(ctx, key, store.CachedResponse{
+		if err := cache.CachePut(ctx, key, store.CachedResponse{
 			Body: raw, ETag: resp.Header.Get("ETag"), ExpiresAt: unixTime(expires), Pages: pages,
-		})
+		}); err != nil {
+			log.Printf("cache put %s: %v", key, err)
+		}
 	}
 
 	return Result{Data: decoded, FromCache: false, AgeSeconds: 0, ExpiresAt: expires, Pages: pages}, nil
@@ -420,7 +433,10 @@ func (c *Client) write(ctx context.Context, method, path string, characterID *in
 		return nil, err
 	}
 	defer resp.Body.Close()
-	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	if err != nil {
+		return nil, err
+	}
 	if resp.StatusCode >= 400 {
 		return nil, httpError(resp.StatusCode, bodyBytes, path)
 	}
@@ -472,27 +488,37 @@ func (c *Client) request(ctx context.Context, method, path string, params map[st
 		if resp.StatusCode == http.StatusTooManyRequests && attempt < 1 {
 			wait := min(retryAfter(resp), 2*time.Second)
 			log.Printf("%s throttled (%d); one short retry after %s", path, resp.StatusCode, wait)
-			io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
+			if err := discardBody(resp); err != nil {
+				return nil, err
+			}
 			time.Sleep(wait)
 
 			return c.request(ctx, method, path, params, headers, jsonBody, attempt+1)
 		}
 		err := limitError(resp, path)
-		io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
+		if discErr := discardBody(resp); discErr != nil {
+			return nil, discErr
+		}
 
 		return nil, err
 	}
 	if (resp.StatusCode == http.StatusInternalServerError || resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusGatewayTimeout) && attempt < 2 && method == http.MethodGet {
-		io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
+		if err := discardBody(resp); err != nil {
+			return nil, err
+		}
 		time.Sleep(backoff(attempt))
 
 		return c.request(ctx, method, path, params, headers, jsonBody, attempt+1)
 	}
 
 	return resp, nil
+}
+
+func discardBody(resp *http.Response) error {
+	_, err := io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+
+	return err
 }
 
 func (c *Client) noteErrorHeaders(resp *http.Response) {
@@ -763,11 +789,13 @@ func httpError(status int, body []byte, path string) Error {
 		}
 	}
 	if detail == "" && decoded != nil {
-		raw, _ := json.Marshal(decoded)
-		if len(raw) > 300 {
-			raw = raw[:300]
+		raw, err := json.Marshal(decoded)
+		if err == nil {
+			if len(raw) > 300 {
+				raw = raw[:300]
+			}
+			detail = string(raw)
 		}
-		detail = string(raw)
 	}
 	if detail == "" {
 		if len(body) > 300 {

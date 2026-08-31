@@ -170,7 +170,9 @@ func (s *Server) ProtectedResourceHandler() http.Handler {
 func (s *Server) ServeASMeta(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(s.AuthServerMeta())
+	if err := json.NewEncoder(w).Encode(s.AuthServerMeta()); err != nil {
+		log.Printf("oauth: encode AS metadata: %v", err)
+	}
 }
 
 func (s *Server) ServeRegister(w http.ResponseWriter, r *http.Request) {
@@ -215,14 +217,16 @@ func (s *Server) ServeRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(map[string]any{
+	if err := json.NewEncoder(w).Encode(map[string]any{
 		"client_id":                  id,
 		"redirect_uris":              allowed,
 		"grant_types":                []string{"authorization_code", "refresh_token"},
 		"response_types":             []string{"code"},
 		"token_endpoint_auth_method": "none",
 		"client_name":                req.ClientName,
-	})
+	}); err != nil {
+		log.Printf("oauth: encode client registration: %v", err)
+	}
 }
 
 // ServeAuthorize validates the MCP client and immediately redirects the
@@ -341,7 +345,9 @@ func (s *Server) VerifyAccess(_ context.Context, token string, _ *http.Request) 
 // SessionFor returns the cached per-user session, creating it on first use.
 func (s *Server) SessionFor(userID string) *session.Session {
 	if v, ok := s.sessions.Load(userID); ok {
-		return v.(*session.Session)
+		if sess, ok := v.(*session.Session); ok {
+			return sess
+		}
 	}
 	sess := s.runtime.ForUser(userID)
 	s.sessions.Store(userID, sess)
@@ -508,13 +514,15 @@ func (s *Server) writeTokens(w http.ResponseWriter, userID string) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	_ = json.NewEncoder(w).Encode(map[string]any{
+	if err := json.NewEncoder(w).Encode(map[string]any{
 		"access_token":  access,
 		"refresh_token": refresh,
 		"token_type":    "Bearer",
 		"expires_in":    int(accessTTL.Seconds()),
 		"scope":         scopeEve,
-	})
+	}); err != nil {
+		log.Printf("oauth: encode token response: %v", err)
+	}
 }
 
 func (s *Server) issueAccess(userID string) (string, error) {
@@ -555,12 +563,15 @@ func (s *Server) parseRefresh(raw string) (string, error) {
 	if err != nil || !tok.Valid {
 		return "", errInvalidToken
 	}
-	claims, _ := tok.Claims.(jwt.MapClaims)
+	claims, ok := tok.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", errInvalidToken
+	}
 	if claims["typ"] != "refresh" {
 		return "", errNotRefresh
 	}
-	sub, _ := claims["sub"].(string)
-	if sub == "" {
+	sub, ok := claims["sub"].(string)
+	if !ok || sub == "" {
 		return "", errNoSub
 	}
 
@@ -578,15 +589,21 @@ func (s *Server) verifyAccess(token string) (*mcpauth.TokenInfo, error) {
 	if err != nil || !tok.Valid {
 		return nil, mcpauth.ErrInvalidToken
 	}
-	claims, _ := tok.Claims.(jwt.MapClaims)
+	claims, ok := tok.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, mcpauth.ErrInvalidToken
+	}
 	if claims["typ"] == "refresh" {
 		return nil, mcpauth.ErrInvalidToken
 	}
-	sub, _ := claims["sub"].(string)
-	if sub == "" {
+	sub, ok := claims["sub"].(string)
+	if !ok || sub == "" {
 		return nil, mcpauth.ErrInvalidToken
 	}
-	exp, _ := claims["exp"].(float64)
+	exp, ok := claims["exp"].(float64)
+	if !ok {
+		return nil, mcpauth.ErrInvalidToken
+	}
 
 	return &mcpauth.TokenInfo{
 		Scopes:     []string{scopeEve},

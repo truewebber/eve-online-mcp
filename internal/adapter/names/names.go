@@ -193,7 +193,9 @@ func (r *Resolver) TypeInfo(ctx context.Context, typeID int) (map[string]any, er
 		return nil, err
 	}
 	data := j.Map(result.Data)
-	_ = r.putBlob(ctx, key, data)
+	if err := r.putBlob(ctx, key, data); err != nil {
+		log.Printf("names: put type %s: %v", key, err)
+	}
 
 	return data, nil
 }
@@ -204,14 +206,16 @@ func (r *Resolver) GroupName(ctx context.Context, groupID int) string {
 	}
 	key := fmt.Sprintf("group:%d", groupID)
 	maxAge := 30 * 24 * time.Hour
-	cached, _ := r.blob(ctx, key, &maxAge)
-	if cached == nil {
+	cached, err := r.blob(ctx, key, &maxAge)
+	if err != nil || cached == nil {
 		result, err := r.esi.Get(ctx, fmt.Sprintf("/universe/groups/%d", groupID), nil, nil, nil)
 		if err != nil {
 			return fmt.Sprintf("Group #%d", groupID)
 		}
 		cached = result.Data
-		_ = r.putBlob(ctx, key, cached)
+		if err := r.putBlob(ctx, key, cached); err != nil {
+			log.Printf("names: put group %s: %v", key, err)
+		}
 	}
 	name := j.Str(j.Map(cached)["name"])
 	if name == "" {
@@ -283,13 +287,17 @@ func (r *Resolver) ReferencePrices(ctx context.Context) (map[int]map[string]floa
 				"adjusted": j.Float(row["adjusted_price"]),
 			}
 		}
-		_ = r.putBlob(ctx, "markets:prices", blob)
+		if err := r.putBlob(ctx, "markets:prices", blob); err != nil {
+			log.Printf("names: put market prices: %v", err)
+		}
 		cached = blob
 	}
 	prices := map[int]map[string]float64{}
 	for k, v := range j.Map(cached) {
 		var id int
-		fmt.Sscanf(k, "%d", &id)
+		if _, err := fmt.Sscanf(k, "%d", &id); err != nil {
+			continue
+		}
 		m := j.Map(v)
 		prices[id] = map[string]float64{"average": j.Float(m["average"]), "adjusted": j.Float(m["adjusted"])}
 	}
@@ -442,7 +450,9 @@ func (r *Resolver) fillUniverseNames(ctx context.Context, out map[int]string, un
 			entries = append(entries, store.NameRow{ID: int64(id), Name: name, Category: j.Str(row["category"])})
 			out[id] = name
 		}
-		_ = r.store.NamePut(ctx, entries)
+		if err := r.store.NamePut(ctx, entries); err != nil {
+			log.Printf("names: put universe names: %v", err)
+		}
 	}
 }
 
@@ -468,7 +478,9 @@ func (r *Resolver) fillStructureNames(ctx context.Context, out map[int]string, s
 		entries = append(entries, store.NameRow{ID: int64(b.id), Name: b.name, Category: "structure"})
 		out[b.id] = b.name
 	}
-	_ = r.store.NamePut(ctx, entries)
+	if err := r.store.NamePut(ctx, entries); err != nil {
+		log.Printf("names: put structure names: %v", err)
+	}
 }
 
 func collectNameBuckets(lookup map[string]any, only []string) map[string][]NameMatch {

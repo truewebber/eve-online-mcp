@@ -105,7 +105,7 @@ func eveUniverseSearch(ctx context.Context, a *session.Session, in universeSearc
 		return nil, err
 	}
 
-	return universeSearchAssemble(ctx, a, token.CharacterID, in, raw, used), nil
+	return universeSearchAssemble(ctx, a, token.CharacterID, in, raw, used)
 }
 
 func universeSearchWanted(categories string) []string {
@@ -139,10 +139,13 @@ func universeSearchInvalid(wanted []string) []string {
 	return invalid
 }
 
-func universeSearchAssemble(ctx context.Context, a *session.Session, characterID int, in universeSearchIn, raw map[string][]int, used string) map[string]any {
+func universeSearchAssemble(ctx context.Context, a *session.Session, characterID int, in universeSearchIn, raw map[string][]int, used string) (map[string]any, error) {
 	limit := limitOr(in.Limit, 10)
 	pool := min(max(4*limit, 50), 200)
-	names, _ := a.Resolver.Names(ctx, setToList(universeSearchIDSet(raw, pool)), &characterID)
+	names, err := a.Resolver.Names(ctx, setToList(universeSearchIDSet(raw, pool)), &characterID)
+	if err != nil {
+		return nil, err
+	}
 	out := map[string]any{"query": in.Query, "strict": boolDef(in.Strict, false)}
 	if used != in.Query {
 		out["matched_on_prefix"] = used
@@ -159,7 +162,7 @@ func universeSearchAssemble(ctx context.Context, a *session.Session, characterID
 		out["note"] = fmt.Sprintf("No matches for %q even after shortening the prefix. ESI searches by prefix, so a typo in the first few characters cannot be recovered. Try a different part of the name, or widen `categories`.", in.Query)
 	}
 
-	return out
+	return out, nil
 }
 
 func universeSearchIDSet(raw map[string][]int, pool int) map[int]struct{} {
@@ -305,7 +308,10 @@ func universeRegionName(ctx context.Context, a *session.Session, info map[string
 	if rid == 0 {
 		return nil
 	}
-	regionName, _ := a.Resolver.Name(ctx, rid, nil)
+	regionName, err := a.Resolver.Name(ctx, rid, nil)
+	if err != nil {
+		return nil
+	}
 
 	return regionName
 }
@@ -517,7 +523,10 @@ func eveUniverseHotspots(ctx context.Context, a *session.Session, in universeHot
 	for _, r := range rows {
 		idSet[j.Int(r["system_id"])] = struct{}{}
 	}
-	names, _ := a.Resolver.Names(ctx, setToList(idSet), nil)
+	names, err := a.Resolver.Names(ctx, setToList(idSet), nil)
+	if err != nil {
+		return nil, err
+	}
 	var outRows []map[string]any
 	for _, r := range rows {
 		outRows = append(outRows, map[string]any{

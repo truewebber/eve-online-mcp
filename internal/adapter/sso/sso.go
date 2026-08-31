@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
+	"github.com/truewebber/eve-online-mcp/internal/domain/j"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -162,7 +163,10 @@ func (c *Client) AccessToken(ctx context.Context, characterID int) (*CharacterTo
 		return token, nil
 	}
 	lockI, _ := c.refreshLocks.LoadOrStore(characterID, &sync.Mutex{})
-	lock := lockI.(*sync.Mutex)
+	lock, ok := lockI.(*sync.Mutex)
+	if !ok {
+		return nil, Err(fmt.Sprintf("refresh lock for character %d has an unexpected type", characterID))
+	}
 	lock.Lock()
 	defer lock.Unlock()
 	token = c.Store.Get(ctx, characterID)
@@ -294,7 +298,10 @@ func (c *Client) tokenRequest(ctx context.Context, data url.Values, clientID, se
 		return nil, Err("SSO token request failed: " + err.Error())
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, Err("SSO token request failed: " + err.Error())
+	}
 	if resp.StatusCode >= 400 {
 		return nil, Err(fmt.Sprintf("SSO token request failed (%d): %s", resp.StatusCode, ssoDetail(resp.Header.Get("Content-Type"), body)))
 	}
@@ -307,8 +314,8 @@ func (c *Client) tokenRequest(ctx context.Context, data url.Values, clientID, se
 }
 
 func (c *Client) tokenFromPayload(ctx context.Context, payload map[string]any, fallback *CharacterToken) (*CharacterToken, error) {
-	access, _ := payload["access_token"].(string)
-	refresh, _ := payload["refresh_token"].(string)
+	access := j.Str(payload["access_token"])
+	refresh := j.Str(payload["refresh_token"])
 	if refresh == "" && fallback != nil {
 		refresh = fallback.RefreshToken
 	}
@@ -319,12 +326,14 @@ func (c *Client) tokenFromPayload(ctx context.Context, payload map[string]any, f
 	if err != nil {
 		return nil, err
 	}
-	subject, _ := claims["sub"].(string)
+	subject := j.Str(claims["sub"])
 	if !strings.HasPrefix(subject, "CHARACTER:EVE:") {
 		return nil, Err(fmt.Sprintf("Unexpected token subject: %q", subject))
 	}
 	var characterID int
-	fmt.Sscanf(strings.TrimPrefix(subject, "CHARACTER:EVE:"), "%d", &characterID)
+	if _, err := fmt.Sscanf(strings.TrimPrefix(subject, "CHARACTER:EVE:"), "%d", &characterID); err != nil || characterID == 0 {
+		return nil, Err(fmt.Sprintf("Unexpected token subject: %q", subject))
+	}
 	var scopes []string
 	switch scp := claims["scp"].(type) {
 	case string:
@@ -342,8 +351,8 @@ func (c *Client) tokenFromPayload(ctx context.Context, payload map[string]any, f
 			expiresIn = t
 		}
 	}
-	name, _ := claims["name"].(string)
-	owner, _ := claims["owner"].(string)
+	name := j.Str(claims["name"])
+	owner := j.Str(claims["owner"])
 	if name == "" && fallback != nil {
 		name = fallback.CharacterName
 	}
@@ -371,7 +380,10 @@ func (c *Client) decode(ctx context.Context, accessToken string) (jwt.MapClaims,
 		if err != nil {
 			return nil, Err("Malformed token from the SSO: " + err.Error())
 		}
-		claims, _ := tok.Claims.(jwt.MapClaims)
+		claims, err := jwtMapClaims(tok)
+		if err != nil {
+			return nil, err
+		}
 
 		return c.checkIssuer(claims)
 	}
@@ -379,13 +391,16 @@ func (c *Client) decode(ctx context.Context, accessToken string) (jwt.MapClaims,
 	if err != nil {
 		return nil, Err("The SSO token failed verification (" + err.Error() + "). Nothing was stored.")
 	}
-	claims, _ := tok.Claims.(jwt.MapClaims)
+	claims, err := jwtMapClaims(tok)
+	if err != nil {
+		return nil, err
+	}
 
 	return c.checkIssuer(claims)
 }
 
 func (c *Client) checkIssuer(claims jwt.MapClaims) (jwt.MapClaims, error) {
-	iss, _ := claims["iss"].(string)
+	iss := j.Str(claims["iss"])
 	if knownIssuer(iss) {
 		return claims, nil
 	}
@@ -398,7 +413,7 @@ func (c *Client) signingKey(ctx context.Context, accessToken string) (any, error
 	if err != nil {
 		return nil, err
 	}
-	kid, _ := tok.Header["kid"].(string)
+	kid := j.Str(tok.Header["kid"])
 	c.jwksMu.Lock()
 	defer c.jwksMu.Unlock()
 	if c.jwks == nil || time.Since(c.jwksAt) > time.Hour {
@@ -435,7 +450,7 @@ func fetchJWKS(ctx context.Context, httpClient *http.Client) (map[string]any, er
 	}
 	out := map[string]any{}
 	for _, k := range doc.Keys {
-		kid, _ := k["kid"].(string)
+		kid := j.Str(k["kid"])
 		if kid == "" {
 			continue
 		}
@@ -448,8 +463,8 @@ func fetchJWKS(ctx context.Context, httpClient *http.Client) (map[string]any, er
 }
 
 func rsaFromJWK(k map[string]any) (*rsa.PublicKey, error) {
-	nStr, _ := k["n"].(string)
-	eStr, _ := k["e"].(string)
+	nStr := j.Str(k["n"])
+	eStr := j.Str(k["e"])
 	if nStr == "" || eStr == "" {
 		return nil, errNotRSA
 	}
@@ -491,11 +506,11 @@ func ssoJSONDetail(contentType string, body []byte) string {
 	if json.Unmarshal(body, &payload) != nil {
 		return ""
 	}
-	errS, _ := payload["error"].(string)
+	errS := j.Str(payload["error"])
 	if errS == "" {
-		errS, _ = payload["message"].(string)
+		errS = j.Str(payload["message"])
 	}
-	desc, _ := payload["error_description"].(string)
+	desc := j.Str(payload["error_description"])
 	parts := make([]string, 0, 2)
 	if errS != "" {
 		parts = append(parts, errS)
@@ -505,6 +520,15 @@ func ssoJSONDetail(contentType string, body []byte) string {
 	}
 
 	return strings.Join(parts, " - ")
+}
+
+func jwtMapClaims(tok *jwt.Token) (jwt.MapClaims, error) {
+	claims, ok := tok.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, Err("SSO token claims were not a JSON object")
+	}
+
+	return claims, nil
 }
 
 func b64url(raw []byte) string {

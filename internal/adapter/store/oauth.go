@@ -84,7 +84,9 @@ func (s *Store) GetLoginState(ctx context.Context, state string) (*LoginState, b
 		return nil, false, err
 	}
 	if time.Since(st.CreatedAt) > LoginStateTTL {
-		_, _ = s.pool.Exec(ctx, `DELETE FROM login_states WHERE state = $1`, state)
+		if _, err := s.pool.Exec(ctx, `DELETE FROM login_states WHERE state = $1`, state); err != nil {
+			return nil, false, err
+		}
 
 		return nil, false, nil
 	}

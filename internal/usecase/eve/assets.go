@@ -81,8 +81,14 @@ func eveAssetsList(ctx context.Context, a *session.Session, in assetsListIn) (an
 	for _, i := range assets {
 		typeIDs = append(typeIDs, j.Int(i["type_id"]))
 	}
-	typeNames, _ := a.Resolver.Names(ctx, typeIDs, nil)
-	placeNames, _ := a.Resolver.Names(ctx, valuesOf(roots), &cid)
+	typeNames, err := a.Resolver.Names(ctx, typeIDs, nil)
+	if err != nil {
+		return nil, err
+	}
+	placeNames, err := a.Resolver.Names(ctx, valuesOf(roots), &cid)
+	if err != nil {
+		return nil, err
+	}
 	buckets := assetBuckets(assets, roots, prices)
 	rows := assetLocationRows(buckets, placeNames, typeNames, prices, in.Location, in.MinValue, limitOr(in.Items, 5))
 	sort.Slice(rows, func(i, k int) bool { return j.Float(rows[i]["value_isk"]) > j.Float(rows[k]["value_isk"]) })
@@ -190,7 +196,10 @@ func eveAssetsFind(ctx context.Context, a *session.Session, in assetsFindIn) (an
 	for _, i := range items {
 		typeIDs = append(typeIDs, j.Int(i["type_id"]))
 	}
-	typeNames, _ := a.Resolver.Names(ctx, typeIDs, nil)
+	typeNames, err := a.Resolver.Names(ctx, typeIDs, nil)
+	if err != nil {
+		return nil, err
+	}
 	matches := assetFindMatches(items, typeNames, in.Name)
 	if len(matches) == 0 {
 		return map[string]any{
@@ -209,8 +218,14 @@ func eveAssetsFind(ctx context.Context, a *session.Session, in assetsFindIn) (an
 			placeSet[r] = struct{}{}
 		}
 	}
-	placeNames, _ := a.Resolver.Names(ctx, setToList(placeSet), &cid)
-	prices, _ := a.Resolver.ReferencePrices(ctx)
+	placeNames, err := a.Resolver.Names(ctx, setToList(placeSet), &cid)
+	if err != nil {
+		return nil, err
+	}
+	prices, err := a.Resolver.ReferencePrices(ctx)
+	if err != nil {
+		return nil, err
+	}
 	rows := assetFindRows(matches, roots, byID, typeNames, placeNames, prices)
 	sort.Slice(rows, func(i, k int) bool { return j.Int(rows[i]["quantity"]) > j.Int(rows[k]["quantity"]) })
 	visible, meta := page(rows, limitOr(in.Limit, 20), "")
@@ -284,8 +299,14 @@ func eveAssetsBlueprints(ctx context.Context, a *session.Session, in assetsBluep
 		typeIDs = append(typeIDs, j.Int(b["type_id"]))
 		placeIDs = append(placeIDs, j.Int(b["location_id"]))
 	}
-	typeNames, _ := a.Resolver.Names(ctx, typeIDs, nil)
-	placeNames, _ := a.Resolver.Names(ctx, placeIDs, &cid)
+	typeNames, err := a.Resolver.Names(ctx, typeIDs, nil)
+	if err != nil {
+		return nil, err
+	}
+	placeNames, err := a.Resolver.Names(ctx, placeIDs, &cid)
+	if err != nil {
+		return nil, err
+	}
 	var rows []map[string]any
 	orig, copies := 0, 0
 	for _, b := range bps {

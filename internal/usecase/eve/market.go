@@ -72,7 +72,10 @@ func eveMarketPrice(ctx context.Context, a *session.Session, in marketPriceIn) (
 	if err != nil {
 		return nil, err
 	}
-	out := marketQuoteView(ctx, a, match, quotes, place, in.Item)
+	out, err := marketQuoteView(ctx, a, match, quotes, place, in.Item)
+	if err != nil {
+		return nil, err
+	}
 	if in.HistoryDays > 0 {
 		h, histErr := marketHistory(ctx, a, match.Chosen.ID, place.regionID, in.HistoryDays)
 		if histErr == nil {
@@ -118,10 +121,13 @@ func marketPlace(ctx context.Context, a *session.Session, in marketPriceIn) (mar
 	return out, nil
 }
 
-func marketQuoteView(ctx context.Context, a *session.Session, match names.NameResolution, quotes map[string]any, place marketPlaceResult, item string) map[string]any {
+func marketQuoteView(ctx context.Context, a *session.Session, match names.NameResolution, quotes map[string]any, place marketPlaceResult, item string) (map[string]any, error) {
 	typeID := match.Chosen.ID
 	average := a.Resolver.ReferencePrice(ctx, typeID)
-	info, _ := a.Resolver.TypeInfo(ctx, typeID)
+	info, err := a.Resolver.TypeInfo(ctx, typeID)
+	if err != nil {
+		return nil, err
+	}
 	priced := "all of " + place.regionName
 	if place.station != nil {
 		priced = "Jita IV-4"
@@ -149,7 +155,7 @@ func marketQuoteView(ctx context.Context, a *session.Session, match names.NameRe
 		out["ambiguity_note"] = fmt.Sprintf("%d item types are named %q; priced #%d. Others: %s. Call eve_universe_search with categories='inventory_type' to pick.", len(match.Alternatives)+1, item, typeID, strings.Join(others, ", "))
 	}
 
-	return out
+	return out, nil
 }
 
 func marketSpread(quotes map[string]any) any {
@@ -178,7 +184,7 @@ func eveMarketOrders(ctx context.Context, a *session.Session, in marketOrdersIn)
 		return nil, err
 	}
 
-	return formatOrders(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, 25), concise(in.ResponseFormat), nil), nil
+	return formatOrders(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, 25), concise(in.ResponseFormat), nil)
 }
 
 func eveMarketContracts(ctx context.Context, a *session.Session, in marketContractsIn) (any, error) {
@@ -195,7 +201,7 @@ func eveMarketContracts(ctx context.Context, a *session.Session, in marketContra
 		return nil, err
 	}
 
-	return formatContracts(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), limitOr(in.Limit, 15), concise(in.ResponseFormat), false), nil
+	return formatContracts(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), limitOr(in.Limit, 15), concise(in.ResponseFormat), false)
 }
 
 func marketHistory(ctx context.Context, a *session.Session, typeID, regionID, days int) (map[string]any, error) {
@@ -238,18 +244,24 @@ func marketHistory(ctx context.Context, a *session.Session, typeID, regionID, da
 	}, nil
 }
 
-func formatOrders(ctx context.Context, a *session.Session, character string, cid int, data any, stale string, limit int, conciseMode bool, walletNames map[int]string) map[string]any {
+func formatOrders(ctx context.Context, a *session.Session, character string, cid int, data any, stale string, limit int, conciseMode bool, walletNames map[int]string) (map[string]any, error) {
 	orders := j.Maps(data)
 	if len(orders) == 0 {
-		return map[string]any{"character": character, "orders": []any{}, "note": "No open market orders."}
+		return map[string]any{"character": character, "orders": []any{}, "note": "No open market orders."}, nil
 	}
 	typeSet, placeSet := map[int]struct{}{}, map[int]struct{}{}
 	for _, o := range orders {
 		typeSet[j.Int(o["type_id"])] = struct{}{}
 		placeSet[j.Int(o["location_id"])] = struct{}{}
 	}
-	names, _ := a.Resolver.Names(ctx, setToList(typeSet), nil)
-	places, _ := a.Resolver.Names(ctx, setToList(placeSet), &cid)
+	names, err := a.Resolver.Names(ctx, setToList(typeSet), nil)
+	if err != nil {
+		return nil, err
+	}
+	places, err := a.Resolver.Names(ctx, setToList(placeSet), &cid)
+	if err != nil {
+		return nil, err
+	}
 	now := time.Now().UTC()
 	var rows []map[string]any
 	var sellValue, buyEscrow float64
@@ -306,10 +318,10 @@ func formatOrders(ctx context.Context, a *session.Session, character string, cid
 		"character": character, "open_orders": len(rows),
 		"sell_side_value": isk(sellValue), "buy_escrow_locked": isk(buyEscrow),
 		"data_age": stale, "orders": project(visible, keep, conciseMode),
-	}, meta)
+	}, meta), nil
 }
 
-func formatContracts(ctx context.Context, a *session.Session, character string, cid int, data any, stale string, outstandingOnly bool, limit int, conciseMode, corp bool) map[string]any {
+func formatContracts(ctx context.Context, a *session.Session, character string, cid int, data any, stale string, outstandingOnly bool, limit int, conciseMode, corp bool) (map[string]any, error) {
 	contracts := j.Maps(data)
 	if outstandingOnly {
 		var filtered []map[string]any
@@ -329,7 +341,7 @@ func formatContracts(ctx context.Context, a *session.Session, character string, 
 			note = "No outstanding corporation contracts. Pass outstanding_only=false to include finished and expired ones."
 		}
 
-		return map[string]any{"character": character, "contracts": []any{}, "note": note}
+		return map[string]any{"character": character, "contracts": []any{}, "note": note}, nil
 	}
 	idSet := map[int]struct{}{}
 	for _, c := range contracts {
@@ -339,7 +351,10 @@ func formatContracts(ctx context.Context, a *session.Session, character string, 
 			}
 		}
 	}
-	names, _ := a.Resolver.Names(ctx, setToList(idSet), &cid)
+	names, err := a.Resolver.Names(ctx, setToList(idSet), &cid)
+	if err != nil {
+		return nil, err
+	}
 	sort.Slice(contracts, func(i, k int) bool { return j.Str(contracts[i]["date_issued"]) > j.Str(contracts[k]["date_issued"]) })
 	var rows []map[string]any
 	outstanding := 0
@@ -372,7 +387,7 @@ func formatContracts(ctx context.Context, a *session.Session, character string, 
 	return merge(map[string]any{
 		"character": character, "total": len(rows), "outstanding": outstanding,
 		"data_age": stale, "contracts": project(visible, keep, conciseMode),
-	}, meta)
+	}, meta), nil
 }
 
 func nilIfZero(v any) any {

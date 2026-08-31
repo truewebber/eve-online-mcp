@@ -24,6 +24,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/truewebber/eve-online-mcp/internal/domain/j"
 )
 
 const (
@@ -200,8 +202,8 @@ func (r *rpc) tools() ([]map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	result, _ := msg["result"].(map[string]any)
-	raw, _ := result["tools"].([]any)
+	result := j.Map(msg["result"])
+	raw := j.Slice(result["tools"])
 	out := make([]map[string]any, 0, len(raw))
 	for _, t := range raw {
 		if m, ok := t.(map[string]any); ok {
@@ -221,17 +223,19 @@ func (r *rpc) toolCall(name string, args map[string]any) (string, error) {
 		return "", err
 	}
 	if errObj, ok := msg["error"]; ok {
-		raw, _ := json.Marshal(errObj)
+		raw, err := json.Marshal(errObj)
+		if err != nil {
+			return "", err
+		}
 
 		return string(raw), nil
 	}
-	result, _ := msg["result"].(map[string]any)
-	content, _ := result["content"].([]any)
+	result := j.Map(msg["result"])
+	content := j.Slice(result["content"])
 	var b strings.Builder
 	for _, c := range content {
-		item, _ := c.(map[string]any)
-		text, _ := item["text"].(string)
-		b.WriteString(text)
+		item := j.Map(c)
+		b.WriteString(j.Str(item["text"]))
 	}
 
 	return b.String(), nil
@@ -271,10 +275,10 @@ func lint(r *rpc) int {
 }
 
 func lintTool(tool map[string]any) ([]string, []string, int) {
-	name, _ := tool["name"].(string)
-	description, _ := tool["description"].(string)
-	schema, _ := tool["inputSchema"].(map[string]any)
-	props, _ := schema["properties"].(map[string]any)
+	name := j.Str(tool["name"])
+	description := j.Str(tool["description"])
+	schema := j.Map(tool["inputSchema"])
+	props := j.Map(schema["properties"])
 	if props == nil {
 		props = map[string]any{}
 	}
@@ -301,16 +305,13 @@ func lintTool(tool map[string]any) ([]string, []string, int) {
 func lintProps(name string, props map[string]any) ([]string, []string) {
 	var failures, warnings []string
 	for param, specAny := range props {
-		spec, _ := specAny.(map[string]any)
-		if spec == nil {
-			spec = map[string]any{}
-		}
-		if desc, _ := spec["description"].(string); desc == "" {
+		spec := j.Map(specAny)
+		if j.Str(spec["description"]) == "" {
 			failures = append(failures, name+"."+param+": no description in the schema")
 		}
 		// Game ids are opaque 64-bit values with no meaningful upper bound;
 		// only tunables like `limit` benefit from a declared range.
-		if typ, _ := spec["type"].(string); typ == "integer" {
+		if j.Str(spec["type"]) == "integer" {
 			if _, ok := spec["maximum"]; !ok && !strings.HasSuffix(param, "_id") {
 				warnings = append(warnings, name+"."+param+": unbounded integer, no maximum in schema")
 			}
@@ -339,15 +340,15 @@ func smoke(r *rpc) int {
 	}
 	var tools []map[string]any
 	for _, t := range all {
-		name, _ := t["name"].(string)
+		name := j.Str(t["name"])
 		if skipInSmoke(name) {
 			continue
 		}
 		tools = append(tools, t)
 	}
-	sort.Slice(tools, func(i, j int) bool {
-		a, _ := tools[i]["name"].(string)
-		b, _ := tools[j]["name"].(string)
+	sort.Slice(tools, func(i, k int) bool {
+		a := j.Str(tools[i]["name"])
+		b := j.Str(tools[k]["name"])
 
 		return a < b
 	})
@@ -356,7 +357,7 @@ func smoke(r *rpc) int {
 	total := 0
 	var failures []string
 	for _, tool := range tools {
-		name, _ := tool["name"].(string)
+		name := j.Str(tool["name"])
 		text, err := r.toolCall(name, smokeArgs(name))
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)

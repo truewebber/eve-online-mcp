@@ -181,7 +181,10 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 				if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 					t.Fatal(err)
 				}
-				raw, _ := payload["access_token"].(string)
+				raw, ok := payload["access_token"].(string)
+				if !ok || raw == "" {
+					t.Fatalf("access_token %+v", payload)
+				}
 				info, err := s.verifyAccess(raw)
 				if err != nil || info.UserID != u.ID {
 					t.Fatalf("jwt %+v err %v", info, err)

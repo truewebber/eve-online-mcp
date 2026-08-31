@@ -149,7 +149,7 @@ func TestFinishAltRefusesOtherUser(t *testing.T) {
 	err = s.finishAlt(ctx, &store.LoginState{UserID: b.ID}, &sso.CharacterToken{
 		CharacterID: int(charID), CharacterName: "Jane Doe", RefreshToken: "b-rt",
 	})
-	if _, ok := errors.AsType[CharacterOwnedError](err); !ok {
+	if !errors.As(err, new(CharacterOwnedError)) {
 		t.Fatalf("want CharacterOwnedError, got %v", err)
 	}
 	if !strings.Contains(err.Error(), "eve_auth_logout") {

@@ -2,8 +2,11 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -39,5 +42,11 @@ func Open(ctx context.Context, databaseURL string) (*Store, error) {
 func (s *Store) Close() {
 	if s != nil && s.pool != nil {
 		s.pool.Close()
+	}
+}
+
+func rollbackTx(ctx context.Context, tx pgx.Tx) {
+	if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+		log.Printf("store: rollback: %v", err)
 	}
 }

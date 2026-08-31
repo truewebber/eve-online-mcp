@@ -231,7 +231,10 @@ func eveCorpOverview(ctx context.Context, a *session.Session, in corpCharIn) (an
 	if err != nil {
 		return nil, err
 	}
-	out := corpOverviewIdentity(ctx, a, corp)
+	out, err := corpOverviewIdentity(ctx, a, corp)
+	if err != nil {
+		return nil, err
+	}
 	if corp.IsNPC() {
 		out["note"] = "NPC corporations have no hangars, wallets or jobs on ESI. The other eve_corp_* tools will refuse this character."
 		out["available_tools"] = []string{}
@@ -247,10 +250,13 @@ func eveCorpOverview(ctx context.Context, a *session.Session, in corpCharIn) (an
 	return keepEmpty(out, "roles", "available_tools"), nil
 }
 
-func corpOverviewIdentity(ctx context.Context, a *session.Session, corp *character.Corporation) map[string]any {
+func corpOverviewIdentity(ctx context.Context, a *session.Session, corp *character.Corporation) (map[string]any, error) {
 	public := corp.Public
 	ids := idsFrom(public["alliance_id"], public["ceo_id"])
-	n, _ := a.Resolver.Names(ctx, ids, &corp.Token.CharacterID)
+	n, err := a.Resolver.Names(ctx, ids, &corp.Token.CharacterID)
+	if err != nil {
+		return nil, err
+	}
 
 	return merge(map[string]any{
 		"character": corp.CharacterName(), "corporation": corp.CorporationName,
@@ -259,7 +265,7 @@ func corpOverviewIdentity(ctx context.Context, a *session.Session, corp *charact
 		"member_count":     public["member_count"], "ceo": n[j.Int(public["ceo_id"])],
 		"alliance": n[j.Int(public["alliance_id"])],
 		"tax_pct":  mathRound(j.Float(public["tax_rate"])*100, 2),
-	}, rolesForDisplay(corp))
+	}, rolesForDisplay(corp)), nil
 }
 
 func corpOverviewAttachDivisions(out map[string]any, divs map[string]map[int]string) {
@@ -324,9 +330,18 @@ func eveCorpAssetsList(ctx context.Context, a *session.Session, in corpAssetsLis
 	}
 	divs := corpDivisions(ctx, a, corp)
 	roots := rootLocations(assets)
-	prices, _ := a.Resolver.ReferencePrices(ctx)
-	typeNames, _ := a.Resolver.Names(ctx, collectTypeIDs(assets), nil)
-	placeNames, _ := a.Resolver.Names(ctx, valuesOf(roots), &corp.Token.CharacterID)
+	prices, err := a.Resolver.ReferencePrices(ctx)
+	if err != nil {
+		return nil, err
+	}
+	typeNames, err := a.Resolver.Names(ctx, collectTypeIDs(assets), nil)
+	if err != nil {
+		return nil, err
+	}
+	placeNames, err := a.Resolver.Names(ctx, valuesOf(roots), &corp.Token.CharacterID)
+	if err != nil {
+		return nil, err
+	}
 	buckets := corpAssetBuckets(assets, roots, prices)
 	rows := corpAssetLocationRows(buckets, placeNames, typeNames, prices, in)
 	sort.Slice(rows, func(i, k int) bool { return j.Float(rows[i]["value_isk"]) > j.Float(rows[k]["value_isk"]) })
@@ -428,15 +443,24 @@ func eveCorpAssetsFind(ctx context.Context, a *session.Session, in corpAssetsFin
 		return nil, err
 	}
 	items := j.Maps(result.Data)
-	typeNames, _ := a.Resolver.Names(ctx, collectTypeIDs(items), nil)
+	typeNames, err := a.Resolver.Names(ctx, collectTypeIDs(items), nil)
+	if err != nil {
+		return nil, err
+	}
 	matches := corpAssetFindMatches(items, typeNames, in.Name)
 	if len(matches) == 0 {
 		return merge(who(corp), map[string]any{"query": in.Name, "matches": []any{}, "note": "Nothing matching in corporation assets. Check the spelling with eve_universe_search, or look in personal hangars with eve_assets_find."}), nil
 	}
 	divs := corpDivisions(ctx, a, corp)
 	roots := rootLocations(items)
-	placeNames, _ := a.Resolver.Names(ctx, corpAssetFindPlaceIDs(matches, roots), &corp.Token.CharacterID)
-	prices, _ := a.Resolver.ReferencePrices(ctx)
+	placeNames, err := a.Resolver.Names(ctx, corpAssetFindPlaceIDs(matches, roots), &corp.Token.CharacterID)
+	if err != nil {
+		return nil, err
+	}
+	prices, err := a.Resolver.ReferencePrices(ctx)
+	if err != nil {
+		return nil, err
+	}
 	rows := corpAssetFindRows(matches, itemsByID(items), roots, typeNames, placeNames, prices, divs["hangar"])
 	sort.Slice(rows, func(i, k int) bool { return j.Int(rows[i]["quantity"]) > j.Int(rows[k]["quantity"]) })
 	visible, meta := page(rows, limitOr(in.Limit, 20), "")
@@ -531,7 +555,10 @@ func eveCorpBlueprints(ctx context.Context, a *session.Session, in corpBlueprint
 		return merge(who(corp), map[string]any{"blueprints": []any{}, "note": "The corporation holds no blueprints."}), nil
 	}
 	divs := corpDivisions(ctx, a, corp)
-	named := corpBlueprintNames(ctx, a, corp, bps)
+	named, err := corpBlueprintNames(ctx, a, corp, bps)
+	if err != nil {
+		return nil, err
+	}
 	listed := corpBlueprintRows(bps, named.types, named.places, divs["hangar"])
 	sort.Slice(listed.rows, func(i, k int) bool {
 		if j.Str(listed.rows[i]["kind"]) != j.Str(listed.rows[k]["kind"]) {
@@ -552,17 +579,23 @@ type corpNameMaps struct {
 	types, places map[int]string
 }
 
-func corpBlueprintNames(ctx context.Context, a *session.Session, corp *character.Corporation, bps []map[string]any) corpNameMaps {
+func corpBlueprintNames(ctx context.Context, a *session.Session, corp *character.Corporation, bps []map[string]any) (corpNameMaps, error) {
 	typeIDs := make([]int, 0, len(bps))
 	placeIDs := make([]int, 0, len(bps))
 	for _, b := range bps {
 		typeIDs = append(typeIDs, j.Int(b["type_id"]))
 		placeIDs = append(placeIDs, j.Int(b["location_id"]))
 	}
-	typeNames, _ := a.Resolver.Names(ctx, typeIDs, nil)
-	placeNames, _ := a.Resolver.Names(ctx, placeIDs, &corp.Token.CharacterID)
+	typeNames, err := a.Resolver.Names(ctx, typeIDs, nil)
+	if err != nil {
+		return corpNameMaps{}, err
+	}
+	placeNames, err := a.Resolver.Names(ctx, placeIDs, &corp.Token.CharacterID)
+	if err != nil {
+		return corpNameMaps{}, err
+	}
 
-	return corpNameMaps{typeNames, placeNames}
+	return corpNameMaps{typeNames, placeNames}, nil
 }
 
 type corpBlueprintList struct {
@@ -701,7 +734,10 @@ func eveCorpIndustryJobs(ctx context.Context, a *session.Session, in corpIndustr
 	if err != nil {
 		return nil, err
 	}
-	out := industryJobsResult(ctx, a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), limitOr(in.Limit, 20), concise(in.ResponseFormat), true)
+	out, err := industryJobsResult(ctx, a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), limitOr(in.Limit, 20), concise(in.ResponseFormat), true)
+	if err != nil {
+		return nil, err
+	}
 
 	return merge(who(corp), out), nil
 }
@@ -777,7 +813,10 @@ func eveCorpOrders(ctx context.Context, a *session.Session, in corpOrdersIn) (an
 		return nil, err
 	}
 	divs := corpDivisions(ctx, a, corp)
-	out := formatOrders(ctx, a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), limitOr(in.Limit, 25), concise(in.ResponseFormat), divs["wallet"])
+	out, err := formatOrders(ctx, a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), limitOr(in.Limit, 25), concise(in.ResponseFormat), divs["wallet"])
+	if err != nil {
+		return nil, err
+	}
 
 	return merge(who(corp), out), nil
 }
@@ -791,7 +830,10 @@ func eveCorpContracts(ctx context.Context, a *session.Session, in corpContractsI
 	if err != nil {
 		return nil, err
 	}
-	out := formatContracts(ctx, a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), limitOr(in.Limit, 15), concise(in.ResponseFormat), true)
+	out, err := formatContracts(ctx, a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), limitOr(in.Limit, 15), concise(in.ResponseFormat), true)
+	if err != nil {
+		return nil, err
+	}
 
 	return merge(who(corp), out), nil
 }
@@ -822,7 +864,10 @@ func eveCorpStructures(ctx context.Context, a *session.Session, in corpStructure
 	if len(structures) == 0 {
 		return merge(who(corp), map[string]any{"structures": []any{}, "note": "This corporation owns no Upwell structures."}), nil
 	}
-	names, _ := a.Resolver.Names(ctx, corpStructureIDs(structures), &corp.Token.CharacterID)
+	names, err := a.Resolver.Names(ctx, corpStructureIDs(structures), &corp.Token.CharacterID)
+	if err != nil {
+		return nil, err
+	}
 	listed := corpStructureRows(structures, names)
 	sort.Slice(listed.rows, func(i, k int) bool {
 		return j.Str(listed.rows[i]["fuel_expires"]) < j.Str(listed.rows[k]["fuel_expires"])
@@ -910,7 +955,10 @@ func eveCorpMembers(ctx context.Context, a *session.Session, in corpMembersIn) (
 	if len(memberIDs) == 0 {
 		return merge(who(corp), map[string]any{"members": []any{}, "note": "ESI returned an empty roster."}), nil
 	}
-	names, _ := a.Resolver.Names(ctx, memberIDs, nil)
+	names, err := a.Resolver.Names(ctx, memberIDs, nil)
+	if err != nil {
+		return nil, err
+	}
 	rows := corpMemberRows(memberIDs, names, corpMemberRoleMap(ctx, a, corp, concise(in.ResponseFormat)))
 	sort.Slice(rows, func(i, k int) bool {
 		return strings.ToLower(j.Str(rows[i]["name"])) < strings.ToLower(j.Str(rows[k]["name"]))
@@ -1155,7 +1203,10 @@ func corpExtractions(ctx context.Context, a *session.Session, corp *character.Co
 			idSet[j.Int(e["moon_id"])] = struct{}{}
 		}
 	}
-	names, _ := a.Resolver.Names(ctx, setToList(idSet), &corp.Token.CharacterID)
+	names, err := a.Resolver.Names(ctx, setToList(idSet), &corp.Token.CharacterID)
+	if err != nil {
+		return nil, err
+	}
 	now := time.Now().UTC()
 	var out []map[string]any
 	for _, e := range rows {
@@ -1204,8 +1255,14 @@ func corpMiningLedger(ctx context.Context, a *session.Session, corp *character.C
 		return map[string]any{"ores": []any{}, "note": "No mining observers with recorded events (idle refineries are hidden).", "data_age": observersRes.StaleNote()}, nil
 	}
 	agg := fetchCorpMiningObservers(ctx, a, corp, observers, observersRes)
-	names, _ := a.Resolver.Names(ctx, setToList(miningAggIDs(agg)), &corp.Token.CharacterID)
-	prices, _ := a.Resolver.ReferencePrices(ctx)
+	names, err := a.Resolver.Names(ctx, setToList(miningAggIDs(agg)), &corp.Token.CharacterID)
+	if err != nil {
+		return nil, err
+	}
+	prices, err := a.Resolver.ReferencePrices(ctx)
+	if err != nil {
+		return nil, err
+	}
 	rows, grand := miningOreRows(agg.totals, names, prices)
 	visible, meta := page(rows, limit, "")
 	out := merge(map[string]any{

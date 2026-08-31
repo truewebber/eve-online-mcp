@@ -110,7 +110,10 @@ func eveMailList(ctx context.Context, a *session.Session, in mailListIn) (any, e
 			senders[j.Int(m["from"])] = struct{}{}
 		}
 	}
-	names, _ := a.Resolver.Names(ctx, setToList(senders), nil)
+	names, err := a.Resolver.Names(ctx, setToList(senders), nil)
+	if err != nil {
+		return nil, err
+	}
 	sort.Slice(mails, func(i, k int) bool { return j.Str(mails[i]["timestamp"]) > j.Str(mails[k]["timestamp"]) })
 	var rows []map[string]any
 	for _, m := range mails {
@@ -154,7 +157,10 @@ func eveMailRead(ctx context.Context, a *session.Session, in mailReadIn) (any, e
 			idSet[j.Int(r["recipient_id"])] = struct{}{}
 		}
 	}
-	names, _ := a.Resolver.Names(ctx, setToList(idSet), nil)
+	names, err := a.Resolver.Names(ctx, setToList(idSet), nil)
+	if err != nil {
+		return nil, err
+	}
 	var to []string
 	for _, r := range j.Maps(mail["recipients"]) {
 		to = append(to, names[j.Int(r["recipient_id"])])
@@ -190,7 +196,10 @@ func eveSocialNotifications(ctx context.Context, a *session.Session, in notesIn)
 			senders[j.Int(n["sender_id"])] = struct{}{}
 		}
 	}
-	names, _ := a.Resolver.Names(ctx, setToList(senders), nil)
+	names, err := a.Resolver.Names(ctx, setToList(senders), nil)
+	if err != nil {
+		return nil, err
+	}
 	sort.Slice(notes, func(i, k int) bool { return j.Str(notes[i]["timestamp"]) > j.Str(notes[k]["timestamp"]) })
 	var rows []map[string]any
 	unread := 0
@@ -260,7 +269,10 @@ func eveFittingList(ctx context.Context, a *session.Session, in fitIn) (any, err
 			idSet[j.Int(i["type_id"])] = struct{}{}
 		}
 	}
-	names, _ := a.Resolver.Names(ctx, setToList(idSet), nil)
+	names, err := a.Resolver.Names(ctx, setToList(idSet), nil)
+	if err != nil {
+		return nil, err
+	}
 	var rows []map[string]any
 	for _, f := range fittings {
 		var mods []string
@@ -317,7 +329,10 @@ func formatKillmails(ctx context.Context, a *session.Session, character string, 
 		return map[string]any{"character": character, "killmails": []any{}, "note": "Nothing recent."}, nil
 	}
 	fetched := fetchKillmailBodies(ctx, a, refs)
-	built := buildKillmailRows(ctx, a, fetched.kills, characterID, corpID)
+	built, err := buildKillmailRows(ctx, a, fetched.kills, characterID, corpID)
+	if err != nil {
+		return nil, err
+	}
 	sort.Slice(built.rows, func(i, k int) bool { return j.Str(built.rows[i]["time"]) > j.Str(built.rows[k]["time"]) })
 	visible, meta := page(built.rows, limit, "")
 	if len(available) > limit {
@@ -372,7 +387,7 @@ func fetchKillmailBodies(ctx context.Context, a *session.Session, refs []map[str
 	return killmailFetch{kills: kills, failed: failed}
 }
 
-func buildKillmailRows(ctx context.Context, a *session.Session, kills []map[string]any, characterID, corpID int) killmailSummary {
+func buildKillmailRows(ctx context.Context, a *session.Session, kills []map[string]any, characterID, corpID int) (killmailSummary, error) {
 	idSet := map[int]struct{}{}
 	for _, kill := range kills {
 		victim := j.Map(kill["victim"])
@@ -385,8 +400,14 @@ func buildKillmailRows(ctx context.Context, a *session.Session, kills []map[stri
 			idSet[j.Int(kill["solar_system_id"])] = struct{}{}
 		}
 	}
-	names, _ := a.Resolver.Names(ctx, setToList(idSet), nil)
-	prices, _ := a.Resolver.ReferencePrices(ctx)
+	names, err := a.Resolver.Names(ctx, setToList(idSet), nil)
+	if err != nil {
+		return killmailSummary{}, err
+	}
+	prices, err := a.Resolver.ReferencePrices(ctx)
+	if err != nil {
+		return killmailSummary{}, err
+	}
 	rows := make([]map[string]any, 0, len(kills))
 	killsN, losses := 0, 0
 	for _, kill := range kills {
@@ -417,7 +438,7 @@ func buildKillmailRows(ctx context.Context, a *session.Session, kills []map[stri
 		})
 	}
 
-	return killmailSummary{rows: rows, kills: killsN, losses: losses}
+	return killmailSummary{rows: rows, kills: killsN, losses: losses}, nil
 }
 
 func stripMarkup(body string) string {

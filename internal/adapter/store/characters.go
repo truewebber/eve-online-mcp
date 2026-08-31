@@ -102,7 +102,7 @@ func (s *Store) WithCharacterForUpdate(ctx context.Context, characterID int64, f
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	defer func() { rollbackTx(ctx, tx) }()
 
 	var refresh string
 	err = tx.QueryRow(ctx,

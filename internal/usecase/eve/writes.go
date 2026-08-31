@@ -324,85 +324,89 @@ func eveFittingDelete(ctx context.Context, a *session.Session, in fittingDeleteI
 	return map[string]any{"status": "done", "deleted": match["name"]}, nil
 }
 
+type mailMarkIn struct {
+	MailID       int    `json:"mail_id"                 jsonschema:"Mail id from eve_mail_list.,minimum=1"`
+	Read         *bool  `json:"read,omitempty"          jsonschema:"True marks it read, False marks it unread. Default true."`
+	Character    string `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+	ConfirmToken string `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
+}
+
+type mailDeleteIn struct {
+	MailID       int    `json:"mail_id"                 jsonschema:"Mail id from eve_mail_list.,minimum=1"`
+	Character    string `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+	ConfirmToken string `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
+}
+
 func registerMailOrganize(s *mcp.Server) {
-	type markIn struct {
-		MailID       int    `json:"mail_id"                 jsonschema:"Mail id from eve_mail_list.,minimum=1"`
-		Read         *bool  `json:"read,omitempty"          jsonschema:"True marks it read, False marks it unread. Default true."`
-		Character    string `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		ConfirmToken string `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
-	}
 	addTool(s, &mcp.Tool{
 		Name:        "eve_mail_mark",
 		Description: "Change the read flag on one mail. This does not return the mail's contents — use eve_mail_read for that. Needs a confirm_token in confirm mode.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in markIn) (*mcp.CallToolResult, any, error) {
-		return Call(ctx, func(a *session.Session) (any, error) {
-			token, err := a.ResolveCharacter(ctx, in.Character)
-			if err != nil {
-				return nil, err
-			}
-			read := boolDef(in.Read, true)
-			args := map[string]any{"mail_id": in.MailID, "read": read, "character_id": token.CharacterID}
-			label := "unread"
-			if read {
-				label = "read"
-			}
-			preview := map[string]any{"action": fmt.Sprintf("Mark mail #%d as %s", in.MailID, label), "character": token.CharacterName}
-			blocked, err := a.Guard.Authorize(ctx, "eve_mail_mark", "mail_organize", args, preview, in.ConfirmToken, token.Scopes)
-			if err != nil {
-				return nil, err
-			}
-			if blocked.Required != nil {
-				return blocked.Required, nil
-			}
-			if _, err := a.ESI.Put(ctx, fmt.Sprintf("/characters/%d/mail/%d", token.CharacterID, in.MailID), &token.CharacterID, nil, map[string]any{"read": read}); err != nil {
-				return nil, err
-			}
-			a.Guard.Record(ctx, "eve_mail_mark", "mail_organize", args, "ok")
-
-			return map[string]any{"status": "done", "mail_id": in.MailID, "read": read}, nil
-		})
-	})
-
-	type delIn struct {
-		MailID       int    `json:"mail_id"                 jsonschema:"Mail id from eve_mail_list.,minimum=1"`
-		Character    string `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		ConfirmToken string `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
-	}
+	}, sessionTool(eveMailMark))
 	addTool(s, &mcp.Tool{
 		Name:        "eve_mail_delete",
 		Description: "Delete one mail. Permanent — deleted EVE mail cannot be recovered. The preview shows sender, subject and date so the user can confirm.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in delIn) (*mcp.CallToolResult, any, error) {
-		return Call(ctx, func(a *session.Session) (any, error) {
-			token, err := a.ResolveCharacter(ctx, in.Character)
-			if err != nil {
-				return nil, err
-			}
-			header, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/mail/%d", token.CharacterID, in.MailID), &token.CharacterID, nil, nil)
-			if err != nil {
-				return nil, err
-			}
-			mail := j.Map(header.Data)
-			sender, _ := a.Resolver.Name(ctx, j.Int(mail["from"]), nil)
-			args := map[string]any{"mail_id": in.MailID, "character_id": token.CharacterID}
-			preview := map[string]any{
-				"action": "Permanently delete a mail", "character": token.CharacterName,
-				"subject": mail["subject"], "from": sender, "timestamp": mail["timestamp"],
-			}
-			blocked, err := a.Guard.Authorize(ctx, "eve_mail_delete", "mail_organize", args, preview, in.ConfirmToken, token.Scopes)
-			if err != nil {
-				return nil, err
-			}
-			if blocked.Required != nil {
-				return blocked.Required, nil
-			}
-			if _, err := a.ESI.Delete(ctx, fmt.Sprintf("/characters/%d/mail/%d", token.CharacterID, in.MailID), &token.CharacterID, nil, nil); err != nil {
-				return nil, err
-			}
-			a.Guard.Record(ctx, "eve_mail_delete", "mail_organize", args, "ok")
+	}, sessionTool(eveMailDelete))
+}
 
-			return map[string]any{"status": "done", "deleted_subject": mail["subject"]}, nil
-		})
-	})
+func eveMailMark(ctx context.Context, a *session.Session, in mailMarkIn) (any, error) {
+	token, err := a.ResolveCharacter(ctx, in.Character)
+	if err != nil {
+		return nil, err
+	}
+	read := boolDef(in.Read, true)
+	args := map[string]any{"mail_id": in.MailID, "read": read, "character_id": token.CharacterID}
+	label := "unread"
+	if read {
+		label = "read"
+	}
+	preview := map[string]any{"action": fmt.Sprintf("Mark mail #%d as %s", in.MailID, label), "character": token.CharacterName}
+	blocked, err := a.Guard.Authorize(ctx, "eve_mail_mark", "mail_organize", args, preview, in.ConfirmToken, token.Scopes)
+	if err != nil {
+		return nil, err
+	}
+	if blocked.Required != nil {
+		return blocked.Required, nil
+	}
+	if _, err := a.ESI.Put(ctx, fmt.Sprintf("/characters/%d/mail/%d", token.CharacterID, in.MailID), &token.CharacterID, nil, map[string]any{"read": read}); err != nil {
+		return nil, err
+	}
+	a.Guard.Record(ctx, "eve_mail_mark", "mail_organize", args, "ok")
+
+	return map[string]any{"status": "done", "mail_id": in.MailID, "read": read}, nil
+}
+
+func eveMailDelete(ctx context.Context, a *session.Session, in mailDeleteIn) (any, error) {
+	token, err := a.ResolveCharacter(ctx, in.Character)
+	if err != nil {
+		return nil, err
+	}
+	header, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/mail/%d", token.CharacterID, in.MailID), &token.CharacterID, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	mail := j.Map(header.Data)
+	sender, err := a.Resolver.Name(ctx, j.Int(mail["from"]), nil)
+	if err != nil {
+		return nil, err
+	}
+	args := map[string]any{"mail_id": in.MailID, "character_id": token.CharacterID}
+	preview := map[string]any{
+		"action": "Permanently delete a mail", "character": token.CharacterName,
+		"subject": mail["subject"], "from": sender, "timestamp": mail["timestamp"],
+	}
+	blocked, err := a.Guard.Authorize(ctx, "eve_mail_delete", "mail_organize", args, preview, in.ConfirmToken, token.Scopes)
+	if err != nil {
+		return nil, err
+	}
+	if blocked.Required != nil {
+		return blocked.Required, nil
+	}
+	if _, err := a.ESI.Delete(ctx, fmt.Sprintf("/characters/%d/mail/%d", token.CharacterID, in.MailID), &token.CharacterID, nil, nil); err != nil {
+		return nil, err
+	}
+	a.Guard.Record(ctx, "eve_mail_delete", "mail_organize", args, "ok")
+
+	return map[string]any{"status": "done", "deleted_subject": mail["subject"]}, nil
 }
 
 type mailSendIn struct {
@@ -831,7 +835,10 @@ func resolveDestination(ctx context.Context, a *session.Session, name string, ch
 	structures := j.Slice(j.Map(search.Data)["structure"])
 	if len(structures) > 0 {
 		sid := j.Int(structures[0])
-		sname, _ := a.Resolver.Name(ctx, sid, &characterID)
+		sname, err := a.Resolver.Name(ctx, sid, &characterID)
+		if err != nil {
+			return nil, err
+		}
 
 		return map[string]any{"id": sid, "name": sname, "kind": "structure"}, nil
 	}
@@ -842,7 +849,10 @@ func resolveDestination(ctx context.Context, a *session.Session, name string, ch
 func resolveEntity(ctx context.Context, a *session.Session, name string, characterID int, kind string) (map[string]any, error) {
 	if _, err := strconv.Atoi(strings.TrimSpace(name)); err == nil {
 		id := j.Int(name)
-		n, _ := a.Resolver.Name(ctx, id, &characterID)
+		n, err := a.Resolver.Name(ctx, id, &characterID)
+		if err != nil {
+			return nil, err
+		}
 
 		return map[string]any{"id": id, "name": n, "kind": "id"}, nil
 	}

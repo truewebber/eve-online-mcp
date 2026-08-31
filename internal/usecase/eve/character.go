@@ -72,7 +72,10 @@ func eveCharacterSkills(ctx context.Context, a *session.Session, in characterSki
 	for _, s := range skills {
 		ids = append(ids, j.Int(s["skill_id"]))
 	}
-	names, _ := a.Resolver.Names(ctx, ids, nil)
+	names, err := a.Resolver.Names(ctx, ids, nil)
+	if err != nil {
+		return nil, err
+	}
 	view := filterCharacterSkills(skills, names, in.Search, boolDef(in.TrainedOnly, true))
 	sort.Slice(view.rows, func(i, k int) bool { return j.Str(view.rows[i]["skill"]) < j.Str(view.rows[k]["skill"]) })
 	visible, meta := page(view.rows, limitOr(in.Limit, 20), "Narrow with `search`, or raise `limit`.")
@@ -164,7 +167,10 @@ func eveCharacterSkillQueue(ctx context.Context, a *session.Session, in characte
 	for _, e := range entries {
 		ids = append(ids, j.Int(e["skill_id"]))
 	}
-	names, _ := a.Resolver.Names(ctx, ids, nil)
+	names, err := a.Resolver.Names(ctx, ids, nil)
+	if err != nil {
+		return nil, err
+	}
 	now := time.Now().UTC()
 	sort.Slice(entries, func(i, k int) bool { return j.Int(entries[i]["queue_position"]) < j.Int(entries[k]["queue_position"]) })
 	rows := formatSkillQueue(entries, names, now)
@@ -227,7 +233,10 @@ func eveCharacterClones(ctx context.Context, a *session.Session, in characterClo
 	implants := j.Slice(implantsRes.Data)
 	jump := j.Maps(clones["jump_clones"])
 	home := j.Map(clones["home_location"])
-	names, _ := a.Resolver.Names(ctx, collectCloneIDs(implants, jump, home), &cid)
+	names, err := a.Resolver.Names(ctx, collectCloneIDs(implants, jump, home), &cid)
+	if err != nil {
+		return nil, err
+	}
 
 	return map[string]any{
 		"character":       token.CharacterName,
@@ -304,7 +313,10 @@ func eveCharacterStandings(ctx context.Context, a *session.Session, in character
 	if standingsErr == nil {
 		standings = j.Maps(standingsRes.Data)
 	}
-	names, _ := a.Resolver.Names(ctx, standingsNameIDs(standings, lpData), nil)
+	names, err := a.Resolver.Names(ctx, standingsNameIDs(standings, lpData), nil)
+	if err != nil {
+		return nil, err
+	}
 	rows := formatCharacterStandings(standings, names)
 	visible, meta := page(rows, limitOr(in.Limit, 20), "")
 	out := merge(map[string]any{

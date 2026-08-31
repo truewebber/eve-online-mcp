@@ -93,8 +93,8 @@ func With(ctx context.Context, s *Session) context.Context {
 }
 
 func From(ctx context.Context) (*Session, error) {
-	s, _ := ctx.Value(ctxKey{}).(*Session)
-	if s == nil {
+	s, ok := ctx.Value(ctxKey{}).(*Session)
+	if !ok || s == nil {
 		return nil, character.NotFoundError{Msg: "This request is not tied to an EVE login. Re-authenticate the MCP server (Authentication required) and try again."}
 	}
 

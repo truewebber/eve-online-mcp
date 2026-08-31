@@ -73,11 +73,17 @@ func Float(v any) float64 {
 	case int64:
 		return float64(t)
 	case json.Number:
-		f, _ := t.Float64()
+		f, err := t.Float64()
+		if err != nil {
+			return 0
+		}
 
 		return f
 	case string:
-		f, _ := strconv.ParseFloat(t, 64)
+		f, err := strconv.ParseFloat(t, 64)
+		if err != nil {
+			return 0
+		}
 
 		return f
 	default:
