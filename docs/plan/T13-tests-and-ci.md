@@ -1,6 +1,6 @@
 # T13 — `tests/` for everything that is not a unit test, and a pipeline
 
-- Status: `todo`
+- Status: `done`
 - Size: M
 - Depends on: T12
 - RULES: §5 (tests are the only proof), §3 (the linter is the style),
@@ -154,20 +154,20 @@ needs the tools T24 adds.
 
 ## Acceptance
 
-- [ ] CI runs on push and pull request, and a failing lint, unit test,
+- [x] CI runs on push and pull request, and a failing lint, unit test,
       store test or `tests/` test fails the build
-- [ ] No CI step needs a credential, a live character, or the network
+- [x] No CI step needs a credential, a live character, or the network
       beyond module download and the Postgres service
-- [ ] `tests/` is at the repository root, is `go test`-native, and
+- [x] `tests/` is at the repository root, is `go test`-native, and
       nothing imports it
-- [ ] Every read tool is exercised end to end through a bearer, and a
+- [x] Every read tool is exercised end to end through a bearer, and a
       default response over 6 000 characters fails the build
-- [ ] Every tool-definition rule the old `lint` enforced still fails on
+- [x] Every tool-definition rule the old `lint` enforced still fails on
       violation, covered by a test per rule
-- [ ] `-update` re-records fixtures against real ESI, and is the only
+- [x] `-update` re-records fixtures against real ESI, and is the only
       thing in the tree that talks to CCP
-- [ ] `make ci` reproduces the pipeline locally
-- [ ] `go test ./...` and `make lint` pass
+- [x] `make ci` reproduces the pipeline locally
+- [x] `go test ./...` and `make lint` pass
 
 ## Verify
 

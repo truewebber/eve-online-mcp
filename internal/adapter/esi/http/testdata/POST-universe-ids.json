@@ -41,12 +41,24 @@
       {
         "id": 34,
         "name": "Tritanium"
+      },
+      {
+        "id": 587,
+        "name": "Rifter"
+      },
+      {
+        "id": 24698,
+        "name": "Drake"
       }
     ],
     "systems": [
       {
         "id": 30000142,
         "name": "Jita"
+      },
+      {
+        "id": 30002187,
+        "name": "Amarr"
       }
     ]
   }

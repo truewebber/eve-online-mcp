@@ -25,6 +25,10 @@ const (
 
 const applyAdvisoryKey int64 = 87265002
 
+func Apply(ctx context.Context, databaseURL string) error {
+	return apply(ctx, databaseURL)
+}
+
 func apply(ctx context.Context, databaseURL string) error {
 	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {

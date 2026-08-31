@@ -153,6 +153,10 @@ func Open(pub Host, runtime *session.Session, db *store.Store, opts Options, log
 	}, nil
 }
 
+func (s *Server) IssueAccess(userID string) (string, error) {
+	return s.issueAccess(userID)
+}
+
 func (s *Server) Base() string { return s.pub.BaseURL() }
 
 func (s *Server) ResourceURL() string {

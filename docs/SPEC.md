@@ -731,8 +731,11 @@ internal/
   service/              transport; depends on usecase only
     http/               generated OpenAPI + handlers + both listeners
     mcp/                MCP server registration facade
-tests/                  everything that is not a unit test: smoke,
-                        catalogue check, recorded ESI fixtures
+tests/                  everything that is not a unit test: tool-
+                        definition rules, read-tool smoke, protocol;
+                        the catalogue check lands here later.
+                        Recorded ESI fixtures live with the esitest
+                        transport (`adapter/esi/http/esitest`)
 ```
 
 Import direction: `service → usecase → adapter | domain`; domain imports
@@ -779,7 +782,10 @@ the mail cap counts from (§5.4). It stores no message bodies.
   `esi.evetech.net/meta/openapi.json` on the new date — the endpoint
   table in ESI.md is the checklist, and the diff is mechanical enough to
   script. The `/route/` change (GET `flag` → POST `preference`) is what
-  this looks like when it happens.
+  this looks like when it happens. The mechanism is
+  `go test ./tests -run TestFixtures -update`
+  on the new date, then a review of the `testdata` diff: that flag is
+  the only path in the tree that talks to CCP, and it never runs in CI.
 - `/route/` is POST with `preference` in the body.
 - ESI search is prefix-only; `eve_universe_search` shortens the prefix
   and retries.

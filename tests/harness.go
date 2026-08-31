@@ -1,0 +1,250 @@
+package tests
+
+import (
+	"fmt"
+	nhttp "net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"go.uber.org/mock/gomock"
+
+	"github.com/truewebber/gopkg/log"
+
+	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
+	esihttp "github.com/truewebber/eve-online-mcp/internal/adapter/esi/http"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/esi/http/esitest"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
+	ssohttp "github.com/truewebber/eve-online-mcp/internal/adapter/sso/http"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/store/storetest"
+	authcodepgx "github.com/truewebber/eve-online-mcp/internal/domain/authcode/pgx"
+	"github.com/truewebber/eve-online-mcp/internal/domain/character"
+	characterpgx "github.com/truewebber/eve-online-mcp/internal/domain/character/pgx"
+	confirmpgx "github.com/truewebber/eve-online-mcp/internal/domain/confirm/pgx"
+	loginstatepgx "github.com/truewebber/eve-online-mcp/internal/domain/loginstate/pgx"
+	oauthclientpgx "github.com/truewebber/eve-online-mcp/internal/domain/oauthclient/pgx"
+	"github.com/truewebber/eve-online-mcp/internal/domain/write"
+	"github.com/truewebber/eve-online-mcp/internal/mocks"
+	httpsvc "github.com/truewebber/eve-online-mcp/internal/service/http"
+	svcmcp "github.com/truewebber/eve-online-mcp/internal/service/mcp"
+	"github.com/truewebber/eve-online-mcp/internal/usecase/oauth"
+	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+const (
+	testHMACKey     = "0123456789abcdef0123456789abcdef"
+	testAccessToken = "fixture-access"
+	testVersion     = "test"
+	testUserAgent   = "eve-mcp-tests"
+	fixtureName     = "Fixture Pilot"
+)
+
+type env struct {
+	server *httptest.Server
+	client *mcp.ClientSession
+}
+
+func openEnv(t *testing.T) *env {
+	t.Helper()
+	logger := mocks.QuietLogger(gomock.NewController(t))
+	db := openThrowaway(t, logger)
+	tr, err := esitest.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpClient := &nhttp.Client{Transport: &esitest.Fallback{Inner: tr}}
+	hs := httptest.NewUnstartedServer(nhttp.NotFoundHandler())
+	base := "http://" + hs.Listener.Addr().String()
+	host := oauth.Host{
+		PublicURL:   base,
+		MCPPath:     "/mcp",
+		CallbackURL: base + "/auth/callback",
+	}
+	runtime, oauthServer := wire(t, db, host, httpClient, logger)
+	userID := seedCharacter(t, db, runtime, oauthServer)
+	token, err := oauthServer.IssueAccess(userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hs.Config.Handler = mcpMux(oauthServer, host)
+	hs.Start()
+	t.Cleanup(hs.Close)
+	sess := connect(t, hs.URL+"/mcp", token)
+
+	return &env{server: hs, client: sess}
+}
+
+func openThrowaway(t *testing.T, logger log.Logger) *store.Store {
+	t.Helper()
+	dsn := storetest.EmptyDatabase(t)
+	ctx := t.Context()
+	if err := storetest.Apply(ctx, dsn); err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.Open(ctx, dsn, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(db.Close)
+
+	return db
+}
+
+func wire(
+	t *testing.T,
+	db *store.Store,
+	host oauth.Host,
+	httpClient *nhttp.Client,
+	logger log.Logger,
+) (*session.Session, *oauth.Server) {
+	t.Helper()
+	pool := db.Pool()
+	opts := session.Options{
+		UserAgent:  testUserAgent,
+		Store:      db,
+		Characters: characterpgx.New(pool, logger),
+		Clients:    oauthclientpgx.New(pool),
+		Logins:     loginstatepgx.New(pool),
+		Codes:      authcodepgx.New(pool),
+		Confirms:   confirmpgx.New(pool),
+		HTTP:       httpClient,
+		Logger:     logger,
+	}
+	opts.ESI = esihttp.New(esi.Options{
+		UserAgent:  testUserAgent,
+		CompatDate: esitest.CompatDate,
+	}, httpClient, logger)
+	opts.SSO = ssohttp.New(sso.Options{
+		ClientID:    "test-eve-client",
+		CallbackURL: host.CallbackURL,
+		UserAgent:   testUserAgent,
+		Scopes:      write.RequestedScopes(),
+	}, httpClient, logger)
+	runtime, err := session.Open(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oauthServer, err := oauth.Open(host, runtime, db, oauth.Options{HMACKey: []byte(testHMACKey)}, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return runtime, oauthServer
+}
+
+func seedCharacter(t *testing.T, db *store.Store, runtime *session.Session, oauthServer *oauth.Server) string {
+	t.Helper()
+	ctx := t.Context()
+	user, err := db.CreateUser(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Characters.Upsert(ctx, character.Character{
+		ID:           int64(esitest.FixtureCharacterID),
+		UserID:       user.ID,
+		Name:         fixtureName,
+		RefreshToken: "fixture-refresh",
+		Scopes:       write.RequestedScopes(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sess := oauthServer.SessionFor(user.ID)
+	if err := sess.SSO.Upsert(ctx, &sso.CharacterToken{
+		CharacterID:     esitest.FixtureCharacterID,
+		CharacterName:   fixtureName,
+		RefreshToken:    "fixture-refresh",
+		Scopes:          write.RequestedScopes(),
+		AccessToken:     testAccessToken,
+		AccessExpiresAt: time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	return user.ID
+}
+
+func mcpMux(oauthServer *oauth.Server, host oauth.Host) nhttp.Handler {
+	h := httpsvc.New(oauthServer, host)
+	mux := nhttp.NewServeMux()
+	httpsvc.HandlerFromMux(h, mux)
+	mcpServer := mcp.NewServer(&mcp.Implementation{
+		Name: "eve-online", Title: "EVE Online", Version: testVersion,
+	}, &mcp.ServerOptions{Instructions: svcmcp.Instructions()})
+	svcmcp.Register(mcpServer)
+	stream := mcp.NewStreamableHTTPHandler(func(*nhttp.Request) *mcp.Server {
+		return mcpServer
+	}, &mcp.StreamableHTTPOptions{
+		Stateless:                  true,
+		DisableLocalhostProtection: true,
+	})
+	protected := oauthServer.ProtectMCP(stream)
+	mux.Handle("/mcp", protected)
+	mux.Handle("/mcp/", protected)
+
+	return mux
+}
+
+func connect(t *testing.T, endpoint, token string) *mcp.ClientSession {
+	t.Helper()
+	client := mcp.NewClient(&mcp.Implementation{Name: testUserAgent, Version: testVersion}, nil)
+	sess, err := client.Connect(t.Context(), &mcp.StreamableClientTransport{
+		Endpoint:             endpoint,
+		HTTPClient:           &nhttp.Client{Transport: bearerRoundTrip{token: token}},
+		DisableStandaloneSSE: true,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sess.Close() })
+
+	return sess
+}
+
+type bearerRoundTrip struct {
+	token string
+	base  nhttp.RoundTripper
+}
+
+func (b bearerRoundTrip) RoundTrip(req *nhttp.Request) (*nhttp.Response, error) {
+	next := b.base
+	if next == nil {
+		next = nhttp.DefaultTransport
+	}
+	clone := req.Clone(req.Context())
+	if b.token != "" {
+		clone.Header.Set("Authorization", "Bearer "+b.token)
+	}
+
+	resp, err := next.RoundTrip(clone)
+	if err != nil {
+		return nil, wrap("round trip", err)
+	}
+
+	return resp, nil
+}
+
+func wrap(op string, err error) error {
+	if err == nil {
+		return nil
+	}
+
+	return fmt.Errorf("tests: %s: %w", op, err)
+}
+
+func toolText(result *mcp.CallToolResult) string {
+	if result == nil {
+		return ""
+	}
+	var b strings.Builder
+	for _, c := range result.Content {
+		if text, ok := c.(*mcp.TextContent); ok {
+			b.WriteString(text.Text)
+		}
+	}
+
+	return b.String()
+}

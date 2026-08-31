@@ -1,4 +1,4 @@
-.PHONY: build run lint lint-fix lint-check gen generate postgres migrate down test test-store
+.PHONY: build run lint lint-fix lint-check gen generate postgres migrate down test test-store ci
 
 GO ?= go
 COMPOSE ?= docker compose
@@ -41,3 +41,8 @@ test:
 
 test-store: postgres migrate
 	DATABASE_URL=$(DATABASE_URL) $(GO) test ./internal/adapter/store ./internal/adapter/store/storetest ./internal/adapter/sso ./internal/adapter/sso/http ./internal/adapter/esi ./internal/adapter/esi/http ./internal/usecase/oauth ./internal/usecase/session ./internal/domain/write ./internal/domain/character/pgx ./internal/domain/oauthclient/pgx ./internal/domain/loginstate/pgx ./internal/domain/authcode/pgx ./internal/domain/confirm/pgx -count=1
+
+ci: lint
+	DATABASE_URL= $(GO) test ./...
+	$(MAKE) test-store
+	DATABASE_URL=$(DATABASE_URL) $(GO) test ./tests/... -count=1

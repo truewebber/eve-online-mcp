@@ -224,6 +224,7 @@ go build -o eve-mcp ./cmd/eve-mcp
 ./eve-mcp                         # foreground, reads ./.env or the environment
 make test                         # offline: fixtures; store tests skip without DATABASE_URL
 make test-store                   # everything that needs DATABASE_URL
+make ci                           # lint, unit tests, store tests, tests/
 make generate                     # mockgen + oapi-codegen
 ```
 

@@ -20,46 +20,14 @@ var update = flag.Bool("update", false, "record fixtures from live ESI") //nolin
 
 func TestFixtures(t *testing.T) { //nolint:paralleltest // -update writes testdata and must not race
 	if *update {
-		updateFixtures(t)
-	}
-	assertCatalog(t)
-	assertStatusRoundTrip(t)
-}
-
-func updateFixtures(t *testing.T) {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
-	defer cancel()
-	dir := Testdata()
-	token := AccessToken()
-	for _, spec := range Catalog() {
-		f, err := resolveFixture(ctx, spec, token)
-		if err != nil {
-			t.Fatalf("%s %s: %v", spec.Method, spec.Path, err)
-		}
-		if err := Write(dir, f); err != nil {
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+		defer cancel()
+		if err := Update(ctx); err != nil {
 			t.Fatal(err)
 		}
 	}
-}
-
-func resolveFixture(ctx context.Context, spec Spec, token string) (Fixture, error) {
-	if spec.Status == statusErrorLimited || (spec.Auth && token == "") {
-		return SchemaFixture(spec)
-	}
-	if spec.Status == statusForbidden {
-		got, err := Record(ctx, spec, "")
-		if err != nil || got.Status != statusForbidden {
-			return SchemaFixture(spec)
-		}
-
-		return got, nil
-	}
-	if spec.Auth {
-		return Record(ctx, spec, token)
-	}
-
-	return Record(ctx, spec, "")
+	assertCatalog(t)
+	assertStatusRoundTrip(t)
 }
 
 func assertCatalog(t *testing.T) {

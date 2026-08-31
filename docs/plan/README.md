@@ -97,7 +97,7 @@ commit as the change to the document that owns it; after the task
 | [T10](T10-character-ownership.md) | Alt-add ownership refuse | done | S | T05 T06 | — | §3.3 |
 | [T11](T11-test-foundation.md) | Generated mocks and recorded ESI | done | L | — | §13 §5 §1 | §12.0 |
 | [T12](T12-hmac-key.md) | `HMAC_KEY` env; drop `app_secrets` | done | S | T11 | §14 §16 | §2, §12.4 |
-| [T13](T13-tests-and-ci.md) | `tests/` end to end, and a pipeline | todo | M | T12 | §5 §3 §14 | §4.3, §6, §9 |
+| [T13](T13-tests-and-ci.md) | `tests/` end to end, and a pipeline | done | M | T12 | §5 §3 §14 | §4.3, §6, §9 |
 | [T14](T14-character-is-the-user.md) | The character is the user; drop `users` | todo | L | T13 | §11 §5 | §3.3, §12.1 |
 | [T15](T15-postgres-is-not-an-adapter.md) | Retire `adapter/store`; entities and contracts only | todo | M | T14 | §11 §12 §16 | §7 |
 | [T16](T16-assembled-urls.md) | URLs are assembled, never concatenated | todo | S | T15 | §8 §16 | §3.1, §9 |
