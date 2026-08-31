@@ -335,7 +335,7 @@ func (c *Client) cacheKey(path string, characterID *int, params map[string]any) 
 	}
 	canonical, err := json.Marshal(map[string]any{"p": path, "c": cid, "q": normalise(params), "d": c.opts.CompatDate})
 	if err != nil {
-		return "", err
+		return "", wrap("cacheKey", err)
 	}
 	sum := sha256.Sum256(canonical)
 
@@ -350,7 +350,7 @@ func (c *Client) headers(ctx context.Context, characterID *int) (http.Header, er
 	if characterID != nil {
 		token, err := c.sso.AccessToken(ctx, *characterID)
 		if err != nil {
-			return nil, err
+			return nil, wrap("headers", err)
 		}
 		h.Set("Authorization", "Bearer "+token.AccessToken)
 	}
@@ -368,7 +368,7 @@ func (c *Client) cachedGet(ctx context.Context, path string, characterID *int, p
 		var err error
 		cached, _, err = cache.CacheGet(ctx, key)
 		if err != nil {
-			return Result{}, err
+			return Result{}, wrap("cachedGet", err)
 		}
 	}
 	if cached != nil && cached.Fresh() {
@@ -388,7 +388,7 @@ func (c *Client) cachedGet(ctx context.Context, path string, characterID *int, p
 	defer resp.Body.Close()
 	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody))
 	if err != nil {
-		return Result{}, err
+		return Result{}, wrap("cachedGet", err)
 	}
 
 	if resp.StatusCode == http.StatusNotModified && cached != nil {
@@ -416,7 +416,7 @@ func (c *Client) cachedGet(ctx context.Context, path string, characterID *int, p
 	expires := expiresAt(resp, cacheTTL)
 	raw, err := json.Marshal(decoded)
 	if err != nil {
-		return Result{}, err
+		return Result{}, wrap("cachedGet", err)
 	}
 	if cache := c.cache(); cache != nil {
 		if err := cache.CachePut(ctx, key, store.CachedResponse{
@@ -447,7 +447,7 @@ func (c *Client) write(ctx context.Context, method, path string, characterID *in
 	defer resp.Body.Close()
 	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody))
 	if err != nil {
-		return nil, err
+		return nil, wrap("write", err)
 	}
 	if resp.StatusCode >= http.StatusBadRequest {
 		return nil, httpError(resp.StatusCode, bodyBytes, path)
@@ -471,13 +471,13 @@ func (c *Client) request(ctx context.Context, method, path string, params map[st
 	if jsonBody != nil {
 		raw, err := json.Marshal(jsonBody)
 		if err != nil {
-			return nil, err
+			return nil, wrap("request", err)
 		}
 		body = bytes.NewReader(raw)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, u, body)
 	if err != nil {
-		return nil, err
+		return nil, wrap("request", err)
 	}
 	req.Header = headers.Clone()
 	c.sem <- struct{}{}
@@ -530,7 +530,7 @@ func discardBody(resp *http.Response) error {
 	_, err := io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
 
-	return err
+	return wrap("discardBody", err)
 }
 
 func (c *Client) noteErrorHeaders(resp *http.Response) {

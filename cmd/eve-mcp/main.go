@@ -41,7 +41,7 @@ func run() error {
 
 	db, err := store.Open(context.Background(), cfg.DatabaseURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("open store: %w", err)
 	}
 	runtime, err := session.Open(session.Options{
 		UserAgent: cfg.UserAgent,
@@ -59,7 +59,7 @@ func run() error {
 		},
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("open session: %w", err)
 	}
 	defer runtime.Close()
 
@@ -71,17 +71,20 @@ func run() error {
 	}
 	oauthServer, err := oauth.Open(host, runtime, db)
 	if err != nil {
-		return err
+		return fmt.Errorf("open oauth: %w", err)
 	}
 
 	h := httpsvc.New(oauthServer, host)
-
-	return httpsvc.ListenAndServe(h, httpsvc.ListenOptions{
+	if err := httpsvc.ListenAndServe(h, httpsvc.ListenOptions{
 		Listen:         cfg.Listen,
 		InternalListen: cfg.InternalListen,
 		MCPPath:        host.MCPPath,
 		Version:        version,
-	})
+	}); err != nil {
+		return fmt.Errorf("listen: %w", err)
+	}
+
+	return nil
 }
 
 const usage = `eve-mcp — MCP server that exposes EVE Online accounts to LLM clients

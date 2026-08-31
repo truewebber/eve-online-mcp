@@ -61,7 +61,7 @@ type empty struct{}
 func Result(v any) (*mcp.CallToolResult, any, error) {
 	raw, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, wrap("Result", err)
 	}
 
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(raw)}}}, nil, nil

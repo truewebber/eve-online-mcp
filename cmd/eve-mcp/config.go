@@ -57,7 +57,7 @@ func loadConfig() (config, error) {
 			return config{}, fmt.Errorf("parse %s: %w", dotEnvFile, err)
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return config{}, err
+		return config{}, fmt.Errorf("stat %s: %w", dotEnvFile, err)
 	} else if err := env.Parse(&c); err != nil {
 		return config{}, fmt.Errorf("parse env: %w", err)
 	}

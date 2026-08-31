@@ -95,10 +95,10 @@ func eveUniverseSearch(ctx context.Context, a *session.Session, in universeSearc
 	}
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveUniverseSearch", err)
 	}
 	if err := a.RequireScope(token, "esi-search.search_structures.v1", "the search index"); err != nil {
-		return nil, err
+		return nil, wrap("eveUniverseSearch", err)
 	}
 	raw, used, err := searchWithFallback(ctx, a, token.CharacterID, wanted, in.Query, boolDef(in.Strict, false))
 	if err != nil {
@@ -144,7 +144,7 @@ func universeSearchAssemble(ctx context.Context, a *session.Session, characterID
 	pool := min(max(searchPoolFactor*limit, searchPoolFloor), searchPoolMax)
 	names, err := a.Resolver.Names(ctx, setToList(universeSearchIDSet(raw, pool)), &characterID)
 	if err != nil {
-		return nil, err
+		return nil, wrap("universeSearchAssemble", err)
 	}
 	out := map[string]any{fQuery: in.Query, fStrict: boolDef(in.Strict, false)}
 	if used != in.Query {
@@ -203,7 +203,7 @@ func universeSearchRanked(ids []int, names map[int]string, pool, limit int) []ma
 func eveUniverseItem(ctx context.Context, a *session.Session, in universeItemIn) (any, error) {
 	resolved, err := a.Resolver.ResolveNames(ctx, []string{in.Item}, nil, []string{catInventoryTypes})
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveUniverseItem", err)
 	}
 	match := resolved[strings.ToLower(strings.TrimSpace(in.Item))]
 	if match.Chosen == nil {
@@ -211,7 +211,7 @@ func eveUniverseItem(ctx context.Context, a *session.Session, in universeItemIn)
 	}
 	info, err := a.Resolver.TypeInfo(ctx, match.Chosen.ID)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveUniverseItem", err)
 	}
 	desc := j.Str(info[fDescription])
 	if len(desc) > typeDescPreview {
@@ -243,7 +243,7 @@ type universeSystemESI struct {
 func eveUniverseSystem(ctx context.Context, a *session.Session, in universeSystemIn) (any, error) {
 	resolved, err := a.Resolver.ResolveNames(ctx, []string{in.System}, nil, []string{fSystems})
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveUniverseSystem", err)
 	}
 	match := resolved[strings.ToLower(strings.TrimSpace(in.System))]
 	if match.Chosen == nil {
@@ -272,15 +272,15 @@ func eveUniverseSystem(ctx context.Context, a *session.Session, in universeSyste
 func universeSystemLookups(ctx context.Context, a *session.Session, sid int) (universeSystemESI, error) {
 	infoRes, err := a.ESI.Get(ctx, fmt.Sprintf("/universe/systems/%d", sid), nil, nil, nil)
 	if err != nil {
-		return universeSystemESI{}, err
+		return universeSystemESI{}, wrap("universeSystemLookups", err)
 	}
 	killsRes, err := a.ESI.Get(ctx, "/universe/system_kills", nil, nil, nil)
 	if err != nil {
-		return universeSystemESI{}, err
+		return universeSystemESI{}, wrap("universeSystemLookups", err)
 	}
 	jumpsRes, err := a.ESI.Get(ctx, "/universe/system_jumps", nil, nil, nil)
 	if err != nil {
-		return universeSystemESI{}, err
+		return universeSystemESI{}, wrap("universeSystemLookups", err)
 	}
 
 	return universeSystemESI{infoRes, killsRes, jumpsRes}, nil
@@ -346,7 +346,7 @@ func eveUniverseRoute(ctx context.Context, a *session.Session, in universeRouteI
 	req := universeRouteBody(in, found, pref)
 	route, err := a.ESI.Post(ctx, fmt.Sprintf("/route/%d/%d", oid, did), nil, nil, req.body)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveUniverseRoute", err)
 	}
 	hops := universeRouteHops(route)
 	if len(hops) == 0 {
@@ -365,7 +365,7 @@ func universeResolveSystems(ctx context.Context, a *session.Session, in universe
 	}
 	lookup, err := a.Resolver.IDsFromNames(ctx, wanted)
 	if err != nil {
-		return nil, err
+		return nil, wrap("universeResolveSystems", err)
 	}
 	found := map[string]int{}
 	for _, s := range j.Maps(lookup[fSystems]) {
@@ -509,7 +509,7 @@ func universeDangerousHops(steps []map[string]any) []string {
 func eveUniverseHotspots(ctx context.Context, a *session.Session, in universeHotspotsIn) (any, error) {
 	result, err := a.ESI.Get(ctx, "/universe/system_kills", nil, nil, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveUniverseHotspots", err)
 	}
 	rows := j.Maps(result.Data)
 	sort.Slice(rows, func(i, k int) bool {
@@ -525,7 +525,7 @@ func eveUniverseHotspots(ctx context.Context, a *session.Session, in universeHot
 	}
 	names, err := a.Resolver.Names(ctx, setToList(idSet), nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveUniverseHotspots", err)
 	}
 	var outRows []map[string]any
 	for _, r := range rows {
@@ -546,7 +546,7 @@ func searchWithFallback(ctx context.Context, a *session.Session, characterID int
 			"categories": categories, "search": attempt, fStrict: strict,
 		}, nil)
 		if err != nil {
-			return nil, attempt, err
+			return nil, attempt, wrap("searchWithFallback", err)
 		}
 		raw := map[string][]int{}
 		hit := false

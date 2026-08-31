@@ -95,7 +95,7 @@ func (g *Guard) Authorize(ctx context.Context, tool, capability string, args map
 			ArgsDigest: digest, CreatedAt: time.Now().UTC(),
 		})
 		if err != nil {
-			return Decision{}, err
+			return Decision{}, wrap("Authorize", err)
 		}
 	}
 	ttlSec := int(ConfirmTTL / time.Second)
@@ -152,7 +152,7 @@ func (g *Guard) checkMailCap(ctx context.Context) error {
 	}
 	n, err := g.persist.CountMailSince(ctx, g.userID, time.Now().Add(-time.Hour))
 	if err != nil {
-		return err
+		return wrap("checkMailCap", err)
 	}
 	if n >= MailCap {
 		return BlockedError{Msg: fmt.Sprintf("Mail budget exhausted: %d mails in the last hour. Wait until an earlier send drops out of the rolling hour, then try again.", MailCap)}
@@ -167,14 +167,14 @@ func (g *Guard) consumeConfirm(ctx context.Context, tool, digest, confirmToken s
 	}
 	pending, ok, err := g.persist.GetConfirm(ctx, confirmToken)
 	if err != nil {
-		return err
+		return wrap("consumeConfirm", err)
 	}
 	if !ok || pending.UserID != g.userID {
 		return BlockedError{Msg: errConfirmUnknown}
 	}
 	if time.Since(pending.CreatedAt) > ConfirmTTL {
 		if err := g.persist.DeleteConfirm(ctx, confirmToken); err != nil {
-			return err
+			return wrap("consumeConfirm", err)
 		}
 
 		return BlockedError{Msg: errConfirmUnknown}
@@ -184,13 +184,13 @@ func (g *Guard) consumeConfirm(ctx context.Context, tool, digest, confirmToken s
 	}
 	if pending.ArgsDigest != digest {
 		if err := g.persist.DeleteConfirm(ctx, confirmToken); err != nil {
-			return err
+			return wrap("consumeConfirm", err)
 		}
 
 		return BlockedError{Msg: "The arguments changed since the preview was generated, so the token was discarded. Request a new preview and confirm that one."}
 	}
 	if err := g.persist.DeleteConfirm(ctx, confirmToken); err != nil {
-		return err
+		return wrap("consumeConfirm", err)
 	}
 
 	return nil
@@ -199,7 +199,7 @@ func (g *Guard) consumeConfirm(ctx context.Context, tool, digest, confirmToken s
 func digestArgs(payload any) (string, error) {
 	raw, err := json.Marshal(payload)
 	if err != nil {
-		return "", err
+		return "", wrap("digestArgs", err)
 	}
 	sum := sha256.Sum256(raw)
 
@@ -209,7 +209,7 @@ func digestArgs(payload any) (string, error) {
 func randomToken() (string, error) {
 	var b [9]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		return "", err
+		return "", wrap("randomToken", err)
 	}
 
 	return strings.TrimRight(hex.EncodeToString(b[:]), "="), nil

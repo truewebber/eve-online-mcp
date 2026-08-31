@@ -39,7 +39,7 @@ func registerAccount(s *mcp.Server) {
 func eveServerStatus(ctx context.Context, a *session.Session, _ empty) (any, error) {
 	result, err := a.ESI.Get(ctx, "/status", nil, nil, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveServerStatus", err)
 	}
 	out := j.Map(result.Data)
 	out[fDataAge] = result.StaleNote()
@@ -88,7 +88,7 @@ func eveAuthStatus(ctx context.Context, a *session.Session, _ empty) (any, error
 func eveAuthLoginURL(ctx context.Context, a *session.Session, _ empty) (any, error) {
 	login, err := a.StartAltLogin(ctx)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveAuthLoginURL", err)
 	}
 	scopes := write.RequestedScopes()
 	writes := write.CapabilityNames()
@@ -107,7 +107,7 @@ type logoutIn struct {
 func eveAuthLogout(ctx context.Context, a *session.Session, in logoutIn) (any, error) {
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveAuthLogout", err)
 	}
 	a.SSO.Revoke(ctx, token.CharacterID)
 
@@ -126,7 +126,7 @@ type overviewBox struct {
 func eveCharacterOverview(ctx context.Context, a *session.Session, in overviewIn) (any, error) {
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveCharacterOverview", err)
 	}
 	cid := token.CharacterID
 	got := fetchOverview(ctx, a, cid)

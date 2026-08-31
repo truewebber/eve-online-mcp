@@ -130,11 +130,11 @@ type AltLogin struct {
 
 func (s *Session) StartAltLogin(ctx context.Context) (AltLogin, error) {
 	if s.Opts.SSO.UserID == "" {
-		return AltLogin{}, sso.Err("This request is not tied to an EVE login. Re-authenticate the MCP server (Authentication required) and try again.")
+		return AltLogin{}, wrap("StartAltLogin", sso.Err("This request is not tied to an EVE login. Re-authenticate the MCP server (Authentication required) and try again."))
 	}
 	prep, err := s.SSO.PrepareLogin(nil)
 	if err != nil {
-		return AltLogin{}, err
+		return AltLogin{}, wrap("StartAltLogin", err)
 	}
 	if err := s.Store.PutLoginState(ctx, store.LoginState{
 		State:        prep.State,
@@ -143,7 +143,7 @@ func (s *Session) StartAltLogin(ctx context.Context) (AltLogin, error) {
 		Kind:         store.LoginAlt,
 		UserID:       s.Opts.SSO.UserID,
 	}); err != nil {
-		return AltLogin{}, err
+		return AltLogin{}, wrap("StartAltLogin", err)
 	}
 
 	return AltLogin{URL: prep.URL, State: prep.State}, nil
@@ -211,7 +211,7 @@ func (s *Session) RequireGranted(characterName string, scopes []string, scope, w
 		extra = " That is a corporation scope: add the matching permissions on the EVE developer application and re-authorize this character with eve_auth_login_url."
 	}
 
-	return sso.Err(fmt.Sprintf("%s was not authorized with '%s', which is required to read %s. Re-run the login for this character.%s", characterName, scope, what, extra))
+	return wrap("RequireScope", sso.Err(fmt.Sprintf("%s was not authorized with '%s', which is required to read %s. Re-run the login for this character.%s", characterName, scope, what, extra)))
 }
 
 func (s *Session) HasScope(token *sso.CharacterToken, scope string) bool {
@@ -229,16 +229,16 @@ func (s *Session) ResolveCorporation(ctx context.Context, spec string) (*charact
 	}
 	sheet, err := s.ESI.Get(ctx, fmt.Sprintf("/characters/%d", token.CharacterID), nil, nil, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("ResolveCorporation", err)
 	}
 	info := j.Map(sheet.Data)
 	corpID := j.Int(info["corporation_id"])
 	if corpID == 0 {
-		return nil, sso.Err(token.CharacterName + " has no corporation_id from ESI. Try again shortly.")
+		return nil, wrap("ResolveCorporation", sso.Err(token.CharacterName+" has no corporation_id from ESI. Try again shortly."))
 	}
 	publicRes, err := s.ESI.Get(ctx, fmt.Sprintf("/corporations/%d", corpID), nil, nil, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("ResolveCorporation", err)
 	}
 	public := j.Map(publicRes.Data)
 	roles := map[string]struct{}{}
@@ -272,7 +272,7 @@ func (s *Session) RequirePlayerCorp(corp *character.Corporation) error {
 		return nil
 	}
 
-	return sso.Err(fmt.Sprintf("%s is in the NPC corporation %s [%s] (#%d). ESI corporation hangars, wallets and jobs only exist for player-created corporations. There is nothing for eve_corp_* to read.", corp.CharacterName(), corp.CorporationName, corp.Ticker, corp.CorporationID))
+	return wrap("RefuseNPCCorp", sso.Err(fmt.Sprintf("%s is in the NPC corporation %s [%s] (#%d). ESI corporation hangars, wallets and jobs only exist for player-created corporations. There is nothing for eve_corp_* to read.", corp.CharacterName(), corp.CorporationName, corp.Ticker, corp.CorporationID)))
 }
 
 func (s *Session) RequireCorpRole(corp *character.Corporation, needed []string, what string) error {
@@ -287,7 +287,7 @@ func (s *Session) RequireCorpRole(corp *character.Corporation, needed []string, 
 		have = []string{"none"}
 	}
 
-	return sso.Err(fmt.Sprintf("%s has no %s role (nor Director) in %s, which ESI requires to read %s. Roles granted everywhere: %s. Location-specific roles (HQ/base/other) do not unlock these endpoints. eve_corp_overview lists this character's roles.", corp.CharacterName(), strings.Join(needed, " or "), corp.CorporationName, what, strings.Join(have, ", ")))
+	return wrap("RequireCorpRole", sso.Err(fmt.Sprintf("%s has no %s role (nor Director) in %s, which ESI requires to read %s. Roles granted everywhere: %s. Location-specific roles (HQ/base/other) do not unlock these endpoints. eve_corp_overview lists this character's roles.", corp.CharacterName(), strings.Join(needed, " or "), corp.CorporationName, what, strings.Join(have, ", "))))
 }
 
 func stringSet(v any) map[string]struct{} {

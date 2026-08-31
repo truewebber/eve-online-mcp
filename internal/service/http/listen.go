@@ -1,6 +1,7 @@
 package httpsvc
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -81,7 +82,11 @@ func serve(addr string, h http.Handler) error {
 		IdleTimeout:       idleTimeout,
 	}
 
-	return s.ListenAndServe()
+	if err := s.ListenAndServe(); err != nil {
+		return fmt.Errorf("listen: %w", err)
+	}
+
+	return nil
 }
 
 // internalMux is the k8s-facing surface: /healthz now, /metrics when

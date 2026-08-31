@@ -70,7 +70,7 @@ func eveMarketPrice(ctx context.Context, a *session.Session, in marketPriceIn) (
 	}
 	quotes, err := a.Resolver.HubQuotes(ctx, match.Chosen.ID, place.regionID, place.station)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveMarketPrice", err)
 	}
 	out, err := marketQuoteView(ctx, a, match, quotes, place, in.Item)
 	if err != nil {
@@ -89,7 +89,7 @@ func eveMarketPrice(ctx context.Context, a *session.Session, in marketPriceIn) (
 func resolveNamed(ctx context.Context, a *session.Session, name string, only []string) (names.NameResolution, error) {
 	resolved, err := a.Resolver.ResolveNames(ctx, []string{name}, nil, only)
 	if err != nil {
-		return names.NameResolution{}, err
+		return names.NameResolution{}, wrap("resolveNamed", err)
 	}
 
 	return resolved[strings.ToLower(strings.TrimSpace(name))], nil
@@ -126,7 +126,7 @@ func marketQuoteView(ctx context.Context, a *session.Session, match names.NameRe
 	average := a.Resolver.ReferencePrice(ctx, typeID)
 	info, err := a.Resolver.TypeInfo(ctx, typeID)
 	if err != nil {
-		return nil, err
+		return nil, wrap("marketQuoteView", err)
 	}
 	priced := "all of " + place.regionName
 	if place.station != nil {
@@ -173,15 +173,15 @@ func marketSpread(quotes map[string]any) any {
 func eveMarketOrders(ctx context.Context, a *session.Session, in marketOrdersIn) (any, error) {
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveMarketOrders", err)
 	}
 	if err := a.RequireScope(token, "esi-markets.read_character_orders.v1", "market orders"); err != nil {
-		return nil, err
+		return nil, wrap("eveMarketOrders", err)
 	}
 	cid := token.CharacterID
 	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/orders", cid), &cid, nil, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveMarketOrders", err)
 	}
 
 	return formatOrders(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, limitLong), concise(in.ResponseFormat), nil)
@@ -190,15 +190,15 @@ func eveMarketOrders(ctx context.Context, a *session.Session, in marketOrdersIn)
 func eveMarketContracts(ctx context.Context, a *session.Session, in marketContractsIn) (any, error) {
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveMarketContracts", err)
 	}
 	if err := a.RequireScope(token, "esi-contracts.read_character_contracts.v1", fContracts); err != nil {
-		return nil, err
+		return nil, wrap("eveMarketContracts", err)
 	}
 	cid := token.CharacterID
 	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/contracts", cid), &cid, nil, pagesESI)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveMarketContracts", err)
 	}
 
 	return formatContracts(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), limitOr(in.Limit, limitDefault), concise(in.ResponseFormat), false)
@@ -207,7 +207,7 @@ func eveMarketContracts(ctx context.Context, a *session.Session, in marketContra
 func marketHistory(ctx context.Context, a *session.Session, typeID, regionID, days int) (map[string]any, error) {
 	result, err := a.ESI.Get(ctx, fmt.Sprintf("/markets/%d/history", regionID), nil, map[string]any{fTypeID: typeID}, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("marketHistory", err)
 	}
 	history := j.Maps(result.Data)
 	if days > len(history) {
@@ -256,11 +256,11 @@ func formatOrders(ctx context.Context, a *session.Session, character string, cid
 	}
 	names, err := a.Resolver.Names(ctx, setToList(typeSet), nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("formatOrders", err)
 	}
 	places, err := a.Resolver.Names(ctx, setToList(placeSet), &cid)
 	if err != nil {
-		return nil, err
+		return nil, wrap("formatOrders", err)
 	}
 	now := time.Now().UTC()
 	var rows []map[string]any
@@ -353,7 +353,7 @@ func formatContracts(ctx context.Context, a *session.Session, character string, 
 	}
 	names, err := a.Resolver.Names(ctx, setToList(idSet), &cid)
 	if err != nil {
-		return nil, err
+		return nil, wrap("formatContracts", err)
 	}
 	sort.Slice(contracts, func(i, k int) bool { return j.Str(contracts[i]["date_issued"]) > j.Str(contracts[k]["date_issued"]) })
 	var rows []map[string]any

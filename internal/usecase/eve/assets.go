@@ -58,15 +58,15 @@ func registerAssets(s *mcp.Server) {
 func eveAssetsList(ctx context.Context, a *session.Session, in assetsListIn) (any, error) {
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveAssetsList", err)
 	}
 	if err := a.RequireScope(token, "esi-assets.read_assets.v1", fAssets); err != nil {
-		return nil, err
+		return nil, wrap("eveAssetsList", err)
 	}
 	cid := token.CharacterID
 	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/assets", cid), &cid, nil, pagesESI)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveAssetsList", err)
 	}
 	assets := j.Maps(result.Data)
 	if len(assets) == 0 {
@@ -75,7 +75,7 @@ func eveAssetsList(ctx context.Context, a *session.Session, in assetsListIn) (an
 	roots := rootLocations(assets)
 	prices, err := a.Resolver.ReferencePrices(ctx)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveAssetsList", err)
 	}
 	var typeIDs []int
 	for _, i := range assets {
@@ -83,11 +83,11 @@ func eveAssetsList(ctx context.Context, a *session.Session, in assetsListIn) (an
 	}
 	typeNames, err := a.Resolver.Names(ctx, typeIDs, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveAssetsList", err)
 	}
 	placeNames, err := a.Resolver.Names(ctx, valuesOf(roots), &cid)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveAssetsList", err)
 	}
 	buckets := assetBuckets(assets, roots, prices)
 	rows := assetLocationRows(buckets, placeNames, typeNames, prices, in.Location, in.MinValue, limitOr(in.Items, limitTopItems))
@@ -181,15 +181,15 @@ func eveAssetsFind(ctx context.Context, a *session.Session, in assetsFindIn) (an
 	}
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveAssetsFind", err)
 	}
 	if err := a.RequireScope(token, "esi-assets.read_assets.v1", fAssets); err != nil {
-		return nil, err
+		return nil, wrap("eveAssetsFind", err)
 	}
 	cid := token.CharacterID
 	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/assets", cid), &cid, nil, pagesESI)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveAssetsFind", err)
 	}
 	items := j.Maps(result.Data)
 	var typeIDs []int
@@ -198,7 +198,7 @@ func eveAssetsFind(ctx context.Context, a *session.Session, in assetsFindIn) (an
 	}
 	typeNames, err := a.Resolver.Names(ctx, typeIDs, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveAssetsFind", err)
 	}
 	matches := assetFindMatches(items, typeNames, in.Name)
 	if len(matches) == 0 {
@@ -220,11 +220,11 @@ func eveAssetsFind(ctx context.Context, a *session.Session, in assetsFindIn) (an
 	}
 	placeNames, err := a.Resolver.Names(ctx, setToList(placeSet), &cid)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveAssetsFind", err)
 	}
 	prices, err := a.Resolver.ReferencePrices(ctx)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveAssetsFind", err)
 	}
 	rows := assetFindRows(matches, roots, byID, typeNames, placeNames, prices)
 	sort.Slice(rows, func(i, k int) bool { return j.Int(rows[i][fQuantity]) > j.Int(rows[k][fQuantity]) })
@@ -280,15 +280,15 @@ func assetFindRows(matches []map[string]any, roots map[int]int, byID map[int]map
 func eveAssetsBlueprints(ctx context.Context, a *session.Session, in assetsBlueprintsIn) (any, error) {
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveAssetsBlueprints", err)
 	}
 	if err := a.RequireScope(token, "esi-characters.read_blueprints.v1", fBlueprints); err != nil {
-		return nil, err
+		return nil, wrap("eveAssetsBlueprints", err)
 	}
 	cid := token.CharacterID
 	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/blueprints", cid), &cid, nil, pagesESI)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveAssetsBlueprints", err)
 	}
 	bps := j.Maps(result.Data)
 	if len(bps) == 0 {
@@ -301,11 +301,11 @@ func eveAssetsBlueprints(ctx context.Context, a *session.Session, in assetsBluep
 	}
 	typeNames, err := a.Resolver.Names(ctx, typeIDs, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveAssetsBlueprints", err)
 	}
 	placeNames, err := a.Resolver.Names(ctx, placeIDs, &cid)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveAssetsBlueprints", err)
 	}
 	var rows []map[string]any
 	orig, copies := 0, 0

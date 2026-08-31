@@ -125,7 +125,7 @@ func Open(pub Host, runtime *session.Session, db *store.Store) (*Server, error) 
 	}
 	key, err := db.GetOrCreateSecret(context.Background(), jwtSecretName)
 	if err != nil {
-		return nil, err
+		return nil, wrap("Open", err)
 	}
 	if len(key) < hmacMinBytes {
 		return nil, ErrHMACTooShort
@@ -302,14 +302,14 @@ func (s *Server) CompleteCallback(ctx context.Context, code, eveState string) (C
 	s.purge(ctx)
 	st, ok, err := s.db.TakeLoginState(ctx, eveState)
 	if err != nil {
-		return Callback{}, err
+		return Callback{}, wrap("CompleteCallback", err)
 	}
 	if !ok {
 		return Callback{}, ErrUnknownLogin
 	}
 	token, err := s.login.ExchangeCode(ctx, code, st.PKCEVerifier)
 	if err != nil {
-		return Callback{}, err
+		return Callback{}, wrap("CompleteCallback", err)
 	}
 	switch st.Kind {
 	case store.LoginMCP:
@@ -400,12 +400,12 @@ func (s *Server) finishMCP(ctx context.Context, p *store.LoginState, token *sso.
 	if userID == "" {
 		u, err := s.db.CreateUser(ctx)
 		if err != nil {
-			return "", err
+			return "", wrap("finishMCP", err)
 		}
 		userID = u.ID
 	}
 	if err := s.SessionFor(userID).SSO.Store.Upsert(ctx, token); err != nil {
-		return "", err
+		return "", wrap("finishMCP", err)
 	}
 
 	code := randomID(authCodeBytes)
@@ -417,11 +417,11 @@ func (s *Server) finishMCP(ctx context.Context, p *store.LoginState, token *sso.
 		CodeChallenge: p.CodeChallenge,
 		ExpiresAt:     time.Now().Add(codeTTL),
 	}); err != nil {
-		return "", err
+		return "", wrap("finishMCP", err)
 	}
 	u, err := url.Parse(p.RedirectURI)
 	if err != nil {
-		return "", err
+		return "", wrap("finishMCP", err)
 	}
 	q := u.Query()
 	q.Set(paramCode, code)
@@ -450,7 +450,7 @@ func (s *Server) finishAlt(ctx context.Context, st *store.LoginState, token *sso
 			return CharacterOwnedError{CharacterName: token.CharacterName}
 		}
 
-		return err
+		return wrap("finishAlt", err)
 	}
 	log.Printf("alt oauth: %s attached to user %s", token.CharacterName, st.UserID)
 
@@ -460,7 +460,7 @@ func (s *Server) finishAlt(ctx context.Context, st *store.LoginState, token *sso
 func (s *Server) ownerOf(ctx context.Context, characterID int) (string, error) {
 	userID, ok, err := s.db.OwnerOf(ctx, int64(characterID))
 	if err != nil {
-		return "", err
+		return "", wrap("ownerOf", err)
 	}
 	if !ok {
 		return "", nil
@@ -550,7 +550,9 @@ func (s *Server) issueAccess(userID string) (string, error) {
 		"scope": scopeEve,
 	})
 
-	return tok.SignedString(s.hmacKey)
+	signed, err := tok.SignedString(s.hmacKey)
+
+	return signed, wrap("issueAccess", err)
 }
 
 func (s *Server) issueRefresh(userID string) (string, error) {
@@ -563,7 +565,9 @@ func (s *Server) issueRefresh(userID string) (string, error) {
 		"exp": now.Add(refreshTTL).Unix(),
 	})
 
-	return tok.SignedString(s.hmacKey)
+	signed, err := tok.SignedString(s.hmacKey)
+
+	return signed, wrap("issueRefresh", err)
 }
 
 func (s *Server) parseRefresh(raw string) (string, error) {

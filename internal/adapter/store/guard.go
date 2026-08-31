@@ -22,7 +22,7 @@ func (s *Store) PutConfirmToken(ctx context.Context, t ConfirmToken) error {
 			created_at = EXCLUDED.created_at`,
 		t.Token, t.UserID, t.Tool, t.ArgsDigest, t.CreatedAt)
 
-	return err
+	return wrap("PutConfirmToken", err)
 }
 
 func (s *Store) TakeConfirmToken(ctx context.Context, token string) (*ConfirmToken, bool, error) {
@@ -35,7 +35,7 @@ func (s *Store) TakeConfirmToken(ctx context.Context, token string) (*ConfirmTok
 		return nil, false, nil
 	}
 	if err != nil {
-		return nil, false, err
+		return nil, false, wrap("TakeConfirmToken", err)
 	}
 	if time.Since(t.CreatedAt) > ConfirmTokenTTL {
 		return nil, false, nil
@@ -54,7 +54,7 @@ func (s *Store) GetConfirmToken(ctx context.Context, token string) (*ConfirmToke
 		return nil, false, nil
 	}
 	if err != nil {
-		return nil, false, err
+		return nil, false, wrap("GetConfirmToken", err)
 	}
 
 	return &t, true, nil
@@ -63,7 +63,7 @@ func (s *Store) GetConfirmToken(ctx context.Context, token string) (*ConfirmToke
 func (s *Store) DeleteConfirmToken(ctx context.Context, token string) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM confirm_tokens WHERE token = $1`, token)
 
-	return err
+	return wrap("DeleteConfirmToken", err)
 }
 
 func (s *Store) CountConfirmTokens(ctx context.Context, userID string) (int, error) {
@@ -73,7 +73,7 @@ func (s *Store) CountConfirmTokens(ctx context.Context, userID string) (int, err
 		WHERE user_id = $1 AND created_at > now() - interval '300 seconds'`, userID,
 	).Scan(&n)
 
-	return n, err
+	return n, wrap("CountConfirmTokens", err)
 }
 
 func (s *Store) CountMailSince(ctx context.Context, userID string, since time.Time) (int, error) {
@@ -82,11 +82,11 @@ func (s *Store) CountMailSince(ctx context.Context, userID string, since time.Ti
 		`SELECT COUNT(*) FROM mail_log WHERE user_id = $1 AND sent_at >= $2`, userID, since,
 	).Scan(&n)
 
-	return n, err
+	return n, wrap("CountMailSince", err)
 }
 
 func (s *Store) InsertMail(ctx context.Context, userID string, at time.Time) error {
 	_, err := s.pool.Exec(ctx, `INSERT INTO mail_log (user_id, sent_at) VALUES ($1, $2)`, userID, at)
 
-	return err
+	return wrap("InsertMail", err)
 }

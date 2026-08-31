@@ -75,15 +75,15 @@ func registerSocial(s *mcp.Server) {
 func eveMailList(ctx context.Context, a *session.Session, in mailListIn) (any, error) {
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveMailList", err)
 	}
 	if err := a.RequireScope(token, "esi-mail.read_mail.v1", "mail"); err != nil {
-		return nil, err
+		return nil, wrap("eveMailList", err)
 	}
 	cid := token.CharacterID
 	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/mail", cid), &cid, nil, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveMailList", err)
 	}
 	mails := j.Maps(result.Data)
 	unread := 0
@@ -112,7 +112,7 @@ func eveMailList(ctx context.Context, a *session.Session, in mailListIn) (any, e
 	}
 	names, err := a.Resolver.Names(ctx, setToList(senders), nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveMailList", err)
 	}
 	sort.Slice(mails, func(i, k int) bool { return j.Str(mails[i][fTimestamp]) > j.Str(mails[k][fTimestamp]) })
 	var rows []map[string]any
@@ -137,15 +137,15 @@ func eveMailList(ctx context.Context, a *session.Session, in mailListIn) (any, e
 func eveMailRead(ctx context.Context, a *session.Session, in mailReadIn) (any, error) {
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveMailRead", err)
 	}
 	if err := a.RequireScope(token, "esi-mail.read_mail.v1", "mail"); err != nil {
-		return nil, err
+		return nil, wrap("eveMailRead", err)
 	}
 	cid := token.CharacterID
 	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/mail/%d", cid, in.MailID), &cid, nil, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveMailRead", err)
 	}
 	mail := j.Map(result.Data)
 	idSet := map[int]struct{}{}
@@ -159,7 +159,7 @@ func eveMailRead(ctx context.Context, a *session.Session, in mailReadIn) (any, e
 	}
 	names, err := a.Resolver.Names(ctx, setToList(idSet), nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveMailRead", err)
 	}
 	var to []string
 	for _, r := range j.Maps(mail["recipients"]) {
@@ -176,15 +176,15 @@ func eveMailRead(ctx context.Context, a *session.Session, in mailReadIn) (any, e
 func eveSocialNotifications(ctx context.Context, a *session.Session, in notesIn) (any, error) {
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveSocialNotifications", err)
 	}
 	if err := a.RequireScope(token, "esi-characters.read_notifications.v1", "notifications"); err != nil {
-		return nil, err
+		return nil, wrap("eveSocialNotifications", err)
 	}
 	cid := token.CharacterID
 	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/notifications", cid), &cid, nil, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveSocialNotifications", err)
 	}
 	notes := j.Maps(result.Data)
 	if len(notes) == 0 {
@@ -198,7 +198,7 @@ func eveSocialNotifications(ctx context.Context, a *session.Session, in notesIn)
 	}
 	names, err := a.Resolver.Names(ctx, setToList(senders), nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveSocialNotifications", err)
 	}
 	sort.Slice(notes, func(i, k int) bool { return j.Str(notes[i][fTimestamp]) > j.Str(notes[k][fTimestamp]) })
 	var rows []map[string]any
@@ -236,10 +236,10 @@ func eveSocialNotifications(ctx context.Context, a *session.Session, in notesIn)
 func eveSocialKillmails(ctx context.Context, a *session.Session, in kmIn) (any, error) {
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveSocialKillmails", err)
 	}
 	if err := a.RequireScope(token, "esi-killmails.read_killmails.v1", fKillmails); err != nil {
-		return nil, err
+		return nil, wrap("eveSocialKillmails", err)
 	}
 
 	return formatKillmails(ctx, a, token.CharacterName, token.CharacterID, 0, fmt.Sprintf("/characters/%d/killmails/recent", token.CharacterID), limitOr(in.Limit, limitKillmails), concise(in.ResponseFormat))
@@ -248,15 +248,15 @@ func eveSocialKillmails(ctx context.Context, a *session.Session, in kmIn) (any, 
 func eveFittingList(ctx context.Context, a *session.Session, in fitIn) (any, error) {
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveFittingList", err)
 	}
 	if err := a.RequireScope(token, "esi-fittings.read_fittings.v1", "fittings"); err != nil {
-		return nil, err
+		return nil, wrap("eveFittingList", err)
 	}
 	cid := token.CharacterID
 	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/fittings", cid), &cid, nil, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveFittingList", err)
 	}
 	fittings := j.Maps(result.Data)
 	if len(fittings) == 0 {
@@ -271,7 +271,7 @@ func eveFittingList(ctx context.Context, a *session.Session, in fitIn) (any, err
 	}
 	names, err := a.Resolver.Names(ctx, setToList(idSet), nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveFittingList", err)
 	}
 	var rows []map[string]any
 	for _, f := range fittings {
@@ -318,7 +318,7 @@ func formatKillmails(ctx context.Context, a *session.Session, character string, 
 	}
 	result, err := a.ESI.Get(ctx, path, cid, nil, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("formatKillmails", err)
 	}
 	available := j.Maps(result.Data)
 	refs := available
@@ -402,11 +402,11 @@ func buildKillmailRows(ctx context.Context, a *session.Session, kills []map[stri
 	}
 	names, err := a.Resolver.Names(ctx, setToList(idSet), nil)
 	if err != nil {
-		return killmailSummary{}, err
+		return killmailSummary{}, wrap("buildKillmailRows", err)
 	}
 	prices, err := a.Resolver.ReferencePrices(ctx)
 	if err != nil {
-		return killmailSummary{}, err
+		return killmailSummary{}, wrap("buildKillmailRows", err)
 	}
 	rows := make([]map[string]any, 0, len(kills))
 	killsN, losses := 0, 0

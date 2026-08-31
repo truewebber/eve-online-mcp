@@ -123,7 +123,7 @@ type rpc struct {
 func parseMCPURL(raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse MCP URL: %w", err)
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return nil, errBadMCPURL
@@ -160,11 +160,11 @@ func (r *rpc) call(method string, params map[string]any) (map[string]any, error)
 		"params":  params,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("marshal RPC: %w", err)
 	}
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, r.endpoint.String(), bytes.NewReader(payload)) //nolint:gosec // CLI --url is the operator MCP endpoint
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build RPC request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
@@ -189,7 +189,7 @@ func (r *rpc) call(method string, params map[string]any) (map[string]any, error)
 			var out map[string]any
 			err := json.Unmarshal([]byte(line[6:]), &out)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("decode SSE: %w", err)
 			}
 
 			return out, nil
@@ -197,7 +197,7 @@ func (r *rpc) call(method string, params map[string]any) (map[string]any, error)
 	}
 	var out map[string]any
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decode RPC: %w", err)
 	}
 
 	return out, nil
@@ -231,7 +231,7 @@ func (r *rpc) toolCall(name string, args map[string]any) (string, error) {
 	if errObj, ok := msg["error"]; ok {
 		raw, err := json.Marshal(errObj)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("marshal tool error: %w", err)
 		}
 
 		return string(raw), nil

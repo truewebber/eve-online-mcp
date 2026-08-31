@@ -250,7 +250,7 @@ func (c *Client) refreshLocked(ctx context.Context, token *CharacterToken) (*Cha
 			return nil, Err(fmt.Sprintf("Character %d was removed during refresh.", token.CharacterID))
 		}
 
-		return nil, err
+		return nil, wrap("refreshLocked", err)
 	}
 	c.Store.setAccess(out)
 
@@ -295,7 +295,7 @@ func (c *Client) tokenRequest(ctx context.Context, data url.Values, clientID, se
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, TokenURL, strings.NewReader(data.Encode()))
 	if err != nil {
-		return nil, err
+		return nil, wrap("tokenRequest", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Host", "login.eveonline.com")
@@ -421,7 +421,7 @@ func (c *Client) checkIssuer(claims jwt.MapClaims) (jwt.MapClaims, error) {
 func (c *Client) signingKey(ctx context.Context, accessToken string) (any, error) {
 	tok, _, err := jwt.NewParser().ParseUnverified(accessToken, jwt.MapClaims{})
 	if err != nil {
-		return nil, err
+		return nil, wrap("signingKey", err)
 	}
 	kid := j.Str(tok.Header["kid"])
 	c.jwksMu.Lock()
@@ -445,18 +445,18 @@ func (c *Client) signingKey(ctx context.Context, accessToken string) (any, error
 func fetchJWKS(ctx context.Context, httpClient *http.Client) (map[string]any, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, JWKSURL, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("fetchJWKS", err)
 	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, wrap("fetchJWKS", err)
 	}
 	defer resp.Body.Close()
 	var doc struct {
 		Keys []map[string]any `json:"keys"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
-		return nil, err
+		return nil, wrap("fetchJWKS", err)
 	}
 	out := map[string]any{}
 	for _, k := range doc.Keys {
@@ -480,11 +480,11 @@ func rsaFromJWK(k map[string]any) (*rsa.PublicKey, error) {
 	}
 	nBytes, err := base64.RawURLEncoding.DecodeString(nStr)
 	if err != nil {
-		return nil, err
+		return nil, wrap("rsaFromJWK", err)
 	}
 	eBytes, err := base64.RawURLEncoding.DecodeString(eStr)
 	if err != nil {
-		return nil, err
+		return nil, wrap("rsaFromJWK", err)
 	}
 	var e int
 	for _, b := range eBytes {

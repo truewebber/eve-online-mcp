@@ -30,10 +30,10 @@ func registerWallet(s *mcp.Server) {
 func walletHistory(ctx context.Context, a *session.Session, in walletHistIn) (any, error) {
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
-		return nil, err
+		return nil, wrap("walletHistory", err)
 	}
 	if err := a.RequireScope(token, "esi-wallet.read_character_wallet.v1", "wallet history"); err != nil {
-		return nil, err
+		return nil, wrap("walletHistory", err)
 	}
 	kind := in.Kind
 	if kind == "" {
@@ -74,7 +74,7 @@ func walletHistory(ctx context.Context, a *session.Session, in walletHistIn) (an
 func journalSection(ctx context.Context, a *session.Session, cid int, refType string, limit int, conciseMode bool) (map[string]any, error) {
 	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/wallet/journal", cid), &cid, nil, pagesShort)
 	if err != nil {
-		return nil, err
+		return nil, wrap("journalSection", err)
 	}
 
 	return summarizeJournal(result.Data, result.StaleNote(), result.Truncated, pagesShort, refType, limit, conciseMode, "")
@@ -207,7 +207,7 @@ func journalRows(entries []map[string]any) []map[string]any {
 func transactionSection(ctx context.Context, a *session.Session, path string, cid int, limit int, conciseMode bool) (map[string]any, error) {
 	result, err := a.ESI.GetCursorPages(ctx, path, &cid, nil, "from_id", "transaction_id", txLookback, txPages)
 	if err != nil {
-		return nil, err
+		return nil, wrap("transactionSection", err)
 	}
 
 	return summarizeTransactions(ctx, a, cid, result.Data, result.StaleNote(), result.Truncated, limit, conciseMode)
@@ -225,11 +225,11 @@ func summarizeTransactions(ctx context.Context, a *session.Session, cid int, dat
 	}
 	typeNames, err := a.Resolver.Names(ctx, setToList(typeSet), nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("summarizeTransactions", err)
 	}
 	placeNames, err := a.Resolver.Names(ctx, setToList(placeSet), &cid)
 	if err != nil {
-		return nil, err
+		return nil, wrap("summarizeTransactions", err)
 	}
 	var bought, sold float64
 	for _, t := range entries {

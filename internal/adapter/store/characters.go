@@ -28,7 +28,7 @@ func (s *Store) UpsertCharacter(ctx context.Context, userID string, row Characte
 		row.CharacterID, userID, row.Name, row.OwnerHash, row.RefreshToken, row.Scopes, row.AddedAt,
 	)
 	if err != nil {
-		return err
+		return wrap("UpsertCharacter", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrOwned
@@ -53,7 +53,7 @@ func (s *Store) ListCharacters(ctx context.Context, userID string) ([]CharacterR
 		SELECT character_id, user_id, name, owner_hash, refresh_token, scopes, added_at
 		FROM characters WHERE user_id = $1 ORDER BY added_at`, userID)
 	if err != nil {
-		return nil, err
+		return nil, wrap("ListCharacters", err)
 	}
 	defer rows.Close()
 	var out []CharacterRow
@@ -65,13 +65,13 @@ func (s *Store) ListCharacters(ctx context.Context, userID string) ([]CharacterR
 		out = append(out, *row)
 	}
 
-	return out, rows.Err()
+	return out, wrap("ListCharacters", rows.Err())
 }
 
 func (s *Store) DeleteCharacter(ctx context.Context, characterID int64) error {
 	tag, err := s.pool.Exec(ctx, `DELETE FROM characters WHERE character_id = $1`, characterID)
 	if err != nil {
-		return err
+		return wrap("DeleteCharacter", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
@@ -89,7 +89,7 @@ func (s *Store) OwnerOf(ctx context.Context, characterID int64) (string, bool, e
 		return "", false, nil
 	}
 	if err != nil {
-		return "", false, err
+		return "", false, wrap("OwnerOf", err)
 	}
 
 	return userID, true, nil
@@ -100,7 +100,7 @@ func (s *Store) OwnerOf(ctx context.Context, characterID int64) (string, bool, e
 func (s *Store) WithCharacterForUpdate(ctx context.Context, characterID int64, fn func(refreshToken string) (string, error)) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return wrap("WithCharacterForUpdate", err)
 	}
 	defer func() { rollbackTx(ctx, tx) }()
 
@@ -112,7 +112,7 @@ func (s *Store) WithCharacterForUpdate(ctx context.Context, characterID int64, f
 		return ErrNotFound
 	}
 	if err != nil {
-		return err
+		return wrap("WithCharacterForUpdate", err)
 	}
 	next, err := fn(refresh)
 	if err != nil {
@@ -121,10 +121,10 @@ func (s *Store) WithCharacterForUpdate(ctx context.Context, characterID int64, f
 	if _, err := tx.Exec(ctx,
 		`UPDATE characters SET refresh_token = $2 WHERE character_id = $1`, characterID, next,
 	); err != nil {
-		return err
+		return wrap("WithCharacterForUpdate", err)
 	}
 
-	return tx.Commit(ctx)
+	return wrap("WithCharacterForUpdate", tx.Commit(ctx))
 }
 
 type characterScanner interface {
@@ -135,7 +135,7 @@ func scanCharacter(row characterScanner) (*CharacterRow, error) {
 	var c CharacterRow
 	err := row.Scan(&c.CharacterID, &c.UserID, &c.Name, &c.OwnerHash, &c.RefreshToken, &c.Scopes, &c.AddedAt)
 	if err != nil {
-		return nil, err
+		return nil, wrap("scanCharacter", err)
 	}
 	if c.Scopes == nil {
 		c.Scopes = []string{}

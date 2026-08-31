@@ -47,15 +47,15 @@ func registerIndustry(s *mcp.Server) {
 func eveIndustryJobs(ctx context.Context, a *session.Session, in industryJobsIn) (any, error) {
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveIndustryJobs", err)
 	}
 	if err := a.RequireScope(token, "esi-industry.read_character_jobs.v1", "industry jobs"); err != nil {
-		return nil, err
+		return nil, wrap("eveIndustryJobs", err)
 	}
 	cid := token.CharacterID
 	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/industry/jobs", cid), &cid, map[string]any{"include_completed": boolDef(in.IncludeCompleted, false)}, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveIndustryJobs", err)
 	}
 
 	return industryJobsResult(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, limitMedium), concise(in.ResponseFormat), false)
@@ -64,15 +64,15 @@ func eveIndustryJobs(ctx context.Context, a *session.Session, in industryJobsIn)
 func eveIndustryPlanets(ctx context.Context, a *session.Session, in industryPlanetsIn) (any, error) {
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveIndustryPlanets", err)
 	}
 	if err := a.RequireScope(token, "esi-planets.manage_planets.v1", "planetary colonies"); err != nil {
-		return nil, err
+		return nil, wrap("eveIndustryPlanets", err)
 	}
 	cid := token.CharacterID
 	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/planets", cid), &cid, nil, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveIndustryPlanets", err)
 	}
 	colonies := j.Maps(result.Data)
 	if len(colonies) == 0 {
@@ -85,7 +85,7 @@ func eveIndustryPlanets(ctx context.Context, a *session.Session, in industryPlan
 	}
 	names, err := a.Resolver.Names(ctx, setToList(idSet), nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveIndustryPlanets", err)
 	}
 	var rows []map[string]any
 	for _, c := range colonies {
@@ -108,15 +108,15 @@ func eveIndustryPlanets(ctx context.Context, a *session.Session, in industryPlan
 func eveIndustryMining(ctx context.Context, a *session.Session, in industryMiningIn) (any, error) {
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveIndustryMining", err)
 	}
 	if err := a.RequireScope(token, "esi-industry.read_character_mining.v1", "the mining ledger"); err != nil {
-		return nil, err
+		return nil, wrap("eveIndustryMining", err)
 	}
 	cid := token.CharacterID
 	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/mining", cid), &cid, nil, pagesESI)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveIndustryMining", err)
 	}
 	entries := j.Maps(result.Data)
 	if len(entries) == 0 {
@@ -125,11 +125,11 @@ func eveIndustryMining(ctx context.Context, a *session.Session, in industryMinin
 	totals, bySystem := sumMining(entries)
 	names, err := a.Resolver.Names(ctx, append(keys(totals), keys(bySystem)...), nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveIndustryMining", err)
 	}
 	prices, err := a.Resolver.ReferencePrices(ctx)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveIndustryMining", err)
 	}
 	rows, grand := miningOreRows(totals, names, prices)
 	visible, meta := page(rows, limitOr(in.Limit, limitDefault), "")
@@ -212,11 +212,11 @@ func industryJobsResult(ctx context.Context, a *session.Session, character strin
 	}
 	names, err := a.Resolver.Names(ctx, append(setToList(idSet), setToList(people)...), nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("industryJobsResult", err)
 	}
 	places, err := a.Resolver.Names(ctx, setToList(placeSet), &cid)
 	if err != nil {
-		return nil, err
+		return nil, wrap("industryJobsResult", err)
 	}
 	now := time.Now().UTC()
 	var rows []map[string]any
@@ -328,7 +328,7 @@ func colonyStored(ctx context.Context, a *session.Session, pins []map[string]any
 	}
 	pn, err := a.Resolver.Names(ctx, keys(stored), nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("colonyStored", err)
 	}
 	type kv struct {
 		n string

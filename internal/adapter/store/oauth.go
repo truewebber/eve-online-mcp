@@ -22,7 +22,7 @@ func (s *Store) PutClient(ctx context.Context, c Client) error {
 		ON CONFLICT (client_id) DO UPDATE SET redirect_uris = EXCLUDED.redirect_uris`,
 		c.ID, c.RedirectURIs, c.CreatedAt)
 
-	return err
+	return wrap("PutClient", err)
 }
 
 func (s *Store) GetClient(ctx context.Context, clientID string) (*Client, bool, error) {
@@ -34,7 +34,7 @@ func (s *Store) GetClient(ctx context.Context, clientID string) (*Client, bool, 
 		return nil, false, nil
 	}
 	if err != nil {
-		return nil, false, err
+		return nil, false, wrap("GetClient", err)
 	}
 
 	return &c, true, nil
@@ -69,7 +69,7 @@ func (s *Store) PutLoginState(ctx context.Context, st LoginState) error {
 		st.State, st.PKCEVerifier, st.Scopes, string(st.Kind), userID,
 		st.MCPClientID, st.RedirectURI, st.MCPState, st.CodeChallenge, st.CreatedAt)
 
-	return err
+	return wrap("PutLoginState", err)
 }
 
 func (s *Store) GetLoginState(ctx context.Context, state string) (*LoginState, bool, error) {
@@ -85,7 +85,7 @@ func (s *Store) GetLoginState(ctx context.Context, state string) (*LoginState, b
 	}
 	if time.Since(st.CreatedAt) > LoginStateTTL {
 		if _, err := s.pool.Exec(ctx, `DELETE FROM login_states WHERE state = $1`, state); err != nil {
-			return nil, false, err
+			return nil, false, wrap("GetLoginState", err)
 		}
 
 		return nil, false, nil
@@ -97,7 +97,7 @@ func (s *Store) GetLoginState(ctx context.Context, state string) (*LoginState, b
 func (s *Store) DeleteLoginState(ctx context.Context, state string) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM login_states WHERE state = $1`, state)
 
-	return err
+	return wrap("DeleteLoginState", err)
 }
 
 // TakeLoginState deletes the row and returns it so a callback is one-shot
@@ -126,7 +126,7 @@ func (s *Store) PutAuthCode(ctx context.Context, c AuthCode) error {
 		VALUES ($1, $2, $3, $4, $5, $6)`,
 		c.Code, c.UserID, c.MCPClientID, c.RedirectURI, c.CodeChallenge, c.ExpiresAt)
 
-	return err
+	return wrap("PutAuthCode", err)
 }
 
 func (s *Store) TakeAuthCode(ctx context.Context, code string) (*AuthCode, bool, error) {
@@ -139,7 +139,7 @@ func (s *Store) TakeAuthCode(ctx context.Context, code string) (*AuthCode, bool,
 		return nil, false, nil
 	}
 	if err != nil {
-		return nil, false, err
+		return nil, false, wrap("TakeAuthCode", err)
 	}
 	if time.Now().After(c.ExpiresAt) {
 		return nil, false, nil
@@ -151,18 +151,18 @@ func (s *Store) TakeAuthCode(ctx context.Context, code string) (*AuthCode, bool,
 func (s *Store) GetOrCreateSecret(ctx context.Context, name string) ([]byte, error) {
 	value := make([]byte, SecretBytes)
 	if _, err := rand.Read(value); err != nil {
-		return nil, err
+		return nil, wrap("GetOrCreateSecret", err)
 	}
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO app_secrets (name, value) VALUES ($1, $2)
 		ON CONFLICT (name) DO NOTHING`, name, value)
 	if err != nil {
-		return nil, err
+		return nil, wrap("GetOrCreateSecret", err)
 	}
 	var out []byte
 	err = s.pool.QueryRow(ctx, `SELECT value FROM app_secrets WHERE name = $1`, name).Scan(&out)
 
-	return out, err
+	return out, wrap("GetOrCreateSecret", err)
 }
 
 func scanLogin(row characterScanner) (*LoginState, error) {
@@ -174,7 +174,7 @@ func scanLogin(row characterScanner) (*LoginState, error) {
 		&st.MCPClientID, &st.RedirectURI, &st.MCPState, &st.CodeChallenge, &st.CreatedAt,
 	)
 	if err != nil {
-		return nil, err
+		return nil, wrap("scanLogin", err)
 	}
 	st.Kind = LoginKind(kind)
 	if userID != nil {

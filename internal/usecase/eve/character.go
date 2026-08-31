@@ -56,15 +56,15 @@ func registerCharacter(s *mcp.Server) {
 func eveCharacterSkills(ctx context.Context, a *session.Session, in characterSkillsIn) (any, error) {
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveCharacterSkills", err)
 	}
 	if err := a.RequireScope(token, "esi-skills.read_skills.v1", "skills"); err != nil {
-		return nil, err
+		return nil, wrap("eveCharacterSkills", err)
 	}
 	cid := token.CharacterID
 	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/skills", cid), &cid, nil, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveCharacterSkills", err)
 	}
 	payload := j.Map(result.Data)
 	skills := j.Maps(payload["skills"])
@@ -74,7 +74,7 @@ func eveCharacterSkills(ctx context.Context, a *session.Session, in characterSki
 	}
 	names, err := a.Resolver.Names(ctx, ids, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveCharacterSkills", err)
 	}
 	view := filterCharacterSkills(skills, names, in.Search, boolDef(in.TrainedOnly, true))
 	sort.Slice(view.rows, func(i, k int) bool { return j.Str(view.rows[i][fSkill]) < j.Str(view.rows[k][fSkill]) })
@@ -146,15 +146,15 @@ func keepCharacterSkill(name string, level int, needle string, trainedOnly bool)
 func eveCharacterSkillQueue(ctx context.Context, a *session.Session, in characterSkillQueueIn) (any, error) {
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveCharacterSkillQueue", err)
 	}
 	if err := a.RequireScope(token, "esi-skills.read_skillqueue.v1", "the skill queue"); err != nil {
-		return nil, err
+		return nil, wrap("eveCharacterSkillQueue", err)
 	}
 	cid := token.CharacterID
 	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/skillqueue", cid), &cid, nil, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveCharacterSkillQueue", err)
 	}
 	entries := j.Maps(result.Data)
 	if len(entries) == 0 {
@@ -169,7 +169,7 @@ func eveCharacterSkillQueue(ctx context.Context, a *session.Session, in characte
 	}
 	names, err := a.Resolver.Names(ctx, ids, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveCharacterSkillQueue", err)
 	}
 	now := time.Now().UTC()
 	sort.Slice(entries, func(i, k int) bool { return j.Int(entries[i]["queue_position"]) < j.Int(entries[k]["queue_position"]) })
@@ -212,22 +212,22 @@ func formatSkillQueue(entries []map[string]any, names map[int]string, now time.T
 func eveCharacterClones(ctx context.Context, a *session.Session, in characterClonesIn) (any, error) {
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveCharacterClones", err)
 	}
 	if err := a.RequireScope(token, "esi-clones.read_clones.v1", "clones"); err != nil {
-		return nil, err
+		return nil, wrap("eveCharacterClones", err)
 	}
 	if err := a.RequireScope(token, "esi-clones.read_implants.v1", "the active clone's implants"); err != nil {
-		return nil, err
+		return nil, wrap("eveCharacterClones", err)
 	}
 	cid := token.CharacterID
 	clonesRes, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/clones", cid), &cid, nil, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveCharacterClones", err)
 	}
 	implantsRes, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/implants", cid), &cid, nil, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveCharacterClones", err)
 	}
 	clones := j.Map(clonesRes.Data)
 	implants := j.Slice(implantsRes.Data)
@@ -235,7 +235,7 @@ func eveCharacterClones(ctx context.Context, a *session.Session, in characterClo
 	home := j.Map(clones["home_location"])
 	names, err := a.Resolver.Names(ctx, collectCloneIDs(implants, jump, home), &cid)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveCharacterClones", err)
 	}
 
 	return map[string]any{
@@ -299,10 +299,10 @@ func formatJumpClones(jump []map[string]any, names map[int]string) []map[string]
 func eveCharacterStandings(ctx context.Context, a *session.Session, in characterStandingsIn) (any, error) {
 	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveCharacterStandings", err)
 	}
 	if err := a.RequireScope(token, "esi-characters.read_standings.v1", "standings"); err != nil {
-		return nil, err
+		return nil, wrap("eveCharacterStandings", err)
 	}
 	cid := token.CharacterID
 	standingsRes, standingsErr := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/standings", cid), &cid, nil, nil)
@@ -315,7 +315,7 @@ func eveCharacterStandings(ctx context.Context, a *session.Session, in character
 	}
 	names, err := a.Resolver.Names(ctx, standingsNameIDs(standings, lpData), nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("eveCharacterStandings", err)
 	}
 	rows := formatCharacterStandings(standings, names)
 	visible, meta := page(rows, limitOr(in.Limit, limitMedium), "")
@@ -333,7 +333,7 @@ func fetchCharacterLP(ctx context.Context, a *session.Session, cid int, granted 
 	}
 	lpRes, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/loyalty/points", cid), &cid, nil, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("fetchCharacterLP", err)
 	}
 
 	return j.Maps(lpRes.Data), nil

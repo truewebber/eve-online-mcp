@@ -61,7 +61,7 @@ func (s *TokenStore) Upsert(ctx context.Context, token *CharacterToken) error {
 	}
 	err := s.db.UpsertCharacter(ctx, s.userID, row)
 	if err != nil {
-		return err
+		return wrap("Upsert", err)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

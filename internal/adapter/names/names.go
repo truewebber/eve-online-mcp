@@ -160,7 +160,7 @@ func (r *Resolver) IDsFromNames(ctx context.Context, names []string) (map[string
 		end := min(start+idsBatch, len(unique))
 		part, err := r.esi.Post(ctx, "/universe/ids", nil, nil, unique[start:end])
 		if err != nil {
-			return nil, err
+			return nil, wrap("IDsFromNames", err)
 		}
 		for key, rows := range j.Map(part) {
 			existing := j.Slice(out[key])
@@ -192,7 +192,7 @@ func (r *Resolver) TypeInfo(ctx context.Context, typeID int) (map[string]any, er
 	}
 	result, err := r.esi.Get(ctx, fmt.Sprintf("/universe/types/%d", typeID), nil, nil, nil)
 	if err != nil {
-		return nil, err
+		return nil, wrap("TypeInfo", err)
 	}
 	data := j.Map(result.Data)
 	if err := r.putBlob(ctx, key, data); err != nil {
@@ -280,7 +280,7 @@ func (r *Resolver) ReferencePrices(ctx context.Context) (map[int]map[string]floa
 	if cached == nil {
 		result, err := r.esi.Get(ctx, "/markets/prices", nil, nil, nil)
 		if err != nil {
-			return nil, err
+			return nil, wrap("ReferencePrices", err)
 		}
 		blob := map[string]any{}
 		for _, row := range j.Maps(result.Data) {
@@ -331,7 +331,7 @@ func (r *Resolver) HubQuotes(ctx context.Context, typeID, regionID int, stationI
 		hubOrderPages,
 	)
 	if err != nil {
-		return nil, err
+		return nil, wrap("HubQuotes", err)
 	}
 	orders := j.Maps(result.Data)
 	if stationID != nil {
@@ -402,7 +402,7 @@ func (r *Resolver) lookupCachedNames(ctx context.Context, wanted map[int]struct{
 	}
 	cached, err := r.store.NameGet(ctx, id64s)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, wrap("lookupCachedNames", err)
 	}
 	out := map[int]string{}
 	var missing []int
@@ -566,7 +566,7 @@ func lessNameMatch(matches []NameMatch, rank map[string]int) func(i, j int) bool
 func (r *Resolver) structureName(ctx context.Context, structureID, characterID int) (string, error) {
 	result, err := r.esi.Get(ctx, fmt.Sprintf("/universe/structures/%d", structureID), &characterID, nil, nil)
 	if err != nil {
-		return "", err
+		return "", wrap("structureName", err)
 	}
 	name := j.Str(j.Map(result.Data)["name"])
 	if name == "" {
@@ -579,11 +579,11 @@ func (r *Resolver) structureName(ctx context.Context, structureID, characterID i
 func (r *Resolver) blob(ctx context.Context, key string, maxAge *time.Duration) (any, error) {
 	raw, err := r.store.BlobGet(ctx, key, maxAge)
 	if err != nil || raw == nil {
-		return nil, err
+		return nil, wrap("blob", err)
 	}
 	var v any
 	if err := json.Unmarshal(raw, &v); err != nil {
-		return nil, err
+		return nil, wrap("blob", err)
 	}
 
 	return v, nil
@@ -592,8 +592,8 @@ func (r *Resolver) blob(ctx context.Context, key string, maxAge *time.Duration) 
 func (r *Resolver) putBlob(ctx context.Context, key string, value any) error {
 	raw, err := json.Marshal(value)
 	if err != nil {
-		return err
+		return wrap("putBlob", err)
 	}
 
-	return r.store.BlobPut(ctx, key, raw)
+	return wrap("putBlob", r.store.BlobPut(ctx, key, raw))
 }

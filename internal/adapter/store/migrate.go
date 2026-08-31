@@ -48,7 +48,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		}
 		tx, err := s.pool.Begin(ctx)
 		if err != nil {
-			return err
+			return wrap("migrate", err)
 		}
 		if _, err := tx.Exec(ctx, string(body)); err != nil {
 			rollbackTx(ctx, tx)
@@ -61,7 +61,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			return fmt.Errorf("store: record %s: %w", name, err)
 		}
 		if err := tx.Commit(ctx); err != nil {
-			return err
+			return wrap("migrate", err)
 		}
 	}
 

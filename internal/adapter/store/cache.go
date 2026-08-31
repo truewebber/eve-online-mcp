@@ -19,7 +19,7 @@ func (s *Store) CacheGet(ctx context.Context, key string) (*CachedResponse, bool
 		return nil, false, nil
 	}
 	if err != nil {
-		return nil, false, err
+		return nil, false, wrap("CacheGet", err)
 	}
 	c.Pages = pages
 
@@ -44,7 +44,7 @@ func (s *Store) CachePut(ctx context.Context, key string, c CachedResponse) erro
 			body = EXCLUDED.body`,
 		key, c.ETag, c.ExpiresAt, c.StoredAt, c.Pages, c.Body)
 
-	return err
+	return wrap("CachePut", err)
 }
 
 func (s *Store) CacheTouch(ctx context.Context, key string, expiresAt time.Time) error {
@@ -52,13 +52,13 @@ func (s *Store) CacheTouch(ctx context.Context, key string, expiresAt time.Time)
 		UPDATE http_cache SET expires_at = $2, stored_at = $3 WHERE key = $1`,
 		key, expiresAt, time.Now().UTC())
 
-	return err
+	return wrap("CacheTouch", err)
 }
 
 func (s *Store) CachePurgeExpired(ctx context.Context) (int64, error) {
 	tag, err := s.pool.Exec(ctx, `DELETE FROM http_cache WHERE expires_at < now()`)
 	if err != nil {
-		return 0, err
+		return 0, wrap("CachePurgeExpired", err)
 	}
 
 	return tag.RowsAffected(), nil
@@ -71,19 +71,19 @@ func (s *Store) NameGet(ctx context.Context, ids []int64) (map[int64]NameRow, er
 	}
 	rows, err := s.pool.Query(ctx, `SELECT id, name, category FROM names WHERE id = ANY($1)`, ids)
 	if err != nil {
-		return nil, err
+		return nil, wrap("NameGet", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var n NameRow
 		err := rows.Scan(&n.ID, &n.Name, &n.Category)
 		if err != nil {
-			return nil, err
+			return nil, wrap("NameGet", err)
 		}
 		out[n.ID] = n
 	}
 
-	return out, rows.Err()
+	return out, wrap("NameGet", rows.Err())
 }
 
 func (s *Store) NamePut(ctx context.Context, rows []NameRow) error {
@@ -92,7 +92,7 @@ func (s *Store) NamePut(ctx context.Context, rows []NameRow) error {
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return wrap("NamePut", err)
 	}
 	defer func() { rollbackTx(ctx, tx) }()
 	for _, n := range rows {
@@ -100,11 +100,11 @@ func (s *Store) NamePut(ctx context.Context, rows []NameRow) error {
 			INSERT INTO names (id, name, category) VALUES ($1, $2, $3)
 			ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, category = EXCLUDED.category`,
 			n.ID, n.Name, n.Category); err != nil {
-			return err
+			return wrap("NamePut", err)
 		}
 	}
 
-	return tx.Commit(ctx)
+	return wrap("NamePut", tx.Commit(ctx))
 }
 
 func (s *Store) BlobGet(ctx context.Context, key string, maxAge *time.Duration) (json.RawMessage, error) {
@@ -115,7 +115,7 @@ func (s *Store) BlobGet(ctx context.Context, key string, maxAge *time.Duration) 
 		return nil, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, wrap("BlobGet", err)
 	}
 	if maxAge != nil && time.Since(stored) > *maxAge {
 		return nil, nil
@@ -133,7 +133,7 @@ func (s *Store) BlobPut(ctx context.Context, key string, value json.RawMessage) 
 		ON CONFLICT (key) DO UPDATE SET stored_at = EXCLUDED.stored_at, value = EXCLUDED.value`,
 		key, value)
 
-	return err
+	return wrap("BlobPut", err)
 }
 
 // PurgeExpired deletes handshake rows, confirm tokens and stale cache
@@ -148,7 +148,7 @@ func (s *Store) PurgeExpired(ctx context.Context) (int64, error) {
 	} {
 		tag, err := s.pool.Exec(ctx, q)
 		if err != nil {
-			return n, err
+			return n, wrap("PurgeExpired", err)
 		}
 		n += tag.RowsAffected()
 	}

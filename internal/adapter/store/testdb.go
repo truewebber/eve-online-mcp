@@ -43,5 +43,5 @@ func (s *Store) ResetTables(ctx context.Context) error {
 		         oauth_clients, http_cache, names, blobs, app_secrets,
 		         characters, users CASCADE`)
 
-	return err
+	return wrap("ResetTables", err)
 }

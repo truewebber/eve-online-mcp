@@ -19,7 +19,7 @@ func (s *Store) CreateUser(ctx context.Context) (*domuser.User, error) {
 	_, err := s.pool.Exec(ctx,
 		`INSERT INTO users (id, created_at) VALUES ($1, $2)`, u.ID, now)
 	if err != nil {
-		return nil, err
+		return nil, wrap("CreateUser", err)
 	}
 
 	return u, nil
@@ -34,7 +34,7 @@ func (s *Store) GetUser(ctx context.Context, id string) (*domuser.User, error) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
-		return nil, err
+		return nil, wrap("GetUser", err)
 	}
 
 	return &domuser.User{ID: id, CreatedAt: created.UTC().Format(time.RFC3339)}, nil
@@ -46,5 +46,5 @@ func (s *Store) UserExists(ctx context.Context, id string) (bool, error) {
 		`SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)`, id,
 	).Scan(&ok)
 
-	return ok, err
+	return ok, wrap("UserExists", err)
 }
