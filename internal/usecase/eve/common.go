@@ -27,9 +27,6 @@ func addTool[In any](s *mcp.Server, t *mcp.Tool, h mcp.ToolHandlerFor[In, any]) 
 	mcp.AddTool(s, t, h)
 }
 
-//go:fix inline
-func f64ptr(v float64) *float64 { return new(v) }
-
 func patchBounds(schema *jsonschema.Schema) {
 	if schema == nil {
 		return
@@ -40,13 +37,13 @@ func patchBounds(schema *jsonschema.Schema) {
 		}
 		switch name {
 		case "limit", "items":
-			prop.Minimum, prop.Maximum = f64ptr(1), f64ptr(500)
+			prop.Minimum, prop.Maximum = new(1.0), new(500.0)
 		case "division":
-			prop.Minimum, prop.Maximum = f64ptr(1), f64ptr(7)
+			prop.Minimum, prop.Maximum = new(1.0), new(7.0)
 		case "history_days":
-			prop.Minimum, prop.Maximum = f64ptr(0), f64ptr(365)
+			prop.Minimum, prop.Maximum = new(0.0), new(365.0)
 		case "approved_cost":
-			prop.Minimum = f64ptr(0)
+			prop.Minimum = new(0.0)
 		}
 	}
 }

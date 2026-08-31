@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
 	"github.com/truewebber/eve-online-mcp/internal/domain/j"
 	"github.com/truewebber/eve-online-mcp/internal/domain/universe"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
@@ -53,7 +52,7 @@ func registerMarket(s *mcp.Server) {
 			}
 			var station *int
 			if !boolDef(in.WholeRegion, false) && regionID == universe.TheForgeRegionID {
-				station = esi.Ptr(universe.Jita44StationID)
+				station = new(universe.Jita44StationID)
 			}
 			quotes, err := a.Resolver.HubQuotes(typeID, regionID, station)
 			if err != nil {

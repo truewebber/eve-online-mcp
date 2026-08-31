@@ -514,9 +514,6 @@ func (c *Client) awaitErrorBudget() error {
 	}
 }
 
-//go:fix inline
-func Ptr[T any](v T) *T { return new(v) }
-
 func normalise(params map[string]any) map[string]any {
 	out := map[string]any{}
 	for k, v := range params {
