@@ -324,7 +324,7 @@ func colonyStored(ctx context.Context, a *session.Session, pins []map[string]any
 		}
 	}
 	if len(stored) == 0 {
-		return nil, nil
+		return map[string]int{}, nil
 	}
 	pn, err := a.Resolver.Names(ctx, keys(stored), nil)
 	if err != nil {
