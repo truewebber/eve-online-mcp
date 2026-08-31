@@ -187,6 +187,20 @@ func (c *Client) GetAllPages(path string, characterID *int, params map[string]an
 	}, nil
 }
 
+type cursorWalk struct {
+	path, cursorParam, cursorKey string
+	characterID                  *int
+	batchSize, maxPages          int
+	cursor                       any
+	base                         map[string]any
+	data                         []any
+	seen                         map[any]struct{}
+	oldest, expiresAt            float64
+	allCached                    bool
+	fetched                      int
+	truncated                    bool
+}
+
 func (c *Client) GetCursorPages(path string, characterID *int, params map[string]any, cursorParam, cursorKey string, batchSize, maxPages int) (Result, error) {
 	if params == nil {
 		params = map[string]any{}
@@ -197,72 +211,27 @@ func (c *Client) GetCursorPages(path string, characterID *int, params map[string
 	if batchSize < 1 {
 		batchSize = 1
 	}
-	cursor := params[cursorParam]
-	base := clone(params)
-	var data []any
-	seen := map[any]struct{}{}
-	oldest := 0.0
-	expiresAt := 0.0
-	allCached := true
-	fetched := 0
-	truncated := false
-
+	walk := cursorWalk{
+		path: path, characterID: characterID,
+		cursorParam: cursorParam, cursorKey: cursorKey,
+		batchSize: batchSize, maxPages: maxPages,
+		cursor: params[cursorParam], base: clone(params),
+		seen: map[any]struct{}{}, allCached: true,
+	}
 	for index := range maxPages {
-		q := clone(base)
-		q[cursorParam] = cursor
-		result, err := c.cachedGet(path, characterID, q, nil)
+		cont, err := c.stepCursor(&walk, index)
 		if err != nil {
 			return Result{}, err
 		}
-		fetched++
-		if fetched == 1 {
-			expiresAt = result.ExpiresAt
-		}
-		allCached = allCached && result.FromCache
-		if result.AgeSeconds > oldest {
-			oldest = result.AgeSeconds
-		}
-		rows := j.Maps(result.Data)
-		if len(rows) == 0 {
+		if !cont {
 			break
 		}
-		if len(rows) > batchSize {
-			batchSize = len(rows)
-		}
-		var nextCursor any
-		for _, row := range rows {
-			marker := row[cursorKey]
-			if marker != nil {
-				if _, ok := seen[marker]; ok {
-					continue
-				}
-				seen[marker] = struct{}{}
-				if nextCursor == nil || lessAny(marker, nextCursor) {
-					nextCursor = marker
-				}
-			}
-			data = append(data, row)
-		}
-		if len(rows) < batchSize {
-			break
-		}
-		if index == maxPages-1 {
-			truncated = true
-
-			break
-		}
-		if nextCursor == nil || (cursor != nil && !lessAny(nextCursor, cursor)) {
-			log.Printf("%s: %s did not advance past %v; stopping", path, cursorParam, cursor)
-
-			break
-		}
-		cursor = nextCursor
 	}
-	pages := fetched
+	pages := walk.fetched
 
 	return Result{
-		Data: data, FromCache: allCached, AgeSeconds: oldest,
-		ExpiresAt: expiresAt, Pages: &pages, Truncated: truncated,
+		Data: walk.data, FromCache: walk.allCached, AgeSeconds: walk.oldest,
+		ExpiresAt: walk.expiresAt, Pages: &pages, Truncated: walk.truncated,
 	}, nil
 }
 
@@ -274,6 +243,66 @@ func (c *Client) Put(path string, characterID *int, params map[string]any, jsonB
 }
 func (c *Client) Delete(path string, characterID *int, params map[string]any, jsonBody any) (any, error) {
 	return c.write(http.MethodDelete, path, characterID, params, jsonBody)
+}
+
+func (c *Client) stepCursor(w *cursorWalk, index int) (bool, error) {
+	q := clone(w.base)
+	q[w.cursorParam] = w.cursor
+	result, err := c.cachedGet(w.path, w.characterID, q, nil)
+	if err != nil {
+		return false, err
+	}
+	w.fetched++
+	if w.fetched == 1 {
+		w.expiresAt = result.ExpiresAt
+	}
+	w.allCached = w.allCached && result.FromCache
+	if result.AgeSeconds > w.oldest {
+		w.oldest = result.AgeSeconds
+	}
+	rows := j.Maps(result.Data)
+	if len(rows) == 0 {
+		return false, nil
+	}
+	if len(rows) > w.batchSize {
+		w.batchSize = len(rows)
+	}
+	nextCursor := mergeCursorRows(w, rows)
+	if len(rows) < w.batchSize {
+		return false, nil
+	}
+	if index == w.maxPages-1 {
+		w.truncated = true
+
+		return false, nil
+	}
+	if nextCursor == nil || (w.cursor != nil && !lessAny(nextCursor, w.cursor)) {
+		log.Printf("%s: %s did not advance past %v; stopping", w.path, w.cursorParam, w.cursor)
+
+		return false, nil
+	}
+	w.cursor = nextCursor
+
+	return true, nil
+}
+
+func mergeCursorRows(w *cursorWalk, rows []map[string]any) any {
+	var nextCursor any
+	for _, row := range rows {
+		marker := row[w.cursorKey]
+		if marker != nil {
+			if _, ok := w.seen[marker]; ok {
+				continue
+			}
+			w.seen[marker] = struct{}{}
+			if nextCursor == nil || lessAny(marker, nextCursor) {
+				nextCursor = marker
+			}
+		}
+		w.data = append(w.data, row)
+	}
+
+	return nextCursor
 }
 
 func (c *Client) cache() httpCache {

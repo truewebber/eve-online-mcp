@@ -103,92 +103,18 @@ func New(e *esi.Client, db *store.Store) *Resolver {
 }
 
 func (r *Resolver) Names(ids []int, characterID *int) (map[int]string, error) {
-	wanted := map[int]struct{}{}
-	for _, id := range ids {
-		if id != 0 {
-			wanted[id] = struct{}{}
-		}
-	}
+	wanted := uniquePositive(ids)
 	if len(wanted) == 0 {
 		return map[int]string{}, nil
 	}
-	list := make([]int, 0, len(wanted))
-	for id := range wanted {
-		list = append(list, id)
-	}
-	id64s := make([]int64, len(list))
-	for i, id := range list {
-		id64s[i] = int64(id)
-	}
-	cached, err := r.store.NameGet(context.Background(), id64s)
+	out, missing, err := r.lookupCachedNames(wanted)
 	if err != nil {
 		return nil, err
-	}
-	out := map[int]string{}
-	var missing []int
-	for id := range wanted {
-		if row, ok := cached[int64(id)]; ok {
-			out[id] = row.Name
-		} else {
-			missing = append(missing, id)
-		}
 	}
 	if len(missing) == 0 {
 		return out, nil
 	}
-	var universal, structures []int
-	for _, id := range missing {
-		if id >= structureIDFloor {
-			structures = append(structures, id)
-		} else {
-			universal = append(universal, id)
-		}
-	}
-	for start := 0; start < len(universal); start += nameBatch {
-		end := min(start+nameBatch, len(universal))
-		chunk := universal[start:end]
-		result, err := r.esi.Post("/universe/names", nil, nil, chunk)
-		if err != nil {
-			log.Printf("bulk name lookup failed for %d ids: %v", len(chunk), err)
-
-			continue
-		}
-		var entries []store.NameRow
-		for _, row := range j.Maps(result) {
-			id := j.Int(row["id"])
-			name := j.Str(row["name"])
-			if id == 0 || name == "" {
-				continue
-			}
-			cat := j.Str(row["category"])
-			entries = append(entries, store.NameRow{ID: int64(id), Name: name, Category: cat})
-			out[id] = name
-		}
-		_ = r.store.NamePut(context.Background(), entries)
-	}
-	if len(structures) > 0 && characterID != nil {
-		var entries []store.NameRow
-		type box struct {
-			id   int
-			name string
-			ok   bool
-		}
-		ch := make(chan box, len(structures))
-		for _, sid := range structures {
-			go func(sid int) {
-				name, err := r.structureName(sid, *characterID)
-				ch <- box{sid, name, err == nil}
-			}(sid)
-		}
-		for range structures {
-			b := <-ch
-			if b.ok {
-				entries = append(entries, store.NameRow{ID: int64(b.id), Name: b.name, Category: "structure"})
-				out[b.id] = b.name
-			}
-		}
-		_ = r.store.NamePut(context.Background(), entries)
-	}
+	r.fillMissingNames(out, missing, characterID)
 	for id := range wanted {
 		if _, ok := out[id]; !ok {
 			out[id] = fmt.Sprintf("Unknown #%d", id)
@@ -248,67 +174,8 @@ func (r *Resolver) ResolveNames(names []string, prefer, only []string) (map[stri
 	if err != nil {
 		return nil, err
 	}
-	onlySet := map[string]struct{}{}
-	for _, k := range only {
-		onlySet[k] = struct{}{}
-	}
-	buckets := map[string][]NameMatch{}
-	for key, entries := range lookup {
-		if len(onlySet) > 0 {
-			if _, ok := onlySet[key]; !ok {
-				continue
-			}
-		}
-		kind := categoryKind(key)
-		if kind == "" {
-			kind = key
-		}
-		for _, entry := range j.Maps(entries) {
-			id := j.Int(entry["id"])
-			name := j.Str(entry["name"])
-			if id == 0 || name == "" {
-				continue
-			}
-			k := strings.ToLower(strings.TrimSpace(name))
-			buckets[k] = append(buckets[k], NameMatch{ID: id, Name: name, Category: key, Kind: kind})
-		}
-	}
-	rank := map[string]int{}
-	for i, key := range prefer {
-		rank[key] = i
-	}
-	out := map[string]NameResolution{}
-	for _, asked := range names {
-		wanted := strings.ToLower(strings.TrimSpace(asked))
-		matches := append([]NameMatch{}, buckets[wanted]...)
-		sort.Slice(matches, func(i, j int) bool {
-			ri, okI := rank[matches[i].Category]
-			if !okI {
-				ri = len(rank)
-			}
-			rj, okJ := rank[matches[j].Category]
-			if !okJ {
-				rj = len(rank)
-			}
-			if ri != rj {
-				return ri < rj
-			}
-			if matches[i].Category != matches[j].Category {
-				return matches[i].Category < matches[j].Category
-			}
 
-			return matches[i].ID < matches[j].ID
-		})
-		res := NameResolution{Query: strings.TrimSpace(asked)}
-		if len(matches) > 0 {
-			cp := matches[0]
-			res.Chosen = &cp
-			res.Alternatives = matches[1:]
-		}
-		out[wanted] = res
-	}
-
-	return out, nil
+	return pickNameResolutions(names, collectNameBuckets(lookup, only), preferRank(prefer)), nil
 }
 
 func (r *Resolver) TypeInfo(typeID int) (map[string]any, error) {
@@ -500,6 +367,185 @@ func (r *Resolver) HubQuotes(typeID, regionID int, stationID *int) (map[string]a
 	}
 
 	return out, nil
+}
+
+func uniquePositive(ids []int) map[int]struct{} {
+	wanted := map[int]struct{}{}
+	for _, id := range ids {
+		if id != 0 {
+			wanted[id] = struct{}{}
+		}
+	}
+
+	return wanted
+}
+
+func (r *Resolver) lookupCachedNames(wanted map[int]struct{}) (map[int]string, []int, error) {
+	list := make([]int, 0, len(wanted))
+	for id := range wanted {
+		list = append(list, id)
+	}
+	id64s := make([]int64, len(list))
+	for i, id := range list {
+		id64s[i] = int64(id)
+	}
+	cached, err := r.store.NameGet(context.Background(), id64s)
+	if err != nil {
+		return nil, nil, err
+	}
+	out := map[int]string{}
+	var missing []int
+	for id := range wanted {
+		if row, ok := cached[int64(id)]; ok {
+			out[id] = row.Name
+		} else {
+			missing = append(missing, id)
+		}
+	}
+
+	return out, missing, nil
+}
+
+func (r *Resolver) fillMissingNames(out map[int]string, missing []int, characterID *int) {
+	var universal, structures []int
+	for _, id := range missing {
+		if id >= structureIDFloor {
+			structures = append(structures, id)
+		} else {
+			universal = append(universal, id)
+		}
+	}
+	r.fillUniverseNames(out, universal)
+	if len(structures) > 0 && characterID != nil {
+		r.fillStructureNames(out, structures, *characterID)
+	}
+}
+
+func (r *Resolver) fillUniverseNames(out map[int]string, universal []int) {
+	for start := 0; start < len(universal); start += nameBatch {
+		end := min(start+nameBatch, len(universal))
+		chunk := universal[start:end]
+		result, err := r.esi.Post("/universe/names", nil, nil, chunk)
+		if err != nil {
+			log.Printf("bulk name lookup failed for %d ids: %v", len(chunk), err)
+
+			continue
+		}
+		var entries []store.NameRow
+		for _, row := range j.Maps(result) {
+			id := j.Int(row["id"])
+			name := j.Str(row["name"])
+			if id == 0 || name == "" {
+				continue
+			}
+			entries = append(entries, store.NameRow{ID: int64(id), Name: name, Category: j.Str(row["category"])})
+			out[id] = name
+		}
+		_ = r.store.NamePut(context.Background(), entries)
+	}
+}
+
+func (r *Resolver) fillStructureNames(out map[int]string, structures []int, characterID int) {
+	type box struct {
+		id   int
+		name string
+		ok   bool
+	}
+	ch := make(chan box, len(structures))
+	for _, sid := range structures {
+		go func(sid int) {
+			name, err := r.structureName(sid, characterID)
+			ch <- box{sid, name, err == nil}
+		}(sid)
+	}
+	var entries []store.NameRow
+	for range structures {
+		b := <-ch
+		if !b.ok {
+			continue
+		}
+		entries = append(entries, store.NameRow{ID: int64(b.id), Name: b.name, Category: "structure"})
+		out[b.id] = b.name
+	}
+	_ = r.store.NamePut(context.Background(), entries)
+}
+
+func collectNameBuckets(lookup map[string]any, only []string) map[string][]NameMatch {
+	onlySet := map[string]struct{}{}
+	for _, k := range only {
+		onlySet[k] = struct{}{}
+	}
+	buckets := map[string][]NameMatch{}
+	for key, entries := range lookup {
+		if len(onlySet) > 0 {
+			if _, ok := onlySet[key]; !ok {
+				continue
+			}
+		}
+		kind := categoryKind(key)
+		if kind == "" {
+			kind = key
+		}
+		for _, entry := range j.Maps(entries) {
+			id := j.Int(entry["id"])
+			name := j.Str(entry["name"])
+			if id == 0 || name == "" {
+				continue
+			}
+			k := strings.ToLower(strings.TrimSpace(name))
+			buckets[k] = append(buckets[k], NameMatch{ID: id, Name: name, Category: key, Kind: kind})
+		}
+	}
+
+	return buckets
+}
+
+func preferRank(prefer []string) map[string]int {
+	rank := map[string]int{}
+	for i, key := range prefer {
+		rank[key] = i
+	}
+
+	return rank
+}
+
+func pickNameResolutions(names []string, buckets map[string][]NameMatch, rank map[string]int) map[string]NameResolution {
+	out := map[string]NameResolution{}
+	for _, asked := range names {
+		wanted := strings.ToLower(strings.TrimSpace(asked))
+		matches := append([]NameMatch{}, buckets[wanted]...)
+		sort.Slice(matches, lessNameMatch(matches, rank))
+		res := NameResolution{Query: strings.TrimSpace(asked)}
+		if len(matches) > 0 {
+			cp := matches[0]
+			res.Chosen = &cp
+			res.Alternatives = matches[1:]
+		}
+		out[wanted] = res
+	}
+
+	return out
+}
+
+func lessNameMatch(matches []NameMatch, rank map[string]int) func(i, j int) bool {
+	return func(i, j int) bool {
+		ri, okI := rank[matches[i].Category]
+		if !okI {
+			ri = len(rank)
+		}
+		rj, okJ := rank[matches[j].Category]
+		if !okJ {
+			rj = len(rank)
+		}
+		if ri != rj {
+			return ri < rj
+		}
+		if matches[i].Category != matches[j].Category {
+			return matches[i].Category < matches[j].Category
+		}
+
+		return matches[i].ID < matches[j].ID
+	}
 }
 
 func (r *Resolver) structureName(structureID, characterID int) (string, error) {

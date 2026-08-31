@@ -12,62 +12,63 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+type walletHistIn struct {
+	Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+	Kind           string `json:"kind,omitempty"            jsonschema:"'journal' is every ISK movement. 'transactions' is market trades. 'both' returns each in its own section. Default journal."`
+	RefType        string `json:"ref_type,omitempty"        jsonschema:"Journal only: keep just one reason code, e.g. 'bounty_prizes'."`
+	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
+}
+
 func registerWallet(s *mcp.Server) {
-	type histIn struct {
-		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Kind           string `json:"kind,omitempty"            jsonschema:"'journal' is every ISK movement. 'transactions' is market trades. 'both' returns each in its own section. Default journal."`
-		RefType        string `json:"ref_type,omitempty"        jsonschema:"Journal only: keep just one reason code, e.g. 'bounty_prizes'."`
-		Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
-		ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
-	}
 	addTool(s, &mcp.Tool{
 		Name:        "eve_wallet_history",
 		Description: "Where the ISK went: journal entries and market trades, with totals by category.\n\nThe current balance is not here — eve_character_overview already carries it. ESI keeps roughly the last 30 days. The by_category summary is computed over the whole window, not just the returned rows.\n\nReturns: period, totals, by_category[], and journal[] / transactions[] depending on kind.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in histIn) (*mcp.CallToolResult, any, error) {
-		return Call(ctx, func(a *session.Session) (any, error) {
-			token, err := a.ResolveCharacter(in.Character)
-			if err != nil {
-				return nil, err
-			}
-			if err := a.RequireScope(token, "esi-wallet.read_character_wallet.v1", "wallet history"); err != nil {
-				return nil, err
-			}
-			kind := in.Kind
-			if kind == "" {
-				kind = "journal"
-			}
-			cid := token.CharacterID
-			out := map[string]any{"character": token.CharacterName, "period": "last ~30 days (ESI retention limit)"}
-			if kind == "journal" || kind == "both" {
-				sec, err := journalSection(a, cid, in.RefType, limitOr(in.Limit, 15), concise(in.ResponseFormat))
-				if err != nil {
-					return nil, err
-				}
-				out["journal_section"] = sec
-			}
-			if kind == "transactions" || kind == "both" {
-				sec, err := transactionSection(a, fmt.Sprintf("/characters/%d/wallet/transactions", cid), cid, limitOr(in.Limit, 15), concise(in.ResponseFormat))
-				if err != nil {
-					return nil, err
-				}
-				out["transactions_section"] = sec
-			}
-			if kind == "journal" {
-				sec := j.Map(out["journal_section"])
-				delete(out, "journal_section")
+	}, sessionTool(walletHistory))
+}
 
-				return merge(out, sec), nil
-			}
-			if kind == "transactions" {
-				sec := j.Map(out["transactions_section"])
-				delete(out, "transactions_section")
+func walletHistory(_ context.Context, a *session.Session, in walletHistIn) (any, error) {
+	token, err := a.ResolveCharacter(in.Character)
+	if err != nil {
+		return nil, err
+	}
+	if err := a.RequireScope(token, "esi-wallet.read_character_wallet.v1", "wallet history"); err != nil {
+		return nil, err
+	}
+	kind := in.Kind
+	if kind == "" {
+		kind = "journal"
+	}
+	cid := token.CharacterID
+	out := map[string]any{"character": token.CharacterName, "period": "last ~30 days (ESI retention limit)"}
+	if kind == "journal" || kind == "both" {
+		sec, err := journalSection(a, cid, in.RefType, limitOr(in.Limit, 15), concise(in.ResponseFormat))
+		if err != nil {
+			return nil, err
+		}
+		out["journal_section"] = sec
+	}
+	if kind == "transactions" || kind == "both" {
+		sec, err := transactionSection(a, fmt.Sprintf("/characters/%d/wallet/transactions", cid), cid, limitOr(in.Limit, 15), concise(in.ResponseFormat))
+		if err != nil {
+			return nil, err
+		}
+		out["transactions_section"] = sec
+	}
+	if kind == "journal" {
+		sec := j.Map(out["journal_section"])
+		delete(out, "journal_section")
 
-				return merge(out, sec), nil
-			}
+		return merge(out, sec), nil
+	}
+	if kind == "transactions" {
+		sec := j.Map(out["transactions_section"])
+		delete(out, "transactions_section")
 
-			return out, nil
-		})
-	})
+		return merge(out, sec), nil
+	}
+
+	return out, nil
 }
 
 func journalSection(a *session.Session, cid int, refType string, limit int, conciseMode bool) (map[string]any, error) {
@@ -79,8 +80,45 @@ func journalSection(a *session.Session, cid int, refType string, limit int, conc
 	return summarizeJournal(result.Data, result.StaleNote(), result.Truncated, 10, refType, limit, conciseMode, "")
 }
 
+type journalTot struct{ in, out, n float64 }
+
 func summarizeJournal(data any, stale string, truncated bool, pageCap int, refType string, limit int, conciseMode bool, divisionNote string) (map[string]any, error) {
 	entries := j.Maps(data)
+	available := journalRefTypes(entries)
+	if refType != "" {
+		filtered := filterJournalByRef(entries, refType)
+		if len(filtered) == 0 {
+			msg := fmt.Sprintf("No journal entries with ref_type %q in the window. Codes actually present: %v", refType, available)
+			if divisionNote != "" {
+				msg = fmt.Sprintf("No journal entries with ref_type %q in %s. Codes actually present: %v", refType, divisionNote, available)
+			}
+
+			return map[string]any{"journal": []any{}, "error": msg}, nil
+		}
+		entries = filtered
+	}
+	totals, byCat := tallyJournal(entries)
+	sort.Slice(entries, func(i, k int) bool { return j.Str(entries[i]["date"]) > j.Str(entries[k]["date"]) })
+	rows := journalRows(entries)
+	visible, meta := page(rows, limit, "Raise `limit`, or narrow with `ref_type`.")
+	var gin, gout float64
+	for _, b := range totals {
+		gin += b.in
+		gout += b.out
+	}
+	out := merge(map[string]any{
+		"total_income": isk(gin), "total_spending": isk(gout), "net": isk(gin + gout),
+		"by_category": byCat, "data_age": stale,
+		"journal": project(visible, []string{"date", "ref_type", "amount", "description"}, conciseMode),
+	}, meta)
+	if truncated {
+		out["totals_caveat"] = fmt.Sprintf("Hit the %d-page read cap: the totals and by_category above cover the newest %s entries, not the full window.", pageCap, formatInt(len(entries)))
+	}
+
+	return out, nil
+}
+
+func journalRefTypes(entries []map[string]any) []string {
 	codes := map[string]struct{}{}
 	for _, e := range entries {
 		codes[j.Str(e["ref_type"])] = struct{}{}
@@ -93,25 +131,23 @@ func summarizeJournal(data any, stale string, truncated bool, pageCap int, refTy
 		available = append(available, c)
 	}
 	sort.Strings(available)
-	if refType != "" {
-		var filtered []map[string]any
-		for _, e := range entries {
-			if j.Str(e["ref_type"]) == refType {
-				filtered = append(filtered, e)
-			}
-		}
-		if len(filtered) == 0 {
-			msg := fmt.Sprintf("No journal entries with ref_type %q in the window. Codes actually present: %v", refType, available)
-			if divisionNote != "" {
-				msg = fmt.Sprintf("No journal entries with ref_type %q in %s. Codes actually present: %v", refType, divisionNote, available)
-			}
 
-			return map[string]any{"journal": []any{}, "error": msg}, nil
+	return available
+}
+
+func filterJournalByRef(entries []map[string]any, refType string) []map[string]any {
+	var filtered []map[string]any
+	for _, e := range entries {
+		if j.Str(e["ref_type"]) == refType {
+			filtered = append(filtered, e)
 		}
-		entries = filtered
 	}
-	type tot struct{ in, out, n float64 }
-	totals := map[string]*tot{}
+
+	return filtered
+}
+
+func tallyJournal(entries []map[string]any) (map[string]*journalTot, []map[string]any) {
+	totals := map[string]*journalTot{}
 	for _, e := range entries {
 		amount := j.Float(e["amount"])
 		name := j.Str(e["ref_type"])
@@ -120,7 +156,7 @@ func summarizeJournal(data any, stale string, truncated bool, pageCap int, refTy
 		}
 		b := totals[name]
 		if b == nil {
-			b = &tot{}
+			b = &journalTot{}
 			totals[name] = b
 		}
 		if amount >= 0 {
@@ -151,7 +187,11 @@ func summarizeJournal(data any, stale string, truncated bool, pageCap int, refTy
 	if len(byCat) > 15 {
 		byCat = byCat[:15]
 	}
-	sort.Slice(entries, func(i, k int) bool { return j.Str(entries[i]["date"]) > j.Str(entries[k]["date"]) })
+
+	return totals, byCat
+}
+
+func journalRows(entries []map[string]any) []map[string]any {
 	var rows []map[string]any
 	for _, e := range entries {
 		rows = append(rows, map[string]any{
@@ -160,22 +200,8 @@ func summarizeJournal(data any, stale string, truncated bool, pageCap int, refTy
 			"balance_after": isk(e["balance"]), "reason": e["reason"],
 		})
 	}
-	visible, meta := page(rows, limit, "Raise `limit`, or narrow with `ref_type`.")
-	var gin, gout float64
-	for _, b := range totals {
-		gin += b.in
-		gout += b.out
-	}
-	out := merge(map[string]any{
-		"total_income": isk(gin), "total_spending": isk(gout), "net": isk(gin + gout),
-		"by_category": byCat, "data_age": stale,
-		"journal": project(visible, []string{"date", "ref_type", "amount", "description"}, conciseMode),
-	}, meta)
-	if truncated {
-		out["totals_caveat"] = fmt.Sprintf("Hit the %d-page read cap: the totals and by_category above cover the newest %s entries, not the full window.", pageCap, formatInt(len(entries)))
-	}
 
-	return out, nil
+	return rows
 }
 
 func transactionSection(a *session.Session, path string, cid int, limit int, conciseMode bool) (map[string]any, error) {

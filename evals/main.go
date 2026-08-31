@@ -247,55 +247,10 @@ func lint(r *rpc) int {
 	var failures, warnings []string
 	params := 0
 	for _, tool := range tools {
-		name, _ := tool["name"].(string)
-		description, _ := tool["description"].(string)
-		schema, _ := tool["inputSchema"].(map[string]any)
-		props, _ := schema["properties"].(map[string]any)
-		if props == nil {
-			props = map[string]any{}
-		}
-		params += len(props)
-
-		if !strings.HasPrefix(name, "eve_") {
-			failures = append(failures, name+": not namespaced under 'eve_'")
-		}
-		if len(description) < minDescriptionChars {
-			failures = append(failures, fmt.Sprintf("%s: description is only %d chars", name, len(description)))
-		}
-		if len(description) > maxDescriptionChars {
-			warnings = append(warnings, fmt.Sprintf("%s: description is %d chars, consider trimming", name, len(description)))
-		}
-		if strings.Contains(description, "\n    ") || description != strings.TrimSpace(description) {
-			failures = append(failures, name+": description carries raw docstring indentation")
-		}
-
-		for param, specAny := range props {
-			spec, _ := specAny.(map[string]any)
-			if spec == nil {
-				spec = map[string]any{}
-			}
-			if desc, _ := spec["description"].(string); desc == "" {
-				failures = append(failures, name+"."+param+": no description in the schema")
-			}
-			// Game ids are opaque 64-bit values with no meaningful upper bound;
-			// only tunables like `limit` benefit from a declared range.
-			if typ, _ := spec["type"].(string); typ == "integer" {
-				if _, ok := spec["maximum"]; !ok && !strings.HasSuffix(param, "_id") {
-					warnings = append(warnings, name+"."+param+": unbounded integer, no maximum in schema")
-				}
-			}
-			switch param {
-			case "user", "id", "target_id", "data", "input":
-				warnings = append(warnings, name+"."+param+": ambiguous parameter name")
-			}
-		}
-
-		if _, hasLimit := props["limit"]; hasLimit {
-			_, hasFormat := props["response_format"]
-			if !hasFormat && needsResponseFormat(name) {
-				warnings = append(warnings, name+": has `limit` but no `response_format`")
-			}
-		}
+		f, w, n := lintTool(tool)
+		failures = append(failures, f...)
+		warnings = append(warnings, w...)
+		params += n
 	}
 
 	fmt.Printf("linted %d tools, %d parameters\n", len(tools), params)
@@ -313,6 +268,66 @@ func lint(r *rpc) int {
 	fmt.Printf("\nall gates passed (%d warning(s))\n", len(warnings))
 
 	return 0
+}
+
+func lintTool(tool map[string]any) ([]string, []string, int) {
+	name, _ := tool["name"].(string)
+	description, _ := tool["description"].(string)
+	schema, _ := tool["inputSchema"].(map[string]any)
+	props, _ := schema["properties"].(map[string]any)
+	if props == nil {
+		props = map[string]any{}
+	}
+	var failures, warnings []string
+	if !strings.HasPrefix(name, "eve_") {
+		failures = append(failures, name+": not namespaced under 'eve_'")
+	}
+	if len(description) < minDescriptionChars {
+		failures = append(failures, fmt.Sprintf("%s: description is only %d chars", name, len(description)))
+	}
+	if len(description) > maxDescriptionChars {
+		warnings = append(warnings, fmt.Sprintf("%s: description is %d chars, consider trimming", name, len(description)))
+	}
+	if strings.Contains(description, "\n    ") || description != strings.TrimSpace(description) {
+		failures = append(failures, name+": description carries raw docstring indentation")
+	}
+	f, w := lintProps(name, props)
+	failures = append(failures, f...)
+	warnings = append(warnings, w...)
+
+	return failures, warnings, len(props)
+}
+
+func lintProps(name string, props map[string]any) ([]string, []string) {
+	var failures, warnings []string
+	for param, specAny := range props {
+		spec, _ := specAny.(map[string]any)
+		if spec == nil {
+			spec = map[string]any{}
+		}
+		if desc, _ := spec["description"].(string); desc == "" {
+			failures = append(failures, name+"."+param+": no description in the schema")
+		}
+		// Game ids are opaque 64-bit values with no meaningful upper bound;
+		// only tunables like `limit` benefit from a declared range.
+		if typ, _ := spec["type"].(string); typ == "integer" {
+			if _, ok := spec["maximum"]; !ok && !strings.HasSuffix(param, "_id") {
+				warnings = append(warnings, name+"."+param+": unbounded integer, no maximum in schema")
+			}
+		}
+		switch param {
+		case "user", "id", "target_id", "data", "input":
+			warnings = append(warnings, name+"."+param+": ambiguous parameter name")
+		}
+	}
+	if _, hasLimit := props["limit"]; hasLimit {
+		_, hasFormat := props["response_format"]
+		if !hasFormat && needsResponseFormat(name) {
+			warnings = append(warnings, name+": has `limit` but no `response_format`")
+		}
+	}
+
+	return failures, warnings
 }
 
 func smoke(r *rpc) int {

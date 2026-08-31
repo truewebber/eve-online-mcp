@@ -12,148 +12,166 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+type industryJobsIn struct {
+	Character        string `json:"character,omitempty"         jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+	IncludeCompleted *bool  `json:"include_completed,omitempty" jsonschema:"Also return jobs that already delivered. Default false."`
+	Limit            int    `json:"limit,omitempty"             jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+	ResponseFormat   string `json:"response_format,omitempty"   jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
+}
+
+type industryPlanetsIn struct {
+	Character string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+	Detail    *bool  `json:"detail,omitempty"    jsonschema:"Fetch each colony's layout to report extractor expiry and stored output. Default false."`
+}
+
+type industryMiningIn struct {
+	Character string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+	Limit     int    `json:"limit,omitempty"     jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+}
+
 func registerIndustry(s *mcp.Server) {
-	type jobsIn struct {
-		Character        string `json:"character,omitempty"         jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		IncludeCompleted *bool  `json:"include_completed,omitempty" jsonschema:"Also return jobs that already delivered. Default false."`
-		Limit            int    `json:"limit,omitempty"             jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
-		ResponseFormat   string `json:"response_format,omitempty"   jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
-	}
 	addTool(s, &mcp.Tool{
 		Name:        "eve_industry_jobs",
 		Description: "Manufacturing, research, invention and reaction jobs with time remaining.\n\nJobs whose end time has passed show ready: true — they are finished but still need collecting in game.\n\nReturns: active_jobs, ready_to_deliver, jobs[] sorted by end time.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in jobsIn) (*mcp.CallToolResult, any, error) {
-		return Call(ctx, func(a *session.Session) (any, error) {
-			token, err := a.ResolveCharacter(in.Character)
-			if err != nil {
-				return nil, err
-			}
-			if err := a.RequireScope(token, "esi-industry.read_character_jobs.v1", "industry jobs"); err != nil {
-				return nil, err
-			}
-			cid := token.CharacterID
-			result, err := a.ESI.Get(fmt.Sprintf("/characters/%d/industry/jobs", cid), &cid, map[string]any{"include_completed": boolDef(in.IncludeCompleted, false)}, nil)
-			if err != nil {
-				return nil, err
-			}
-
-			return industryJobsResult(a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, 20), concise(in.ResponseFormat), false), nil
-		})
-	})
-
-	type planetsIn struct {
-		Character string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Detail    *bool  `json:"detail,omitempty"    jsonschema:"Fetch each colony's layout to report extractor expiry and stored output. Default false."`
-	}
+	}, sessionTool(eveIndustryJobs))
 	addTool(s, &mcp.Tool{
 		Name:        "eve_industry_planets",
 		Description: "Planetary interaction colonies: where they are and whether they have stalled.\n\nPass detail=true to get extractor_expires_in per colony — anything reading \"expired\" is currently earning nothing.\n\nReturns: colony_count, colonies[].",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in planetsIn) (*mcp.CallToolResult, any, error) {
-		return Call(ctx, func(a *session.Session) (any, error) {
-			token, err := a.ResolveCharacter(in.Character)
-			if err != nil {
-				return nil, err
-			}
-			if err := a.RequireScope(token, "esi-planets.manage_planets.v1", "planetary colonies"); err != nil {
-				return nil, err
-			}
-			cid := token.CharacterID
-			result, err := a.ESI.Get(fmt.Sprintf("/characters/%d/planets", cid), &cid, nil, nil)
-			if err != nil {
-				return nil, err
-			}
-			colonies := j.Maps(result.Data)
-			if len(colonies) == 0 {
-				return map[string]any{"character": token.CharacterName, "colonies": []any{}, "note": "No PI colonies."}, nil
-			}
-			idSet := map[int]struct{}{}
-			for _, c := range colonies {
-				idSet[j.Int(c["planet_id"])] = struct{}{}
-				idSet[j.Int(c["solar_system_id"])] = struct{}{}
-			}
-			names, _ := a.Resolver.Names(setToList(idSet), nil)
-			var rows []map[string]any
-			for _, c := range colonies {
-				rows = append(rows, map[string]any{
-					"planet": names[j.Int(c["planet_id"])], "system": names[j.Int(c["solar_system_id"])],
-					"type": c["planet_type"], "upgrade_level": c["upgrade_level"],
-					"pins": c["num_pins"], "planet_id": c["planet_id"],
-				})
-			}
-			if boolDef(in.Detail, false) {
-				decorateColonyDetails(a, cid, colonies, rows)
-			}
-
-			return map[string]any{
-				"character": token.CharacterName, "colony_count": len(rows),
-				"data_age": result.StaleNote(), "colonies": rows,
-			}, nil
-		})
-	})
-
-	type miningIn struct {
-		Character string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Limit     int    `json:"limit,omitempty"     jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
-	}
+	}, sessionTool(eveIndustryPlanets))
 	addTool(s, &mcp.Tool{
 		Name:        "eve_industry_mining",
 		Description: "Mining ledger for the last ~30 days, aggregated by ore type and valued.\n\nValues use CCP's global average price. Returns: total_estimated_value, top_systems[], ores[] sorted by volume.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in miningIn) (*mcp.CallToolResult, any, error) {
-		return Call(ctx, func(a *session.Session) (any, error) {
-			token, err := a.ResolveCharacter(in.Character)
-			if err != nil {
-				return nil, err
-			}
-			if err := a.RequireScope(token, "esi-industry.read_character_mining.v1", "the mining ledger"); err != nil {
-				return nil, err
-			}
-			cid := token.CharacterID
-			result, err := a.ESI.GetAllPages(fmt.Sprintf("/characters/%d/mining", cid), &cid, nil, 40)
-			if err != nil {
-				return nil, err
-			}
-			entries := j.Maps(result.Data)
-			if len(entries) == 0 {
-				return map[string]any{"character": token.CharacterName, "ores": []any{}, "note": "Nothing mined recently."}, nil
-			}
-			totals := map[int]int{}
-			bySystem := map[int]int{}
-			for _, e := range entries {
-				totals[j.Int(e["type_id"])] += j.Int(e["quantity"])
-				bySystem[j.Int(e["solar_system_id"])] += j.Int(e["quantity"])
-			}
-			names, _ := a.Resolver.Names(append(keys(totals), keys(bySystem)...), nil)
-			prices, _ := a.Resolver.ReferencePrices()
-			var rows []map[string]any
-			grand := 0.0
-			for tid, qty := range totals {
-				value := unitPrice(prices, tid) * float64(qty)
-				grand += value
-				rows = append(rows, map[string]any{"ore": nameOr(names, tid), "units": qty, "estimated_value": isk(value)})
-			}
-			sort.Slice(rows, func(i, k int) bool { return j.Int(rows[i]["units"]) > j.Int(rows[k]["units"]) })
-			visible, meta := page(rows, limitOr(in.Limit, 15), "")
-			type kv struct{ id, q int }
-			var sys []kv
-			for id, q := range bySystem {
-				sys = append(sys, kv{id, q})
-			}
-			sort.Slice(sys, func(i, k int) bool { return sys[i].q > sys[k].q })
-			if len(sys) > 5 {
-				sys = sys[:5]
-			}
-			var top []map[string]any
-			for _, s := range sys {
-				top = append(top, map[string]any{"system": nameOr(names, s.id), "units": s.q})
-			}
+	}, sessionTool(eveIndustryMining))
+}
 
-			return merge(map[string]any{
-				"character": token.CharacterName, "period": "last ~30 days",
-				"total_estimated_value": isk(grand), "top_systems": top,
-				"data_age": result.StaleNote(), "ores": visible,
-			}, meta), nil
+func eveIndustryJobs(_ context.Context, a *session.Session, in industryJobsIn) (any, error) {
+	token, err := a.ResolveCharacter(in.Character)
+	if err != nil {
+		return nil, err
+	}
+	if err := a.RequireScope(token, "esi-industry.read_character_jobs.v1", "industry jobs"); err != nil {
+		return nil, err
+	}
+	cid := token.CharacterID
+	result, err := a.ESI.Get(fmt.Sprintf("/characters/%d/industry/jobs", cid), &cid, map[string]any{"include_completed": boolDef(in.IncludeCompleted, false)}, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return industryJobsResult(a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, 20), concise(in.ResponseFormat), false), nil
+}
+
+func eveIndustryPlanets(_ context.Context, a *session.Session, in industryPlanetsIn) (any, error) {
+	token, err := a.ResolveCharacter(in.Character)
+	if err != nil {
+		return nil, err
+	}
+	if err := a.RequireScope(token, "esi-planets.manage_planets.v1", "planetary colonies"); err != nil {
+		return nil, err
+	}
+	cid := token.CharacterID
+	result, err := a.ESI.Get(fmt.Sprintf("/characters/%d/planets", cid), &cid, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	colonies := j.Maps(result.Data)
+	if len(colonies) == 0 {
+		return map[string]any{"character": token.CharacterName, "colonies": []any{}, "note": "No PI colonies."}, nil
+	}
+	idSet := map[int]struct{}{}
+	for _, c := range colonies {
+		idSet[j.Int(c["planet_id"])] = struct{}{}
+		idSet[j.Int(c["solar_system_id"])] = struct{}{}
+	}
+	names, _ := a.Resolver.Names(setToList(idSet), nil)
+	var rows []map[string]any
+	for _, c := range colonies {
+		rows = append(rows, map[string]any{
+			"planet": names[j.Int(c["planet_id"])], "system": names[j.Int(c["solar_system_id"])],
+			"type": c["planet_type"], "upgrade_level": c["upgrade_level"],
+			"pins": c["num_pins"], "planet_id": c["planet_id"],
 		})
-	})
+	}
+	if boolDef(in.Detail, false) {
+		decorateColonyDetails(a, cid, colonies, rows)
+	}
+
+	return map[string]any{
+		"character": token.CharacterName, "colony_count": len(rows),
+		"data_age": result.StaleNote(), "colonies": rows,
+	}, nil
+}
+
+func eveIndustryMining(_ context.Context, a *session.Session, in industryMiningIn) (any, error) {
+	token, err := a.ResolveCharacter(in.Character)
+	if err != nil {
+		return nil, err
+	}
+	if err := a.RequireScope(token, "esi-industry.read_character_mining.v1", "the mining ledger"); err != nil {
+		return nil, err
+	}
+	cid := token.CharacterID
+	result, err := a.ESI.GetAllPages(fmt.Sprintf("/characters/%d/mining", cid), &cid, nil, 40)
+	if err != nil {
+		return nil, err
+	}
+	entries := j.Maps(result.Data)
+	if len(entries) == 0 {
+		return map[string]any{"character": token.CharacterName, "ores": []any{}, "note": "Nothing mined recently."}, nil
+	}
+	totals, bySystem := sumMining(entries)
+	names, _ := a.Resolver.Names(append(keys(totals), keys(bySystem)...), nil)
+	prices, _ := a.Resolver.ReferencePrices()
+	rows, grand := miningOreRows(totals, names, prices)
+	visible, meta := page(rows, limitOr(in.Limit, 15), "")
+
+	return merge(map[string]any{
+		"character": token.CharacterName, "period": "last ~30 days",
+		"total_estimated_value": isk(grand), "top_systems": topMiningSystems(bySystem, names, 5),
+		"data_age": result.StaleNote(), "ores": visible,
+	}, meta), nil
+}
+
+func sumMining(entries []map[string]any) (map[int]int, map[int]int) {
+	totals := map[int]int{}
+	bySystem := map[int]int{}
+	for _, e := range entries {
+		totals[j.Int(e["type_id"])] += j.Int(e["quantity"])
+		bySystem[j.Int(e["solar_system_id"])] += j.Int(e["quantity"])
+	}
+
+	return totals, bySystem
+}
+
+func miningOreRows(totals map[int]int, names map[int]string, prices map[int]map[string]float64) ([]map[string]any, float64) {
+	var rows []map[string]any
+	grand := 0.0
+	for tid, qty := range totals {
+		value := unitPrice(prices, tid) * float64(qty)
+		grand += value
+		rows = append(rows, map[string]any{"ore": nameOr(names, tid), "units": qty, "estimated_value": isk(value)})
+	}
+	sort.Slice(rows, func(i, k int) bool { return j.Int(rows[i]["units"]) > j.Int(rows[k]["units"]) })
+
+	return rows, grand
+}
+
+func topMiningSystems(bySystem map[int]int, names map[int]string, n int) []map[string]any {
+	type kv struct{ id, q int }
+	var sys []kv
+	for id, q := range bySystem {
+		sys = append(sys, kv{id, q})
+	}
+	sort.Slice(sys, func(i, k int) bool { return sys[i].q > sys[k].q })
+	if len(sys) > n {
+		sys = sys[:n]
+	}
+	var top []map[string]any
+	for _, s := range sys {
+		top = append(top, map[string]any{"system": nameOr(names, s.id), "units": s.q})
+	}
+
+	return top
 }
 
 func industryJobsResult(a *session.Session, character string, cid int, data any, stale string, limit int, conciseMode, withInstaller bool) map[string]any {

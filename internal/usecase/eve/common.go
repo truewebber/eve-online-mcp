@@ -27,6 +27,14 @@ func addTool[In any](s *mcp.Server, t *mcp.Tool, h mcp.ToolHandlerFor[In, any]) 
 	mcp.AddTool(s, t, h)
 }
 
+func sessionTool[In any](fn func(context.Context, *session.Session, In) (any, error)) mcp.ToolHandlerFor[In, any] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in In) (*mcp.CallToolResult, any, error) {
+		return Call(ctx, func(a *session.Session) (any, error) {
+			return fn(ctx, a, in)
+		})
+	}
+}
+
 func patchBounds(schema *jsonschema.Schema) {
 	if schema == nil {
 		return

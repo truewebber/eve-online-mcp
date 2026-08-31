@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/truewebber/eve-online-mcp/internal/adapter/names"
 	"github.com/truewebber/eve-online-mcp/internal/domain/j"
 	"github.com/truewebber/eve-online-mcp/internal/domain/universe"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
@@ -14,150 +15,187 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+type marketPriceIn struct {
+	Item        string `json:"item"                   jsonschema:"Exact item type name, e.g. 'Tritanium' or 'Rifter'. Must match the in-game name exactly."`
+	Region      string `json:"region,omitempty"       jsonschema:"Exact region name. Empty means The Forge / Jita 4-4."`
+	WholeRegion *bool  `json:"whole_region,omitempty" jsonschema:"Price across every station in the region instead of just the main hub."`
+	HistoryDays int    `json:"history_days,omitempty" jsonschema:"Summarise this many days of daily price history. 0 skips it.,minimum=0,maximum=365"`
+}
+
+type marketOrdersIn struct {
+	Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
+}
+
+type marketContractsIn struct {
+	Character       string `json:"character,omitempty"        jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+	OutstandingOnly *bool  `json:"outstanding_only,omitempty" jsonschema:"Only contracts still awaiting action. Default true."`
+	Limit           int    `json:"limit,omitempty"            jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+	ResponseFormat  string `json:"response_format,omitempty"  jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
+}
+
 func registerMarket(s *mcp.Server) {
-	type priceIn struct {
-		Item        string `json:"item"                   jsonschema:"Exact item type name, e.g. 'Tritanium' or 'Rifter'. Must match the in-game name exactly."`
-		Region      string `json:"region,omitempty"       jsonschema:"Exact region name. Empty means The Forge / Jita 4-4."`
-		WholeRegion *bool  `json:"whole_region,omitempty" jsonschema:"Price across every station in the region instead of just the main hub."`
-		HistoryDays int    `json:"history_days,omitempty" jsonschema:"Summarise this many days of daily price history. 0 skips it.,minimum=0,maximum=365"`
-	}
 	addTool(s, &mcp.Tool{
 		Name:        "eve_market_price",
 		Description: "Live best buy and sell price for an item, from real orders on the market.\n\nUse this — not the average price in asset or mining results — whenever the answer involves actually buying or selling something. best_sell is what you would pay to buy right now; best_buy is what you would get selling instantly.\n\nReturns: best_sell, best_buy, spread_pct, volumes, ccp_average_price, packaged_volume_m3.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in priceIn) (*mcp.CallToolResult, any, error) {
-		return Call(ctx, func(a *session.Session) (any, error) {
-			if strings.TrimSpace(in.Item) == "" {
-				return map[string]any{"error": "item is required"}, nil
-			}
-			resolved, err := a.Resolver.ResolveNames([]string{in.Item}, nil, []string{"inventory_types"})
-			if err != nil {
-				return nil, err
-			}
-			match := resolved[strings.ToLower(strings.TrimSpace(in.Item))]
-			if match.Chosen == nil {
-				return map[string]any{"error": fmt.Sprintf("No item type is named exactly %q. EVE names are exact — call eve_universe_search with this text to find the real spelling.", in.Item)}, nil
-			}
-			typeID, resolvedName := match.Chosen.ID, match.Chosen.Name
-			regionID, regionName := universe.TheForgeRegionID, "The Forge"
-			if strings.TrimSpace(in.Region) != "" {
-				rm, err := a.Resolver.ResolveNames([]string{in.Region}, nil, []string{"regions"})
-				if err != nil {
-					return nil, err
-				}
-				r := rm[strings.ToLower(strings.TrimSpace(in.Region))]
-				if r.Chosen == nil {
-					return map[string]any{"error": fmt.Sprintf("No region is named exactly %q. Call eve_universe_search with categories='region' to find it.", in.Region)}, nil
-				}
-				regionID, regionName = r.Chosen.ID, r.Chosen.Name
-			}
-			var station *int
-			if !boolDef(in.WholeRegion, false) && regionID == universe.TheForgeRegionID {
-				station = new(universe.Jita44StationID)
-			}
-			quotes, err := a.Resolver.HubQuotes(typeID, regionID, station)
-			if err != nil {
-				return nil, err
-			}
-			average := a.Resolver.ReferencePrice(typeID)
-			info, _ := a.Resolver.TypeInfo(typeID)
-			var spread any
-			if quotes["best_sell"] != nil && quotes["best_buy"] != nil {
-				bs, bb := j.Float(quotes["best_sell"]), j.Float(quotes["best_buy"])
-				if bs != 0 {
-					spread = mathRound(100*(bs-bb)/bs, 2)
-				}
-			}
-			priced := "all of " + regionName
-			if station != nil {
-				priced = "Jita IV-4"
-			}
-			vol := info["packaged_volume"]
-			if vol == nil {
-				vol = info["volume"]
-			}
-			out := compact(map[string]any{
-				"item": resolvedName, "priced_at": priced,
-				"best_sell": isk(quotes["best_sell"]), "best_sell_isk": quotes["best_sell"],
-				"best_buy": isk(quotes["best_buy"]), "best_buy_isk": quotes["best_buy"],
-				"spread_pct": spread, "sell_volume_available": quotes["sell_volume"],
-				"buy_volume_wanted": quotes["buy_volume"], "ccp_average_price": isk(average),
-				"packaged_volume_m3": vol, "data_age": quotes["data_age"],
-			})
-			if quotes["best_sell"] == nil && quotes["best_buy"] == nil {
-				out["note"] = "No orders at all here. Try whole_region=true, or a different region — not everything is traded outside the main hubs."
-			}
-			if match.Ambiguous() {
-				var others []string
-				for _, m := range match.Alternatives {
-					others = append(others, fmt.Sprintf("#%d", m.ID))
-				}
-				out["ambiguity_note"] = fmt.Sprintf("%d item types are named %q; priced #%d. Others: %s. Call eve_universe_search with categories='inventory_type' to pick.", len(match.Alternatives)+1, in.Item, typeID, strings.Join(others, ", "))
-			}
-			if in.HistoryDays > 0 {
-				h, err := marketHistory(a, typeID, regionID, in.HistoryDays)
-				if err == nil {
-					out["history"] = h
-				}
-			}
-
-			return out, nil
-		})
-	})
-
-	type ordersIn struct {
-		Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
-		ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
-	}
+	}, sessionTool(eveMarketPrice))
 	addTool(s, &mcp.Tool{
 		Name:        "eve_market_orders",
 		Description: "The character's own open buy and sell orders, with fill progress and expiry.\n\nReturns: open_orders, sell_side_value, buy_escrow_locked, orders[].",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ordersIn) (*mcp.CallToolResult, any, error) {
-		return Call(ctx, func(a *session.Session) (any, error) {
-			token, err := a.ResolveCharacter(in.Character)
-			if err != nil {
-				return nil, err
-			}
-			if err := a.RequireScope(token, "esi-markets.read_character_orders.v1", "market orders"); err != nil {
-				return nil, err
-			}
-			cid := token.CharacterID
-			result, err := a.ESI.Get(fmt.Sprintf("/characters/%d/orders", cid), &cid, nil, nil)
-			if err != nil {
-				return nil, err
-			}
-
-			return formatOrders(a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, 25), concise(in.ResponseFormat), nil), nil
-		})
-	})
-
-	type contractsIn struct {
-		Character       string `json:"character,omitempty"        jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-		OutstandingOnly *bool  `json:"outstanding_only,omitempty" jsonschema:"Only contracts still awaiting action. Default true."`
-		Limit           int    `json:"limit,omitempty"            jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
-		ResponseFormat  string `json:"response_format,omitempty"  jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
-	}
+	}, sessionTool(eveMarketOrders))
 	addTool(s, &mcp.Tool{
 		Name:        "eve_market_contracts",
 		Description: "Contracts the character issued or was assigned, newest first.\n\nCourier contracts are the ones with a collateral and a reward. Returns: total, outstanding, contracts[].",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in contractsIn) (*mcp.CallToolResult, any, error) {
-		return Call(ctx, func(a *session.Session) (any, error) {
-			token, err := a.ResolveCharacter(in.Character)
-			if err != nil {
-				return nil, err
-			}
-			if err := a.RequireScope(token, "esi-contracts.read_character_contracts.v1", "contracts"); err != nil {
-				return nil, err
-			}
-			cid := token.CharacterID
-			result, err := a.ESI.GetAllPages(fmt.Sprintf("/characters/%d/contracts", cid), &cid, nil, 40)
-			if err != nil {
-				return nil, err
-			}
+	}, sessionTool(eveMarketContracts))
+}
 
-			return formatContracts(a, token.CharacterName, cid, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), limitOr(in.Limit, 15), concise(in.ResponseFormat), false), nil
-		})
+func eveMarketPrice(_ context.Context, a *session.Session, in marketPriceIn) (any, error) {
+	if strings.TrimSpace(in.Item) == "" {
+		return map[string]any{"error": "item is required"}, nil
+	}
+	match, err := resolveNamed(a, in.Item, []string{"inventory_types"})
+	if err != nil {
+		return nil, err
+	}
+	if match.Chosen == nil {
+		return map[string]any{"error": fmt.Sprintf("No item type is named exactly %q. EVE names are exact — call eve_universe_search with this text to find the real spelling.", in.Item)}, nil
+	}
+	place, err := marketPlace(a, in)
+	if err != nil {
+		return nil, err
+	}
+	if place.err != "" {
+		return map[string]any{"error": place.err}, nil
+	}
+	quotes, err := a.Resolver.HubQuotes(match.Chosen.ID, place.regionID, place.station)
+	if err != nil {
+		return nil, err
+	}
+	out := marketQuoteView(a, match, quotes, place, in.Item)
+	if in.HistoryDays > 0 {
+		h, histErr := marketHistory(a, match.Chosen.ID, place.regionID, in.HistoryDays)
+		if histErr == nil {
+			out["history"] = h
+		}
+	}
+
+	return out, nil
+}
+
+func resolveNamed(a *session.Session, name string, only []string) (names.NameResolution, error) {
+	resolved, err := a.Resolver.ResolveNames([]string{name}, nil, only)
+	if err != nil {
+		return names.NameResolution{}, err
+	}
+
+	return resolved[strings.ToLower(strings.TrimSpace(name))], nil
+}
+
+type marketPlaceResult struct {
+	regionID   int
+	regionName string
+	station    *int
+	err        string
+}
+
+func marketPlace(a *session.Session, in marketPriceIn) (marketPlaceResult, error) {
+	out := marketPlaceResult{regionID: universe.TheForgeRegionID, regionName: "The Forge"}
+	if strings.TrimSpace(in.Region) != "" {
+		r, err := resolveNamed(a, in.Region, []string{"regions"})
+		if err != nil {
+			return marketPlaceResult{}, err
+		}
+		if r.Chosen == nil {
+			return marketPlaceResult{err: fmt.Sprintf("No region is named exactly %q. Call eve_universe_search with categories='region' to find it.", in.Region)}, nil
+		}
+		out.regionID, out.regionName = r.Chosen.ID, r.Chosen.Name
+	}
+	if !boolDef(in.WholeRegion, false) && out.regionID == universe.TheForgeRegionID {
+		out.station = new(universe.Jita44StationID)
+	}
+
+	return out, nil
+}
+
+func marketQuoteView(a *session.Session, match names.NameResolution, quotes map[string]any, place marketPlaceResult, item string) map[string]any {
+	typeID := match.Chosen.ID
+	average := a.Resolver.ReferencePrice(typeID)
+	info, _ := a.Resolver.TypeInfo(typeID)
+	priced := "all of " + place.regionName
+	if place.station != nil {
+		priced = "Jita IV-4"
+	}
+	vol := info["packaged_volume"]
+	if vol == nil {
+		vol = info["volume"]
+	}
+	out := compact(map[string]any{
+		"item": match.Chosen.Name, "priced_at": priced,
+		"best_sell": isk(quotes["best_sell"]), "best_sell_isk": quotes["best_sell"],
+		"best_buy": isk(quotes["best_buy"]), "best_buy_isk": quotes["best_buy"],
+		"spread_pct": marketSpread(quotes), "sell_volume_available": quotes["sell_volume"],
+		"buy_volume_wanted": quotes["buy_volume"], "ccp_average_price": isk(average),
+		"packaged_volume_m3": vol, "data_age": quotes["data_age"],
 	})
+	if quotes["best_sell"] == nil && quotes["best_buy"] == nil {
+		out["note"] = "No orders at all here. Try whole_region=true, or a different region — not everything is traded outside the main hubs."
+	}
+	if match.Ambiguous() {
+		var others []string
+		for _, m := range match.Alternatives {
+			others = append(others, fmt.Sprintf("#%d", m.ID))
+		}
+		out["ambiguity_note"] = fmt.Sprintf("%d item types are named %q; priced #%d. Others: %s. Call eve_universe_search with categories='inventory_type' to pick.", len(match.Alternatives)+1, item, typeID, strings.Join(others, ", "))
+	}
+
+	return out
+}
+
+func marketSpread(quotes map[string]any) any {
+	if quotes["best_sell"] == nil || quotes["best_buy"] == nil {
+		return nil
+	}
+	bs, bb := j.Float(quotes["best_sell"]), j.Float(quotes["best_buy"])
+	if bs == 0 {
+		return nil
+	}
+
+	return mathRound(100*(bs-bb)/bs, 2)
+}
+
+func eveMarketOrders(_ context.Context, a *session.Session, in marketOrdersIn) (any, error) {
+	token, err := a.ResolveCharacter(in.Character)
+	if err != nil {
+		return nil, err
+	}
+	if err := a.RequireScope(token, "esi-markets.read_character_orders.v1", "market orders"); err != nil {
+		return nil, err
+	}
+	cid := token.CharacterID
+	result, err := a.ESI.Get(fmt.Sprintf("/characters/%d/orders", cid), &cid, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return formatOrders(a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, 25), concise(in.ResponseFormat), nil), nil
+}
+
+func eveMarketContracts(_ context.Context, a *session.Session, in marketContractsIn) (any, error) {
+	token, err := a.ResolveCharacter(in.Character)
+	if err != nil {
+		return nil, err
+	}
+	if err := a.RequireScope(token, "esi-contracts.read_character_contracts.v1", "contracts"); err != nil {
+		return nil, err
+	}
+	cid := token.CharacterID
+	result, err := a.ESI.GetAllPages(fmt.Sprintf("/characters/%d/contracts", cid), &cid, nil, 40)
+	if err != nil {
+		return nil, err
+	}
+
+	return formatContracts(a, token.CharacterName, cid, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), limitOr(in.Limit, 15), concise(in.ResponseFormat), false), nil
 }
 
 func marketHistory(a *session.Session, typeID, regionID, days int) (map[string]any, error) {
