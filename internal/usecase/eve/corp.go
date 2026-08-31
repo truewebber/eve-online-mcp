@@ -3,7 +3,6 @@ package eve
 import (
 	"context"
 	"fmt"
-	"log"
 	"slices"
 	"sort"
 	"strings"
@@ -981,7 +980,7 @@ func corpMemberRoleMap(ctx context.Context, a *session.Session, corp *character.
 	}
 	rolesRes, err := a.ESI.Get(ctx, fmt.Sprintf("/corporations/%d/roles", corp.CorporationID), &corp.Token.CharacterID, nil, nil)
 	if err != nil {
-		log.Printf("could not read corporation roles roster: %v", err)
+		a.Logger.Error("eve: corporation roles roster", "err", err)
 
 		return roleMap
 	}
@@ -1136,7 +1135,7 @@ func corpDivisions(ctx context.Context, a *session.Session, corp *character.Corp
 	}
 	result, err := a.ESI.Get(ctx, fmt.Sprintf("/corporations/%d/divisions", corp.CorporationID), &corp.Token.CharacterID, nil, nil)
 	if err != nil {
-		log.Printf("could not read corporation divisions: %v", err)
+		a.Logger.Error("eve: corporation divisions", "err", err)
 
 		return empty
 	}
@@ -1308,7 +1307,7 @@ func fetchCorpMiningObservers(ctx context.Context, a *session.Session, corp *cha
 		oldest: observersRes.AgeSeconds, truncated: observersRes.Truncated || len(observers) > miningObserverCap,
 	}
 	for range capped {
-		absorbMiningObserver(&agg, <-ch)
+		absorbMiningObserver(a, &agg, <-ch)
 	}
 
 	return agg
@@ -1337,10 +1336,10 @@ func miningObserverPages(ctx context.Context, a *session.Session, corp *characte
 	return ch
 }
 
-func absorbMiningObserver(agg *miningLedgerAgg, b miningObsBox) {
+func absorbMiningObserver(a *session.Session, agg *miningLedgerAgg, b miningObsBox) {
 	if b.err != nil {
 		agg.failed++
-		log.Printf("mining observer %v failed: %v", b.obs["observer_id"], b.err)
+		a.Logger.Error("eve: mining observer", "observer_id", b.obs["observer_id"], "err", b.err)
 
 		return
 	}

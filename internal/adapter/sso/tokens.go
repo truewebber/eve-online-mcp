@@ -3,12 +3,13 @@ package sso
 import (
 	"context"
 	"errors"
-	"log"
 	"maps"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/truewebber/gopkg/log"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
 )
@@ -25,16 +26,18 @@ type TokenStore struct {
 	db     *store.Store
 	userID string
 	mu     sync.Mutex
+	logger log.Logger
 	tokens map[int]*CharacterToken // broker / unbound
 	access map[int]accessMem       // durable overlay
 }
 
 var ErrMissingCharacterID = errors.New("sso: missing character id")
 
-func newTokenStore(db *store.Store, userID string) *TokenStore {
+func newTokenStore(db *store.Store, userID string, logger log.Logger) *TokenStore {
 	return &TokenStore{
 		db:     db,
 		userID: userID,
+		logger: logger,
 		tokens: map[int]*CharacterToken{},
 		access: map[int]accessMem{},
 	}
@@ -130,7 +133,7 @@ func (s *TokenStore) All(ctx context.Context) []*CharacterToken {
 	}
 	rows, err := s.db.ListCharacters(ctx, s.userID)
 	if err != nil {
-		log.Printf("sso: list characters: %v", err)
+		s.logger.Error("sso: list characters", "err", err)
 
 		return nil
 	}

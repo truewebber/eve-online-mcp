@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/truewebber/eve-online-mcp/internal/logtest"
 )
 
 const testDestination = "Jita"
@@ -13,7 +15,7 @@ const testDestination = "Jita"
 func testGuard(t *testing.T) (*Guard, *memPersist) {
 	t.Helper()
 	mem := newMemPersist()
-	g := NewGuard(mem, "user-1")
+	g := NewGuard(mem, "user-1", logtest.Silent{})
 
 	return g, mem
 }

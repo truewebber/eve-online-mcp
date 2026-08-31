@@ -2,10 +2,11 @@ package httpsvc
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/truewebber/gopkg/log"
 
 	svcmcp "github.com/truewebber/eve-online-mcp/internal/service/mcp"
 
@@ -25,6 +26,7 @@ type ListenOptions struct {
 	InternalListen string
 	MCPPath        string
 	Version        string
+	Logger         log.Logger
 }
 
 // The internal listener (healthz, later metrics) must never be exposed.
@@ -61,10 +63,10 @@ func ListenAndServe(h *API, opts ListenOptions) error {
 	go func() { errs <- serve(opts.InternalListen, internalMux()) }()
 
 	base := h.Host.BaseURL()
-	log.Printf("writes: confirm, mail cap 5/hour")
-	log.Printf("MCP endpoint: %s%s (OAuth — clients show Authentication required)", base, path)
-	log.Printf("EVE callback must be exactly: %s", h.Host.CallbackURL)
-	log.Printf("internal endpoint (healthz): http://%s", opts.InternalListen)
+	opts.Logger.Info("writes: confirm, mail cap 5/hour")
+	opts.Logger.Info("MCP endpoint (OAuth — clients show Authentication required)", "base", base, "path", path)
+	opts.Logger.Info("EVE callback must be exactly this URL", "url", h.Host.CallbackURL)
+	opts.Logger.Info("internal endpoint (healthz)", "addr", opts.InternalListen)
 
 	go func() { errs <- serve(opts.Listen, mux) }()
 

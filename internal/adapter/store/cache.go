@@ -94,7 +94,7 @@ func (s *Store) NamePut(ctx context.Context, rows []NameRow) error {
 	if err != nil {
 		return wrap("NamePut", err)
 	}
-	defer func() { rollbackTx(ctx, tx) }()
+	defer func() { s.rollbackTx(ctx, tx) }()
 	for _, n := range rows {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO names (id, name, category) VALUES ($1, $2, $3)

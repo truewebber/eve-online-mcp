@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/truewebber/eve-online-mcp/internal/logtest"
 )
 
 func openTest(t *testing.T) *Store {
@@ -17,7 +19,7 @@ func openTest(t *testing.T) *Store {
 		t.Skip("DATABASE_URL is unset; run `make postgres` then `make test-store`")
 	}
 	ctx := context.Background()
-	s, err := Open(ctx, dsn)
+	s, err := Open(ctx, dsn, logtest.Silent{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -334,7 +336,7 @@ func TestGetOrCreateSecretStable(t *testing.T) {
 	if err != nil || string(a) != string(b) {
 		t.Fatalf("unstable in same Open")
 	}
-	s2, err := Open(ctx, os.Getenv("DATABASE_URL"))
+	s2, err := Open(ctx, os.Getenv("DATABASE_URL"), logtest.Silent{})
 	if err != nil {
 		t.Fatal(err)
 	}

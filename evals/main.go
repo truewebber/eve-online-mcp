@@ -25,6 +25,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/truewebber/gopkg/log"
+
 	"github.com/truewebber/eve-online-mcp/internal/domain/j"
 )
 
@@ -247,10 +249,10 @@ func (r *rpc) toolCall(name string, args map[string]any) (string, error) {
 	return b.String(), nil
 }
 
-func lint(r *rpc) int {
+func lint(logger log.Logger, r *rpc) int {
 	tools, err := r.tools()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		logger.Error("evals: tools", "err", err)
 
 		return 1
 	}
@@ -263,19 +265,19 @@ func lint(r *rpc) int {
 		params += n
 	}
 
-	fmt.Printf("linted %d tools, %d parameters\n", len(tools), params)
+	logger.Info("evals: linted", "tools", len(tools), "parameters", params)
 	for _, w := range warnings {
-		fmt.Println("  WARN  " + w)
+		logger.Info("evals: WARN  " + w)
 	}
 	for _, f := range failures {
-		fmt.Println("  FAIL  " + f)
+		logger.Error("evals: FAIL  " + f)
 	}
 	if len(failures) > 0 {
-		fmt.Printf("\n%d failure(s)\n", len(failures))
+		logger.Error("evals: lint failures", "n", len(failures))
 
 		return 1
 	}
-	fmt.Printf("\nall gates passed (%d warning(s))\n", len(warnings))
+	logger.Info("evals: all gates passed", "warnings", len(warnings))
 
 	return 0
 }
@@ -337,10 +339,10 @@ func lintProps(name string, props map[string]any) ([]string, []string) {
 	return failures, warnings
 }
 
-func smoke(r *rpc) int {
+func smoke(logger log.Logger, r *rpc) int {
 	all, err := r.tools()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		logger.Error("evals: tools", "err", err)
 
 		return 1
 	}
@@ -359,14 +361,14 @@ func smoke(r *rpc) int {
 		return a < b
 	})
 
-	fmt.Printf("%-30s %7s %6s  %s\n", "tool", "chars", "~tok", "status")
+	logger.Info(fmt.Sprintf("%-30s %7s %6s  %s", "tool", "chars", "~tok", "status"))
 	total := 0
 	var failures []string
 	for _, tool := range tools {
 		name := j.Str(tool["name"])
 		text, err := r.toolCall(name, smokeArgs(name))
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			logger.Error("evals: tool call", "tool", name, "err", err)
 
 			return 1
 		}
@@ -390,10 +392,10 @@ func smoke(r *rpc) int {
 			status += fmt.Sprintf("  OVERSIZED (>%d chars by default)", maxDefaultResponseChars)
 			failures = append(failures, name)
 		}
-		fmt.Printf("%-30s %7s %6s  %s\n", name, comma(len(text)), comma(len(text)/charsPerToken), status)
+		logger.Info(fmt.Sprintf("%-30s %7s %6s  %s", name, comma(len(text)), comma(len(text)/charsPerToken), status))
 	}
 
-	fmt.Printf("\ntotal if every tool were called once: %s chars (~%s tokens)\n", comma(total), comma(total/charsPerToken))
+	logger.Info("evals: total if every tool were called once", "chars", comma(total), "tokens", comma(total/charsPerToken))
 	if len(failures) > 0 {
 		seen := map[string]struct{}{}
 		var uniq []string
@@ -405,11 +407,11 @@ func smoke(r *rpc) int {
 			uniq = append(uniq, n)
 		}
 		sort.Strings(uniq)
-		fmt.Printf("%d tool(s) need attention: %v\n", len(uniq), uniq)
+		logger.Error("evals: tools need attention", "n", len(uniq), "tools", uniq)
 
 		return 1
 	}
-	fmt.Println("all read tools healthy")
+	logger.Info("evals: all read tools healthy")
 
 	return 0
 }
@@ -438,13 +440,20 @@ func comma(n int) string {
 }
 
 func main() {
-	os.Exit(run(os.Args[1:]))
+	os.Exit(run())
 }
 
-func run(args []string) int {
+func run() int {
+	logger := log.NewLogger()
+	defer func() { _ = logger.Close() }()
+
+	return gate(logger, os.Args[1:])
+}
+
+func gate(logger log.Logger, args []string) int {
 	fs := flag.NewFlagSet("evals", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	fs.Usage = func() { fmt.Fprint(os.Stderr, usage) }
+	fs.SetOutput(io.Discard)
+	fs.Usage = func() { logger.Info(usage) }
 	url := fs.String("url", defaultURL, "MCP endpoint")
 	token := fs.String("token", "", "Bearer token (or EVE_MCP_TOKEN)")
 
@@ -455,12 +464,12 @@ func run(args []string) int {
 	}
 	gate := args[0]
 	if gate == "-h" || gate == "--help" {
-		fmt.Fprint(os.Stdout, usage)
+		logger.Info(usage)
 
 		return 0
 	}
 	if gate != "lint" && gate != "smoke" && gate != "all" {
-		fmt.Fprintf(os.Stderr, "unknown gate %q (want lint, smoke, or all)\n", gate)
+		logger.Error("evals: unknown gate", "gate", gate)
 		fs.Usage()
 
 		return exitUsage
@@ -470,6 +479,7 @@ func run(args []string) int {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
 		}
+		logger.Error("evals: flags", "err", err)
 
 		return exitUsage
 	}
@@ -479,20 +489,20 @@ func run(args []string) int {
 	}
 	client, err := newRPC(*url, tok)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		logger.Error("evals: rpc", "err", err)
 
 		return exitUsage
 	}
 	switch gate {
 	case "lint":
-		return lint(client)
+		return lint(logger, client)
 	case "smoke":
-		return smoke(client)
+		return smoke(logger, client)
 	default:
-		if code := lint(client); code != 0 {
+		if code := lint(logger, client); code != 0 {
 			return code
 		}
 
-		return smoke(client)
+		return smoke(logger, client)
 	}
 }

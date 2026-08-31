@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
+	"github.com/truewebber/eve-online-mcp/internal/logtest"
 )
 
 const testRefreshToken = "rt-1"
@@ -19,7 +20,7 @@ func openStore(t *testing.T) *store.Store {
 		t.Skip("DATABASE_URL is unset; run `make postgres`")
 	}
 	ctx := context.Background()
-	s, err := store.Open(ctx, dsn)
+	s, err := store.Open(ctx, dsn, logtest.Silent{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +46,7 @@ func TestTokenStorePersistsRefreshNotAccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts := newTokenStore(db, u.ID)
+	ts := newTokenStore(db, u.ID, logtest.Silent{})
 	tok := &CharacterToken{
 		CharacterID:     2112625428,
 		CharacterName:   "Jane Doe",
@@ -63,7 +64,7 @@ func TestTokenStorePersistsRefreshNotAccess(t *testing.T) {
 		t.Fatalf("same process got %+v", got)
 	}
 
-	fresh := newTokenStore(db, u.ID)
+	fresh := newTokenStore(db, u.ID, logtest.Silent{})
 	got = fresh.Get(ctx, tok.CharacterID)
 	if got == nil || got.RefreshToken != testRefreshToken {
 		t.Fatalf("reload %+v", got)
@@ -98,14 +99,14 @@ func TestTokenStoreRejectsOtherOwner(t *testing.T) {
 	tok := &CharacterToken{
 		CharacterID: 99, CharacterName: "Lock", RefreshToken: "rt",
 	}
-	if err := newTokenStore(db, a.ID).Upsert(ctx, tok); err != nil {
+	if err := newTokenStore(db, a.ID, logtest.Silent{}).Upsert(ctx, tok); err != nil {
 		t.Fatal(err)
 	}
-	err = newTokenStore(db, b.ID).Upsert(ctx, tok)
+	err = newTokenStore(db, b.ID, logtest.Silent{}).Upsert(ctx, tok)
 	if !errors.Is(err, store.ErrOwned) {
 		t.Fatalf("want ErrOwned, got %v", err)
 	}
-	if newTokenStore(db, b.ID).Get(ctx, 99) != nil {
+	if newTokenStore(db, b.ID, logtest.Silent{}).Get(ctx, 99) != nil {
 		t.Fatal("other user must not see the character")
 	}
 }
@@ -114,7 +115,7 @@ func TestBrokerStoreStaysInMemory(t *testing.T) {
 	t.Parallel()
 	db := openStore(t)
 	ctx := context.Background()
-	broker := newTokenStore(db, "")
+	broker := newTokenStore(db, "", logtest.Silent{})
 	tok := &CharacterToken{CharacterID: 7, CharacterName: "Broker", RefreshToken: "rt"}
 	if err := broker.Upsert(ctx, tok); err != nil {
 		t.Fatal(err)

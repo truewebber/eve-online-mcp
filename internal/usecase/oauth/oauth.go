@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"html"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -19,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/truewebber/gopkg/log"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
@@ -107,9 +108,10 @@ type Server struct {
 	login    *sso.Client
 	hmacKey  []byte
 	sessions sync.Map
+	logger   log.Logger
 }
 
-func Open(pub Host, runtime *session.Session, db *store.Store) (*Server, error) {
+func Open(pub Host, runtime *session.Session, db *store.Store, logger log.Logger) (*Server, error) {
 	if pub.MCPPath == "" {
 		pub.MCPPath = "/mcp"
 	}
@@ -131,8 +133,9 @@ func Open(pub Host, runtime *session.Session, db *store.Store) (*Server, error) 
 		pub:     pub,
 		db:      db,
 		runtime: runtime,
-		login:   sso.New(brokerOpts, runtime.HTTP),
+		login:   sso.New(brokerOpts, runtime.HTTP, logger),
 		hmacKey: key,
+		logger:  logger,
 	}, nil
 }
 
@@ -178,7 +181,7 @@ func (s *Server) ServeASMeta(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(s.AuthServerMeta()); err != nil {
-		log.Printf("oauth: encode AS metadata: %v", err)
+		s.logger.Error("oauth: encode AS metadata", "err", err)
 	}
 }
 
@@ -232,7 +235,7 @@ func (s *Server) ServeRegister(w http.ResponseWriter, r *http.Request) {
 		"token_endpoint_auth_method": "none",
 		"client_name":                req.ClientName,
 	}); err != nil {
-		log.Printf("oauth: encode client registration: %v", err)
+		s.logger.Error("oauth: encode client registration", "err", err)
 	}
 }
 
@@ -420,7 +423,7 @@ func (s *Server) finishMCP(ctx context.Context, p *store.LoginState, token *sso.
 		q.Set("state", p.MCPState)
 	}
 	u.RawQuery = q.Encode()
-	log.Printf("mcp oauth: %s authorized user %s, redirecting client", token.CharacterName, userID)
+	s.logger.Info("oauth: mcp authorized", "character", token.CharacterName, "user_id", userID)
 
 	return u.String(), nil
 }
@@ -443,7 +446,7 @@ func (s *Server) finishAlt(ctx context.Context, st *store.LoginState, token *sso
 
 		return wrap("finishAlt", err)
 	}
-	log.Printf("alt oauth: %s attached to user %s", token.CharacterName, st.UserID)
+	s.logger.Info("oauth: alt attached", "character", token.CharacterName, "user_id", st.UserID)
 
 	return nil
 }
@@ -526,7 +529,7 @@ func (s *Server) writeTokens(w http.ResponseWriter, userID string) {
 		"expires_in":   int(accessTTL.Seconds()),
 		"scope":        scopeEve,
 	}); err != nil {
-		log.Printf("oauth: encode token response: %v", err)
+		s.logger.Error("oauth: encode token response", "err", err)
 	}
 }
 
@@ -641,7 +644,7 @@ func (s *Server) purge(ctx context.Context) {
 		return
 	}
 	if _, err := s.db.PurgeExpired(ctx); err != nil {
-		log.Printf("oauth: purge: %v", err)
+		s.logger.Error("oauth: purge", "err", err)
 	}
 }
 

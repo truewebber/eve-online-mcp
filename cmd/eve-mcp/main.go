@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
+
+	"github.com/truewebber/gopkg/log"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
@@ -16,36 +17,45 @@ import (
 )
 
 func main() {
-	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
-	log.SetPrefix("eve-mcp ")
+	os.Exit(run())
+}
 
+func run() int {
+	logger := log.NewLogger()
+	defer func() { _ = logger.Close() }()
+
+	if err := start(logger); err != nil {
+		logger.Error("fatal", "err", err)
+
+		return 1
+	}
+
+	return 0
+}
+
+func start(logger log.Logger) error {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "help", "-h", "--help":
-			fmt.Print(usage)
+			logger.Info(usage)
 
-			return
+			return nil
 		}
 	}
 
-	if err := run(); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func run() error {
 	cfg, err := loadConfig()
 	if err != nil {
 		return err
 	}
 
-	db, err := store.Open(context.Background(), cfg.DatabaseURL)
+	db, err := store.Open(context.Background(), cfg.DatabaseURL, logger)
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
 	runtime, err := session.Open(session.Options{
 		UserAgent: cfg.UserAgent,
 		Store:     db,
+		Logger:    logger,
 		ESI: esi.Options{
 			UserAgent:  cfg.UserAgent,
 			CompatDate: defaultCompatDate,
@@ -69,7 +79,7 @@ func run() error {
 		MCPPath:     "/mcp",
 		CallbackURL: cfg.CallbackURL,
 	}
-	oauthServer, err := oauth.Open(host, runtime, db)
+	oauthServer, err := oauth.Open(host, runtime, db, logger)
 	if err != nil {
 		return fmt.Errorf("open oauth: %w", err)
 	}
@@ -80,6 +90,7 @@ func run() error {
 		InternalListen: cfg.InternalListen,
 		MCPPath:        host.MCPPath,
 		Version:        version,
+		Logger:         logger,
 	}); err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}

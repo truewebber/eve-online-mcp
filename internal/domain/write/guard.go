@@ -7,9 +7,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"time"
+
+	"github.com/truewebber/gopkg/log"
 )
 
 const errConfirmUnknown = "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."
@@ -25,10 +26,11 @@ type Decision struct {
 type Guard struct {
 	persist Persist
 	userID  string
+	logger  log.Logger
 }
 
-func NewGuard(persist Persist, userID string) *Guard {
-	return &Guard{persist: persist, userID: userID}
+func NewGuard(persist Persist, userID string, logger log.Logger) *Guard {
+	return &Guard{persist: persist, userID: userID, logger: logger}
 }
 
 func (g *Guard) CheckCapability(capability string) error {
@@ -112,7 +114,7 @@ func (g *Guard) Record(ctx context.Context, _ string, capability string, _ map[s
 	if capability == CapMailSend && g.persist != nil {
 		err := g.persist.InsertMail(ctx, g.userID, time.Now().UTC())
 		if err != nil {
-			log.Printf("could not record mail_log: %v", err)
+			g.logger.Error("write: record mail_log", "err", err)
 		}
 	}
 }

@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/truewebber/gopkg/log"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/names"
@@ -31,6 +32,7 @@ type Options struct {
 	ESI               esi.Options
 	SSO               sso.Options
 	Store             *store.Store
+	Logger            log.Logger
 }
 
 type Session struct {
@@ -41,6 +43,7 @@ type Session struct {
 	ESI      *esi.Client
 	Resolver *names.Resolver
 	Guard    *write.Guard
+	Logger   log.Logger
 }
 
 func Open(opts Options) (*Session, error) {
@@ -61,11 +64,11 @@ func Open(opts Options) (*Session, error) {
 		},
 	}
 	if n, err := opts.Store.PurgeExpired(context.Background()); err == nil && n > 0 {
-		log.Printf("purged %d expired store rows", n)
+		opts.Logger.Info("session: purged expired store rows", "n", n)
 	}
 	opts.SSO.DB = opts.Store
-	ssoClient := sso.New(opts.SSO, httpClient)
-	esiClient := esi.New(opts.ESI, httpClient, opts.Store, ssoClient)
+	ssoClient := sso.New(opts.SSO, httpClient, opts.Logger)
+	esiClient := esi.New(opts.ESI, httpClient, opts.Store, ssoClient, opts.Logger)
 	persist := guardPersist{db: opts.Store}
 
 	return &Session{
@@ -74,8 +77,9 @@ func Open(opts Options) (*Session, error) {
 		Store:    opts.Store,
 		SSO:      ssoClient,
 		ESI:      esiClient,
-		Resolver: names.New(esiClient, opts.Store),
-		Guard:    write.NewGuard(persist, ""),
+		Resolver: names.New(esiClient, opts.Store, opts.Logger),
+		Guard:    write.NewGuard(persist, "", opts.Logger),
+		Logger:   opts.Logger,
 	}, nil
 }
 
@@ -106,8 +110,8 @@ func (s *Session) ForUser(userID string) *Session {
 	opts := s.Opts
 	opts.SSO.DB = s.Store
 	opts.SSO.UserID = userID
-	ssoClient := sso.New(opts.SSO, s.HTTP)
-	esiClient := esi.New(opts.ESI, s.HTTP, s.Store, ssoClient)
+	ssoClient := sso.New(opts.SSO, s.HTTP, s.Logger)
+	esiClient := esi.New(opts.ESI, s.HTTP, s.Store, ssoClient, s.Logger)
 
 	return &Session{
 		Opts:     opts,
@@ -115,8 +119,9 @@ func (s *Session) ForUser(userID string) *Session {
 		Store:    s.Store,
 		SSO:      ssoClient,
 		ESI:      esiClient,
-		Resolver: names.New(esiClient, s.Store),
-		Guard:    write.NewGuard(guardPersist{db: s.Store}, userID),
+		Resolver: names.New(esiClient, s.Store, s.Logger),
+		Guard:    write.NewGuard(guardPersist{db: s.Store}, userID, s.Logger),
+		Logger:   s.Logger,
 	}
 }
 
@@ -243,7 +248,7 @@ func (s *Session) ResolveCorporation(ctx context.Context, spec string) (*charact
 	if s.HasScope(token, "esi-characters.read_corporation_roles.v1") {
 		granted, err := s.ESI.Get(ctx, fmt.Sprintf("/characters/%d/roles", token.CharacterID), &token.CharacterID, nil, nil)
 		if err != nil {
-			log.Printf("could not read corporation roles for %s: %v", token.CharacterName, err)
+			s.Logger.Error("session: corporation roles", "character", token.CharacterName, "err", err)
 		} else {
 			payload := j.Map(granted.Data)
 			roles = stringSet(payload["roles"])

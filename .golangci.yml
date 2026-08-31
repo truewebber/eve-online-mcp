@@ -65,11 +65,11 @@ linters:
             - errors
           reason: use stdlib errors and fmt.Errorf with %w
         - module: github.com/sirupsen/logrus
-          reason: use the standard library log package
+          reason: use github.com/truewebber/gopkg/log
         - module: go.uber.org/zap
-          reason: use the standard library log package
+          reason: use github.com/truewebber/gopkg/log
         - module: github.com/rs/zerolog
-          reason: use the standard library log package
+          reason: use github.com/truewebber/gopkg/log
         - module: github.com/dgrijalva/jwt-go
           recommendations:
             - github.com/golang-jwt/jwt/v5
@@ -111,9 +111,11 @@ linters:
       analyze-types: true
       forbid:
         - pattern: ^(fmt\.Print(|f|ln)|print|println)$
-          msg: do not use fmt.Print* / print; use log
+          msg: do not use fmt.Print* / print; use github.com/truewebber/gopkg/log
+        - pattern: ^log\.(Print|Printf|Println|Fatal|Fatalf|Fatalln|Panic|Panicf|Panicln)
+          msg: do not use the standard library log; use github.com/truewebber/gopkg/log
         - pattern: ^slog\.(Debug|Info|Warn|Error|Default|New|Log|LogAttrs|With|WithGroup)
-          msg: do not use slog directly; use the standard library log package
+          msg: do not use slog; use github.com/truewebber/gopkg/log
     nolintlint:
       allow-unused: false
       require-explanation: true
@@ -130,11 +132,6 @@ linters:
       - legacy
     paths:
       - internal/service/http/api.gen.go
-    rules:
-      - path: cmd/
-        linters: [forbidigo]
-      - path: evals/
-        linters: [forbidigo]
 
 issues:
   # Defaults (50 / 3) hide the rest of a first-run report.

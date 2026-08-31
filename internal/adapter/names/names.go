@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/truewebber/gopkg/log"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
@@ -95,13 +96,14 @@ func article(kind string) string {
 type Resolver struct {
 	esi      *esi.Client
 	store    *store.Store
+	logger   log.Logger
 	prices   map[int]map[string]float64
 	pricesAt time.Time
 	priceMu  sync.Mutex
 }
 
-func New(e *esi.Client, db *store.Store) *Resolver {
-	return &Resolver{esi: e, store: db}
+func New(e *esi.Client, db *store.Store, logger log.Logger) *Resolver {
+	return &Resolver{esi: e, store: db, logger: logger}
 }
 
 func (r *Resolver) Names(ctx context.Context, ids []int, characterID *int) (map[int]string, error) {
@@ -196,7 +198,7 @@ func (r *Resolver) TypeInfo(ctx context.Context, typeID int) (map[string]any, er
 	}
 	data := j.Map(result.Data)
 	if err := r.putBlob(ctx, key, data); err != nil {
-		log.Printf("names: put type %s: %v", key, err)
+		r.logger.Error("names: put type", "key", key, "err", err)
 	}
 
 	return data, nil
@@ -216,7 +218,7 @@ func (r *Resolver) GroupName(ctx context.Context, groupID int) string {
 		}
 		cached = result.Data
 		if err := r.putBlob(ctx, key, cached); err != nil {
-			log.Printf("names: put group %s: %v", key, err)
+			r.logger.Error("names: put group", "key", key, "err", err)
 		}
 	}
 	name := j.Str(j.Map(cached)["name"])
@@ -290,7 +292,7 @@ func (r *Resolver) ReferencePrices(ctx context.Context) (map[int]map[string]floa
 			}
 		}
 		if err := r.putBlob(ctx, "markets:prices", blob); err != nil {
-			log.Printf("names: put market prices: %v", err)
+			r.logger.Error("names: put market prices", "err", err)
 		}
 		cached = blob
 	}
@@ -438,7 +440,7 @@ func (r *Resolver) fillUniverseNames(ctx context.Context, out map[int]string, un
 		chunk := universal[start:end]
 		result, err := r.esi.Post(ctx, "/universe/names", nil, nil, chunk)
 		if err != nil {
-			log.Printf("bulk name lookup failed for %d ids: %v", len(chunk), err)
+			r.logger.Error("names: bulk lookup", "ids", len(chunk), "err", err)
 
 			continue
 		}
@@ -453,7 +455,7 @@ func (r *Resolver) fillUniverseNames(ctx context.Context, out map[int]string, un
 			out[id] = name
 		}
 		if err := r.store.NamePut(ctx, entries); err != nil {
-			log.Printf("names: put universe names: %v", err)
+			r.logger.Error("names: put universe names", "err", err)
 		}
 	}
 }
@@ -481,7 +483,7 @@ func (r *Resolver) fillStructureNames(ctx context.Context, out map[int]string, s
 		out[b.id] = b.name
 	}
 	if err := r.store.NamePut(ctx, entries); err != nil {
-		log.Printf("names: put structure names: %v", err)
+		r.logger.Error("names: put structure names", "err", err)
 	}
 }
 

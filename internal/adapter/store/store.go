@@ -4,17 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+
+	"github.com/truewebber/gopkg/log"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Store struct {
-	pool *pgxpool.Pool
+	pool   *pgxpool.Pool
+	logger log.Logger
 }
 
-func Open(ctx context.Context, databaseURL string) (*Store, error) {
+func Open(ctx context.Context, databaseURL string, logger log.Logger) (*Store, error) {
 	if databaseURL == "" {
 		return nil, ErrEmptyDatabaseURL
 	}
@@ -27,7 +29,7 @@ func Open(ctx context.Context, databaseURL string) (*Store, error) {
 
 		return nil, fmt.Errorf("store: ping: %w", err)
 	}
-	s := &Store{pool: pool}
+	s := &Store{pool: pool, logger: logger}
 	if err := s.migrate(ctx); err != nil {
 		pool.Close()
 
@@ -43,8 +45,8 @@ func (s *Store) Close() {
 	}
 }
 
-func rollbackTx(ctx context.Context, tx pgx.Tx) {
+func (s *Store) rollbackTx(ctx context.Context, tx pgx.Tx) {
 	if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-		log.Printf("store: rollback: %v", err)
+		s.logger.Error("store: rollback", "err", err)
 	}
 }

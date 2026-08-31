@@ -9,6 +9,7 @@ import (
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
+	"github.com/truewebber/eve-online-mcp/internal/logtest"
 )
 
 func TestGuardMailCapUsesStore(t *testing.T) {
@@ -18,7 +19,7 @@ func TestGuardMailCapUsesStore(t *testing.T) {
 		t.Skip("DATABASE_URL is unset; run `make postgres`")
 	}
 	ctx := context.Background()
-	db, err := store.Open(ctx, dsn)
+	db, err := store.Open(ctx, dsn, logtest.Silent{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +34,8 @@ func TestGuardMailCapUsesStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtime, err := Open(Options{
-		Store: db,
+		Store:  db,
+		Logger: logtest.Silent{},
 	})
 	if err != nil {
 		t.Fatal(err)

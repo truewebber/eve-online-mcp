@@ -1,10 +1,14 @@
 package sso
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/truewebber/eve-online-mcp/internal/logtest"
+)
 
 func TestMemoryTokenStore(t *testing.T) {
 	t.Parallel()
-	ts := newTokenStore(nil, "")
+	ts := newTokenStore(nil, "", logtest.Silent{})
 	tok := &CharacterToken{CharacterID: 1, CharacterName: "A", RefreshToken: "rt"}
 	err := ts.Upsert(t.Context(), tok)
 	if err != nil {

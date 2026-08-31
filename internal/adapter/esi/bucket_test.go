@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
+	"github.com/truewebber/eve-online-mcp/internal/logtest"
 )
 
 const testCompatDate = "2026-08-18"
@@ -76,7 +77,7 @@ func TestFreshCacheHitDoesNotTakeToken(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	c := New(Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), nil, nil)
+	c := New(Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), nil, nil, logtest.Silent{})
 	c.testCache = &memCache{m: map[string]*store.CachedResponse{
 		mustCacheKey(t, c, "/status", nil, map[string]any{}): {
 			Body:      json.RawMessage(`{"players":1}`),
@@ -108,7 +109,7 @@ func TestNetworkGetTakesToken(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	c := New(Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), nil, nil)
+	c := New(Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), nil, nil, logtest.Silent{})
 	if _, err := c.Get(t.Context(), "/status", nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +137,7 @@ func TestNotModifiedRefundsToken(t *testing.T) {
 		w.WriteHeader(http.StatusNotModified)
 	}))
 	t.Cleanup(srv.Close)
-	c := New(Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), nil, nil)
+	c := New(Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), nil, nil, logtest.Silent{})
 	c.testCache = &memCache{m: map[string]*store.CachedResponse{
 		mustCacheKey(t, c, "/status", nil, map[string]any{}): {
 			Body:      json.RawMessage(`{"players":1}`),

@@ -10,13 +10,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"math/big"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/truewebber/gopkg/log"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
 	"github.com/truewebber/eve-online-mcp/internal/domain/j"
@@ -104,13 +105,15 @@ type Client struct {
 	jwks         map[string]any
 	jwksAt       time.Time
 	jwksMu       sync.Mutex
+	logger       log.Logger
 }
 
-func New(opts Options, httpClient *http.Client) *Client {
+func New(opts Options, httpClient *http.Client, logger log.Logger) *Client {
 	return &Client{
-		opts:  opts,
-		http:  httpClient,
-		Store: newTokenStore(opts.DB, opts.UserID),
+		opts:   opts,
+		http:   httpClient,
+		Store:  newTokenStore(opts.DB, opts.UserID, logger),
+		logger: logger,
 	}
 }
 
@@ -199,7 +202,7 @@ func (c *Client) Revoke(ctx context.Context, characterID int) {
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, RevokeURL, strings.NewReader(data.Encode()))
 	if err != nil {
-		log.Printf("revoke request for %d: %v", characterID, err)
+		c.logger.Error("sso: revoke request", "character_id", characterID, "err", err)
 		c.Store.Remove(ctx, characterID)
 
 		return
@@ -211,7 +214,7 @@ func (c *Client) Revoke(ctx context.Context, characterID int) {
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		log.Printf("revoke call failed for %d: %v", characterID, err)
+		c.logger.Error("sso: revoke call", "character_id", characterID, "err", err)
 	} else {
 		resp.Body.Close()
 	}
@@ -382,7 +385,7 @@ func (c *Client) decode(ctx context.Context, accessToken string) (jwt.MapClaims,
 	parser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256", "ES256"}), jwt.WithAudience(TokenAudience), jwt.WithLeeway(jwtLeeway))
 	key, err := c.signingKey(ctx, accessToken)
 	if err != nil {
-		log.Printf("JWKS unavailable (%v); accepting SSO token on TLS alone", err)
+		c.logger.Error("sso: JWKS unavailable; accepting token on TLS alone", "err", err)
 		tok, _, err := jwt.NewParser(jwt.WithoutClaimsValidation()).ParseUnverified(accessToken, jwt.MapClaims{})
 		if err != nil {
 			return nil, Err("Malformed token from the SSO: " + err.Error())

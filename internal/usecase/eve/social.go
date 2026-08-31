@@ -3,7 +3,6 @@ package eve
 import (
 	"context"
 	"fmt"
-	"log"
 	"regexp"
 	"sort"
 	"strings"
@@ -378,7 +377,7 @@ func fetchKillmailBodies(ctx context.Context, a *session.Session, refs []map[str
 		b := <-ch
 		if b.err != nil {
 			failed = append(failed, b.id)
-			log.Printf("killmail %v could not be fetched: %v", b.id, b.err)
+			a.Logger.Error("eve: killmail fetch", "id", b.id, "err", b.err)
 		} else {
 			kills = append(kills, b.data)
 		}

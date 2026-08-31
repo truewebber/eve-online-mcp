@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"maps"
 	"net"
 	"net/http"
@@ -20,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/truewebber/gopkg/log"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
@@ -110,11 +111,12 @@ type Client struct {
 	errorResetAt time.Time
 	errorMu      sync.Mutex
 	bucket       *userBucket
+	logger       log.Logger
 	// testCache, if set, replaces Postgres for HTTP cache (unit tests).
 	testCache httpCache
 }
 
-func New(opts Options, httpClient *http.Client, db *store.Store, ssoClient *sso.Client) *Client {
+func New(opts Options, httpClient *http.Client, db *store.Store, ssoClient *sso.Client, logger log.Logger) *Client {
 	if opts.BaseURL == "" {
 		opts.BaseURL = DefaultBaseURL
 	}
@@ -130,6 +132,7 @@ func New(opts Options, httpClient *http.Client, db *store.Store, ssoClient *sso.
 		sem:         make(chan struct{}, opts.MaxConcurrency),
 		errorRemain: errorLimitBudget,
 		bucket:      newUserBucket(),
+		logger:      logger,
 	}
 }
 
@@ -160,7 +163,7 @@ func (c *Client) GetAllPages(ctx context.Context, path string, characterID *int,
 	}
 	capped := min(total, maxPages)
 	if capped < total {
-		log.Printf("%s has %d pages, fetching first %d", path, total, capped)
+		c.logger.Info("esi: capping pages", "path", path, "total", total, "capped", capped)
 	}
 	type box struct {
 		r   Result
@@ -288,7 +291,7 @@ func (c *Client) stepCursor(ctx context.Context, w *cursorWalk, index int) (bool
 		return false, nil
 	}
 	if nextCursor == nil || (w.cursor != nil && !lessAny(nextCursor, w.cursor)) {
-		log.Printf("%s: %s did not advance past %v; stopping", w.path, w.cursorParam, w.cursor)
+		c.logger.Info("esi: cursor did not advance", "path", w.path, "cursor", w.cursorParam, "at", w.cursor)
 
 		return false, nil
 	}
@@ -395,7 +398,7 @@ func (c *Client) cachedGet(ctx context.Context, path string, characterID *int, p
 		expiresAt := expiresAt(resp, cacheTTL)
 		if cache := c.cache(); cache != nil {
 			if err := cache.CacheTouch(ctx, key, unixTime(expiresAt)); err != nil {
-				log.Printf("cache touch %s: %v", key, err)
+				c.logger.Error("esi: cache touch", "key", key, "err", err)
 			}
 		}
 
@@ -403,7 +406,7 @@ func (c *Client) cachedGet(ctx context.Context, path string, characterID *int, p
 	}
 	if resp.StatusCode >= http.StatusBadRequest {
 		if cached != nil && resp.StatusCode >= 500 && resp.StatusCode < 600 {
-			log.Printf("%s returned %d, serving stale cache", path, resp.StatusCode)
+			c.logger.Info("esi: serving stale cache", "path", path, "status", resp.StatusCode)
 
 			return Result{Data: cached.Data(), FromCache: true, AgeSeconds: cached.AgeSeconds(), ExpiresAt: cached.ExpiresUnix(), Pages: cached.Pages}, nil
 		}
@@ -421,7 +424,7 @@ func (c *Client) cachedGet(ctx context.Context, path string, characterID *int, p
 		if err := cache.CachePut(ctx, key, store.CachedResponse{
 			Body: raw, ETag: resp.Header.Get("ETag"), ExpiresAt: unixTime(expires), Pages: pages,
 		}); err != nil {
-			log.Printf("cache put %s: %v", key, err)
+			c.logger.Error("esi: cache put", "key", key, "err", err)
 		}
 	}
 
@@ -498,7 +501,7 @@ func (c *Client) request(ctx context.Context, method, path string, params map[st
 	if resp.StatusCode == statusErrorLimited || resp.StatusCode == http.StatusTooManyRequests {
 		if resp.StatusCode == http.StatusTooManyRequests && attempt < 1 {
 			wait := min(retryAfter(resp), throttleRetryCap)
-			log.Printf("%s throttled (%d); one short retry after %s", path, resp.StatusCode, wait)
+			c.logger.Info("esi: throttled, retrying", "path", path, "status", resp.StatusCode, "wait", wait)
 			if err := discardBody(resp); err != nil {
 				return nil, err
 			}
@@ -547,7 +550,7 @@ func (c *Client) noteErrorHeaders(resp *http.Response) {
 	}
 	c.errorResetAt = time.Now().Add(time.Duration(sec) * time.Second)
 	if *remain < errorFloor {
-		log.Printf("ESI error budget low: %d remaining, resets in %ds", *remain, sec)
+		c.logger.Info("esi: error budget low", "remaining", *remain, "reset_sec", sec)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
+	"github.com/truewebber/eve-online-mcp/internal/logtest"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 )
 
@@ -27,7 +28,7 @@ func openDB(t *testing.T) *store.Store {
 		t.Skip("DATABASE_URL is unset; run `make postgres`")
 	}
 	ctx := context.Background()
-	s, err := store.Open(ctx, dsn)
+	s, err := store.Open(ctx, dsn, logtest.Silent{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +49,8 @@ func openDB(t *testing.T) *store.Store {
 func testServer(t *testing.T, db *store.Store) *Server {
 	t.Helper()
 	runtime, err := session.Open(session.Options{
-		Store: db,
+		Store:  db,
+		Logger: logtest.Silent{},
 		SSO: sso.Options{
 			ClientID:    "test-eve-client",
 			CallbackURL: "http://127.0.0.1/auth/callback",
@@ -57,7 +59,7 @@ func testServer(t *testing.T, db *store.Store) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := Open(Host{Listen: "127.0.0.1:8765"}, runtime, db)
+	s, err := Open(Host{Listen: "127.0.0.1:8765"}, runtime, db, logtest.Silent{})
 	if err != nil {
 		t.Fatal(err)
 	}
