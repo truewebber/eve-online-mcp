@@ -12,6 +12,7 @@ import (
 )
 
 func TestGuardMailCapUsesStore(t *testing.T) {
+	t.Parallel()
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		t.Skip("DATABASE_URL is unset; run `make postgres`")

@@ -3,6 +3,7 @@ package oauth
 import "testing"
 
 func TestRedirectOK(t *testing.T) {
+	t.Parallel()
 	ok := []string{
 		"http://localhost:8787/callback",
 		"http://127.0.0.1:3118/callback",
@@ -27,6 +28,7 @@ func TestRedirectOK(t *testing.T) {
 }
 
 func TestPKCE(t *testing.T) {
+	t.Parallel()
 	verifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
 	// RFC 7636 appendix B
 	challenge := "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"

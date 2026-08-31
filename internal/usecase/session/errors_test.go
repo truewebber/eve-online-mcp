@@ -8,6 +8,7 @@ import (
 )
 
 func TestMapErrorUserRateLimited(t *testing.T) {
+	t.Parallel()
 	retryAt := time.Date(2026, 8, 30, 12, 0, 1, 0, time.UTC)
 	out := MapError(esi.UserLimitedError{
 		Msg: "spent", RetryAt: retryAt, RetrySec: 1,
@@ -27,6 +28,7 @@ func TestMapErrorUserRateLimited(t *testing.T) {
 }
 
 func TestMapErrorEsiRateLimitedUnchanged(t *testing.T) {
+	t.Parallel()
 	out := MapError(esi.RateLimitedError{Msg: "ccp", Status: 420, RetrySec: 8, RetryAt: time.Unix(0, 0).UTC()})
 	if out["kind"] != "EsiRateLimited" {
 		t.Fatalf("kind %v", out["kind"])

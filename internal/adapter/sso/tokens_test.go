@@ -3,6 +3,7 @@ package sso
 import "testing"
 
 func TestMemoryTokenStore(t *testing.T) {
+	t.Parallel()
 	ts := newTokenStore(nil, "")
 	tok := &CharacterToken{CharacterID: 1, CharacterName: "A", RefreshToken: "rt"}
 	err := ts.Upsert(tok)

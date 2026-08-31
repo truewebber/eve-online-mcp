@@ -36,6 +36,7 @@ func openTest(t *testing.T) *Store {
 }
 
 func TestCreateUserAndGet(t *testing.T) {
+	t.Parallel()
 	s := openTest(t)
 	ctx := context.Background()
 	u, err := s.CreateUser(ctx)
@@ -62,6 +63,7 @@ func TestCreateUserAndGet(t *testing.T) {
 }
 
 func TestCharacterOwnership(t *testing.T) {
+	t.Parallel()
 	s := openTest(t)
 	ctx := context.Background()
 	a, err := s.CreateUser(ctx)
@@ -113,6 +115,7 @@ func TestCharacterOwnership(t *testing.T) {
 }
 
 func TestWithCharacterForUpdateSerializes(t *testing.T) {
+	t.Parallel()
 	s := openTest(t)
 	ctx := context.Background()
 	u, err := s.CreateUser(ctx)
@@ -198,6 +201,7 @@ func TestWithCharacterForUpdateSerializes(t *testing.T) {
 }
 
 func TestAuthCodeOneTime(t *testing.T) {
+	t.Parallel()
 	s := openTest(t)
 	ctx := context.Background()
 	u, err := s.CreateUser(ctx)
@@ -223,6 +227,7 @@ func TestAuthCodeOneTime(t *testing.T) {
 }
 
 func TestConfirmTTL(t *testing.T) {
+	t.Parallel()
 	s := openTest(t)
 	ctx := context.Background()
 	tok := ConfirmToken{Token: "fresh", UserID: "u", Tool: "eve_mail_send", ArgsDigest: "deadbeef"}
@@ -262,6 +267,7 @@ func TestConfirmTTL(t *testing.T) {
 }
 
 func TestCacheAndNamesAndBlobs(t *testing.T) {
+	t.Parallel()
 	s := openTest(t)
 	ctx := context.Background()
 	body := json.RawMessage(`{"players":10}`)
@@ -317,6 +323,7 @@ func TestCacheAndNamesAndBlobs(t *testing.T) {
 }
 
 func TestGetOrCreateSecretStable(t *testing.T) {
+	t.Parallel()
 	s := openTest(t)
 	ctx := context.Background()
 	a, err := s.GetOrCreateSecret(ctx, "mcp_jwt_hmac")
@@ -339,6 +346,7 @@ func TestGetOrCreateSecretStable(t *testing.T) {
 }
 
 func TestLoginStateAndPurge(t *testing.T) {
+	t.Parallel()
 	s := openTest(t)
 	ctx := context.Background()
 	u, err := s.CreateUser(ctx)
@@ -391,6 +399,7 @@ func TestLoginStateAndPurge(t *testing.T) {
 }
 
 func TestOAuthClient(t *testing.T) {
+	t.Parallel()
 	s := openTest(t)
 	ctx := context.Background()
 	if err := s.PutClient(ctx, Client{ID: "cid", RedirectURIs: []string{"http://localhost/cb"}}); err != nil {
@@ -403,6 +412,7 @@ func TestOAuthClient(t *testing.T) {
 }
 
 func TestMailLog(t *testing.T) {
+	t.Parallel()
 	s := openTest(t)
 	ctx := context.Background()
 	now := time.Now().UTC()

@@ -36,6 +36,7 @@ func openStore(t *testing.T) *store.Store {
 }
 
 func TestTokenStorePersistsRefreshNotAccess(t *testing.T) {
+	t.Parallel()
 	db := openStore(t)
 	ctx := context.Background()
 	u, err := db.CreateUser(ctx)
@@ -81,6 +82,7 @@ func TestTokenStorePersistsRefreshNotAccess(t *testing.T) {
 }
 
 func TestTokenStoreRejectsOtherOwner(t *testing.T) {
+	t.Parallel()
 	db := openStore(t)
 	ctx := context.Background()
 	a, err := db.CreateUser(ctx)
@@ -107,6 +109,7 @@ func TestTokenStoreRejectsOtherOwner(t *testing.T) {
 }
 
 func TestBrokerStoreStaysInMemory(t *testing.T) {
+	t.Parallel()
 	db := openStore(t)
 	broker := newTokenStore(db, "")
 	tok := &CharacterToken{CharacterID: 7, CharacterName: "Broker", RefreshToken: "rt"}

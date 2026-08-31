@@ -59,6 +59,7 @@ func testServer(t *testing.T, db *store.Store) *Server {
 }
 
 func TestFinishMCPAttachesExistingOwner(t *testing.T) {
+	t.Parallel()
 	db := openDB(t)
 	ctx := context.Background()
 	u, err := db.CreateUser(ctx)
@@ -102,6 +103,7 @@ func TestFinishMCPAttachesExistingOwner(t *testing.T) {
 }
 
 func TestFinishMCPCreatesUser(t *testing.T) {
+	t.Parallel()
 	db := openDB(t)
 	s := testServer(t, db)
 	const charID int64 = 42
@@ -126,6 +128,7 @@ func TestFinishMCPCreatesUser(t *testing.T) {
 }
 
 func TestFinishAltRefusesOtherUser(t *testing.T) {
+	t.Parallel()
 	db := openDB(t)
 	ctx := context.Background()
 	a, err := db.CreateUser(ctx)
@@ -169,6 +172,7 @@ func TestFinishAltRefusesOtherUser(t *testing.T) {
 }
 
 func TestFinishAltRefreshesOwnCharacter(t *testing.T) {
+	t.Parallel()
 	db := openDB(t)
 	ctx := context.Background()
 	u, err := db.CreateUser(ctx)

@@ -7,6 +7,7 @@ import (
 )
 
 func TestLimitErrorParsesHeaders(t *testing.T) {
+	t.Parallel()
 	resp := &http.Response{
 		StatusCode: 420,
 		Header:     http.Header{},
@@ -37,6 +38,7 @@ func TestLimitErrorParsesHeaders(t *testing.T) {
 }
 
 func TestRetryAfterHTTPDate(t *testing.T) {
+	t.Parallel()
 	when := time.Now().UTC().Add(25 * time.Second).Format(http.TimeFormat)
 	resp := &http.Response{Header: http.Header{}}
 	resp.Header.Set("Retry-After", when)

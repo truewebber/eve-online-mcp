@@ -14,6 +14,7 @@ import (
 )
 
 func TestUserBucketExhausted(t *testing.T) {
+	t.Parallel()
 	b := newUserBucket()
 	now := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
 	b.now = func() time.Time { return now }
@@ -37,6 +38,7 @@ func TestUserBucketExhausted(t *testing.T) {
 }
 
 func TestUserBucketRefill(t *testing.T) {
+	t.Parallel()
 	b := newUserBucket()
 	now := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
 	b.now = func() time.Time { return now }
@@ -62,6 +64,7 @@ func TestUserBucketRefill(t *testing.T) {
 }
 
 func TestFreshCacheHitDoesNotTakeToken(t *testing.T) {
+	t.Parallel()
 	var hits int
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		hits++
@@ -95,6 +98,7 @@ func TestFreshCacheHitDoesNotTakeToken(t *testing.T) {
 }
 
 func TestNetworkGetTakesToken(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"ok":true}`))
@@ -122,6 +126,7 @@ func TestNetworkGetTakesToken(t *testing.T) {
 }
 
 func TestNotModifiedRefundsToken(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("If-None-Match") != `"abc"` {
 			t.Errorf("If-None-Match %q", r.Header.Get("If-None-Match"))

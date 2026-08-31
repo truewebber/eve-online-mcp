@@ -17,6 +17,7 @@ func testGuard(t *testing.T) (*Guard, *memPersist) {
 }
 
 func TestAuthorizePreviewAndConfirm(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, _ := testGuard(t)
 	args := map[string]any{"destination": "Jita"}
@@ -43,6 +44,7 @@ func TestAuthorizePreviewAndConfirm(t *testing.T) {
 }
 
 func TestConfirmToolMismatchKeepsToken(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, _ := testGuard(t)
 	args := map[string]any{"destination": "Jita"}
@@ -65,6 +67,7 @@ func TestConfirmToolMismatchKeepsToken(t *testing.T) {
 }
 
 func TestConfirmDigestMismatchDiscards(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, _ := testGuard(t)
 	scopes := Capabilities()["waypoint"].Scopes
@@ -85,6 +88,7 @@ func TestConfirmDigestMismatchDiscards(t *testing.T) {
 }
 
 func TestConfirmExpiry(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, mem := testGuard(t)
 	args := map[string]any{"d": "Jita"}
@@ -102,6 +106,7 @@ func TestConfirmExpiry(t *testing.T) {
 }
 
 func TestSixthMailIsBlocked(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, _ := testGuard(t)
 	scopes := Capabilities()["mail_send"].Scopes
@@ -119,6 +124,7 @@ func TestSixthMailIsBlocked(t *testing.T) {
 }
 
 func TestCheckCapabilityUnknownOnly(t *testing.T) {
+	t.Parallel()
 	g, _ := testGuard(t)
 	if err := g.CheckCapability("waypoint"); err != nil {
 		t.Fatalf("known capability: %v", err)
@@ -131,6 +137,7 @@ func TestCheckCapabilityUnknownOnly(t *testing.T) {
 }
 
 func TestStatusHasNoAuditOrBudget(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	g, _ := testGuard(t)
 	st := g.Status(ctx)
@@ -149,6 +156,7 @@ func TestStatusHasNoAuditOrBudget(t *testing.T) {
 }
 
 func TestRequestedScopesIncludesCorpAndWrites(t *testing.T) {
+	t.Parallel()
 	scopes := RequestedScopes()
 	want := map[string]struct{}{}
 	for _, s := range ReadScopes() {

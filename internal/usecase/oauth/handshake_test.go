@@ -16,6 +16,7 @@ import (
 )
 
 func TestHMACStableAcrossOpen(t *testing.T) {
+	t.Parallel()
 	db := openDB(t)
 	s1 := testServer(t, db)
 	s2 := testServer(t, db)
@@ -34,6 +35,7 @@ func TestHMACStableAcrossOpen(t *testing.T) {
 }
 
 func TestStartAltLoginRecordsUserID(t *testing.T) {
+	t.Parallel()
 	db := openDB(t)
 	ctx := context.Background()
 	u, err := db.CreateUser(ctx)
@@ -58,6 +60,7 @@ func TestStartAltLoginRecordsUserID(t *testing.T) {
 }
 
 func TestAuthorizePersistsMCPLoginState(t *testing.T) {
+	t.Parallel()
 	db := openDB(t)
 	s := testServer(t, db)
 	rec := httptest.NewRecorder()
@@ -91,6 +94,7 @@ func TestAuthorizePersistsMCPLoginState(t *testing.T) {
 }
 
 func TestCompleteCallbackUnknownState(t *testing.T) {
+	t.Parallel()
 	s := testServer(t, openDB(t))
 	_, err := s.CompleteCallback(context.Background(), "code", "missing")
 	if !errors.Is(err, ErrUnknownLogin) {
@@ -99,6 +103,7 @@ func TestCompleteCallbackUnknownState(t *testing.T) {
 }
 
 func TestFinishAltUsesRecordedUser(t *testing.T) {
+	t.Parallel()
 	db := openDB(t)
 	ctx := context.Background()
 	u, err := db.CreateUser(ctx)
@@ -117,6 +122,7 @@ func TestFinishAltUsesRecordedUser(t *testing.T) {
 }
 
 func TestExchangeAuthCodeAgainstStore(t *testing.T) {
+	t.Parallel()
 	const (
 		verifier  = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
 		challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
