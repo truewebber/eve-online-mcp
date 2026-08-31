@@ -1,4 +1,4 @@
-package names
+package http
 
 import "fmt"
 
@@ -7,5 +7,5 @@ func wrap(op string, err error) error {
 		return nil
 	}
 
-	return fmt.Errorf("names: %s: %w", op, err)
+	return fmt.Errorf("esi: %s: %w", op, err)
 }

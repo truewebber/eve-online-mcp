@@ -47,7 +47,7 @@ func eveServerStatus(ctx context.Context, a *session.Session, _ empty) (any, err
 }
 
 func eveAuthStatus(ctx context.Context, a *session.Session, _ empty) (any, error) {
-	tokens := a.SSO.Store.All(ctx)
+	tokens := a.SSO.All(ctx)
 	policy := a.Guard.Status(ctx)
 	var outward []string
 	for name, cap := range write.Capabilities() {

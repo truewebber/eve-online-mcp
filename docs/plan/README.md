@@ -60,7 +60,7 @@ Status values: `todo` · `done` · `later`.
 | [T10](T10-character-ownership.md) | Alt-add ownership refuse | done | S | T05 T06 | §3.3 |
 | [T11](T11-test-foundation.md) | ESI fixtures and a test database | todo | M | — | §12.0 |
 | [T12](T12-goose-and-hmac-key.md) | goose in CI/CD; `HMAC_KEY` out of the DB | todo | M | T11 | §2, §12.4 |
-| [T13](T13-in-memory-caches.md) | In-memory caches; drop the cache tables | todo | M | T12 | §5.1, §12.5 |
+| [T13](T13-in-memory-caches.md) | In-memory caches; drop the cache tables | done | M | T12 | §5.1, §12.5 |
 | [T14](T14-character-is-the-user.md) | The character is the user; drop `users` | todo | L | T12 | §3.3, §12.1 |
 | [T15](T15-sessions-own-the-grant.md) | Sessions own the EVE grant; runtime by `sid` | todo | L | T14 | §3.1–3.4, §12.2–3 |
 | [T16](T16-scope-checks.md) | Both scope checks | todo | M | T15 | §3.2, §3.5, §12.6 |

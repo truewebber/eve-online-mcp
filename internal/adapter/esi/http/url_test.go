@@ -1,20 +1,21 @@
-package esi
+package http
 
 import (
 	"encoding/json"
 	"io"
-	"net/http"
+	nhttp "net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 
+	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
 	"github.com/truewebber/eve-online-mcp/internal/logtest"
 )
 
 func TestRequestAssemblesURL(t *testing.T) {
 	t.Parallel()
 	var got *url.URL
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(nhttp.HandlerFunc(func(w nhttp.ResponseWriter, r *nhttp.Request) {
 		got = r.URL
 		w.Header().Set("Content-Type", "application/json")
 		_, err := w.Write([]byte(`{}`))
@@ -23,8 +24,8 @@ func TestRequestAssemblesURL(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	c := New(Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), nil, nil, logtest.Silent{})
-	_, err := c.Get(t.Context(), Path("characters", ID(1), "skills"), nil, map[string]any{"page": 2}, nil)
+	c := New(esi.Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), logtest.Silent{})
+	_, err := c.Get(t.Context(), esi.Path("characters", esi.ID(1), "skills"), nil, map[string]any{"page": 2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +43,7 @@ func TestRequestAssemblesURL(t *testing.T) {
 func TestRequestKeepsHostWhenPathHasDotDot(t *testing.T) {
 	t.Parallel()
 	var gotHost, gotPath string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(nhttp.HandlerFunc(func(w nhttp.ResponseWriter, r *nhttp.Request) {
 		gotHost = r.Host
 		gotPath = r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
@@ -52,7 +53,7 @@ func TestRequestKeepsHostWhenPathHasDotDot(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	c := New(Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), nil, nil, logtest.Silent{})
+	c := New(esi.Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), logtest.Silent{})
 	_, err := c.Get(t.Context(), "/characters/1/../../../evil", nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -72,7 +73,7 @@ func TestRequestKeepsHostWhenPathHasDotDot(t *testing.T) {
 func TestRequestEncodesQuery(t *testing.T) {
 	t.Parallel()
 	var rawQuery string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(nhttp.HandlerFunc(func(w nhttp.ResponseWriter, r *nhttp.Request) {
 		rawQuery = r.URL.RawQuery
 		w.Header().Set("Content-Type", "application/json")
 		err := json.NewEncoder(w).Encode(map[string]any{})
@@ -81,7 +82,7 @@ func TestRequestEncodesQuery(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	c := New(Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), nil, nil, logtest.Silent{})
+	c := New(esi.Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), logtest.Silent{})
 	_, err := c.Get(t.Context(), "/search", nil, map[string]any{"search": "a&b=c"}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -92,13 +93,5 @@ func TestRequestEncodesQuery(t *testing.T) {
 	}
 	if q.Get("search") != "a&b=c" {
 		t.Fatalf("query %q", rawQuery)
-	}
-}
-
-func TestPathJoinsSegments(t *testing.T) {
-	t.Parallel()
-	got := Path("characters", ID(42), "mail", ID(9))
-	if got != "/characters/42/mail/9" {
-		t.Fatalf("got %q", got)
 	}
 }

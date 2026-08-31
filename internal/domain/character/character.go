@@ -1,6 +1,37 @@
 package character
 
+import (
+	"context"
+	"errors"
+	"time"
+)
+
 const PlayerCorpIDFloor = 98_000_000
+
+var (
+	ErrNotFound = errors.New("character: not found")
+	ErrOwned    = errors.New("character: belongs to another user")
+)
+
+// Grant and user_id live on this row until sessions own the grant and
+// the character is the user (DB.md, SPEC §3.3).
+type Character struct {
+	ID           int64
+	UserID       string
+	Name         string
+	OwnerHash    string
+	RefreshToken string
+	Scopes       []string
+	CreatedAt    time.Time
+}
+
+type Repository interface {
+	Upsert(ctx context.Context, c Character) error
+	Get(ctx context.Context, id int64) (*Character, error)
+	ListByUser(ctx context.Context, userID string) ([]Character, error)
+	Delete(ctx context.Context, id int64) error
+	UpdateRefresh(ctx context.Context, id int64, fn func(string) (string, error)) error
+}
 
 type NotFoundError struct{ Msg string }
 

@@ -1,6 +1,6 @@
 # T13 — In-memory caches; drop the cache tables
 
-- Status: `todo`
+- Status: `done`
 - Size: M
 - Depends on: T12
 - SPEC: §5.1, §12.5; DB.md "No cache tables"
@@ -76,13 +76,13 @@ serve-but-skip rather than an error.
 
 ## Acceptance
 
-- [ ] No table named `http_cache`, `names` or `blobs`, and no code
+- [x] No table named `http_cache`, `names` or `blobs`, and no code
       referencing them
-- [ ] Both ceilings enforced, with a test for each
-- [ ] Oversized bodies served, never stored
-- [ ] 304 revalidation still works and refreshes the TTL
-- [ ] The response cache is shared across characters within a pod
-- [ ] `go test ./...` passes
+- [x] Both ceilings enforced, with a test for each
+- [x] Oversized bodies served, never stored
+- [x] 304 revalidation still works and refreshes the TTL
+- [x] The response cache is shared across characters within a pod
+- [x] `go test ./...` passes
 
 ## Verify
 

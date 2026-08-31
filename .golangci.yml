@@ -87,7 +87,7 @@ linters:
         domain-boundaries:
           list-mode: lax
           files:
-            - "**/internal/domain/**/*.go"
+            - "**/internal/domain/*/*.go"
             - "!**/internal/domain/**/mocks/**/*.go"
           deny:
             - pkg: github.com/truewebber/eve-online-mcp/internal/domain/

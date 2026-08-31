@@ -3,13 +3,26 @@ package oauth
 import (
 	"context"
 	"errors"
+	nhttp "net/http"
 	"net/url"
-	"os"
 	"strings"
 	"testing"
 
+	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
+	esihttp "github.com/truewebber/eve-online-mcp/internal/adapter/esi/http"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
+	ssohttp "github.com/truewebber/eve-online-mcp/internal/adapter/sso/http"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/store/storetest"
+	"github.com/truewebber/eve-online-mcp/internal/domain/authcode"
+	authcodepgx "github.com/truewebber/eve-online-mcp/internal/domain/authcode/pgx"
+	"github.com/truewebber/eve-online-mcp/internal/domain/character"
+	characterpgx "github.com/truewebber/eve-online-mcp/internal/domain/character/pgx"
+	"github.com/truewebber/eve-online-mcp/internal/domain/confirm"
+	confirmpgx "github.com/truewebber/eve-online-mcp/internal/domain/confirm/pgx"
+	"github.com/truewebber/eve-online-mcp/internal/domain/loginstate"
+	loginstatepgx "github.com/truewebber/eve-online-mcp/internal/domain/loginstate/pgx"
+	oauthclientpgx "github.com/truewebber/eve-online-mcp/internal/domain/oauthclient/pgx"
 	"github.com/truewebber/eve-online-mcp/internal/logtest"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 )
@@ -23,38 +36,49 @@ const (
 
 func openDB(t *testing.T) *store.Store {
 	t.Helper()
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		t.Skip("DATABASE_URL is unset; run `make postgres`")
-	}
-	ctx := context.Background()
-	s, err := store.Open(ctx, dsn, logtest.Silent{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	release, err := s.HoldTestLock(ctx)
-	if err != nil {
-		s.Close()
-		t.Fatal(err)
-	}
-	t.Cleanup(s.Close)
-	t.Cleanup(release)
-	if err := s.ResetTables(ctx); err != nil {
-		t.Fatal(err)
-	}
 
-	return s
+	return storetest.Open(t, logtest.Silent{})
+}
+
+func characters(db *store.Store) character.Repository {
+	return characterpgx.New(db.Pool(), logtest.Silent{})
+}
+
+func logins(db *store.Store) loginstate.Repository {
+	return loginstatepgx.New(db.Pool())
+}
+
+func codes(db *store.Store) authcode.Repository {
+	return authcodepgx.New(db.Pool())
+}
+
+func confirms(db *store.Store) confirm.Repository {
+	return confirmpgx.New(db.Pool())
+}
+
+func testESI() esi.Client {
+	return esihttp.New(esi.Options{}, nhttp.DefaultClient, logtest.Silent{})
+}
+
+func testSSO() sso.Client {
+	return ssohttp.New(sso.Options{
+		ClientID:    "test-eve-client",
+		CallbackURL: "http://127.0.0.1/auth/callback",
+	}, nhttp.DefaultClient, logtest.Silent{})
 }
 
 func testServer(t *testing.T, db *store.Store) *Server {
 	t.Helper()
 	runtime, err := session.Open(session.Options{
-		Store:  db,
-		Logger: logtest.Silent{},
-		SSO: sso.Options{
-			ClientID:    "test-eve-client",
-			CallbackURL: "http://127.0.0.1/auth/callback",
-		},
+		Store:      db,
+		Characters: characters(db),
+		Clients:    oauthclientpgx.New(db.Pool()),
+		Logins:     logins(db),
+		Codes:      codes(db),
+		Confirms:   confirms(db),
+		ESI:        testESI(),
+		SSO:        testSSO(),
+		Logger:     logtest.Silent{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -76,13 +100,14 @@ func TestFinishMCPAttachesExistingOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	const charID int64 = 2112625428
-	if err := db.UpsertCharacter(ctx, u.ID, store.CharacterRow{
-		CharacterID: charID, Name: janeDoe, RefreshToken: "old-rt",
+	chars := characters(db)
+	if err := chars.Upsert(ctx, character.Character{
+		ID: charID, UserID: u.ID, Name: janeDoe, RefreshToken: "old-rt",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	s := testServer(t, db)
-	loc, err := s.finishMCP(ctx, &store.LoginState{
+	loc, err := s.finishMCP(ctx, &loginstate.Login{
 		MCPClientID: "c", RedirectURI: redirect,
 		MCPState: "mcp", CodeChallenge: "x",
 	}, &sso.CharacterToken{
@@ -95,18 +120,14 @@ func TestFinishMCPAttachesExistingOwner(t *testing.T) {
 	if err != nil || got.Query().Get(paramCode) == "" {
 		t.Fatalf("redirect %s err %v", loc, err)
 	}
-	owner, ok, err := db.OwnerOf(ctx, charID)
-	if err != nil || !ok || owner != u.ID {
-		t.Fatalf("owner %s ok %v err %v", owner, ok, err)
-	}
-	row, err := db.GetCharacter(ctx, charID)
-	if err != nil {
-		t.Fatal(err)
+	row, err := chars.Get(ctx, charID)
+	if err != nil || row.UserID != u.ID {
+		t.Fatalf("owner %v err %v", row, err)
 	}
 	if row.RefreshToken != newRT {
 		t.Fatalf("refresh %s", row.RefreshToken)
 	}
-	if tok := s.SessionFor(u.ID).SSO.Store.Get(ctx, int(charID)); tok == nil {
+	if tok := s.SessionFor(u.ID).SSO.Get(ctx, int(charID)); tok == nil {
 		t.Fatal("session store miss")
 	}
 }
@@ -116,7 +137,7 @@ func TestFinishMCPCreatesUser(t *testing.T) {
 	db := openDB(t)
 	s := testServer(t, db)
 	const charID int64 = 42
-	loc, err := s.finishMCP(context.Background(), &store.LoginState{
+	loc, err := s.finishMCP(context.Background(), &loginstate.Login{
 		MCPClientID: "c", RedirectURI: redirect,
 	}, &sso.CharacterToken{
 		CharacterID: int(charID), CharacterName: "New", RefreshToken: "rt",
@@ -127,11 +148,11 @@ func TestFinishMCPCreatesUser(t *testing.T) {
 	if loc == "" {
 		t.Fatal("empty redirect")
 	}
-	owner, ok, err := db.OwnerOf(context.Background(), charID)
-	if err != nil || !ok || owner == "" {
-		t.Fatalf("owner %s ok %v err %v", owner, ok, err)
+	row, err := characters(db).Get(context.Background(), charID)
+	if err != nil || row.UserID == "" {
+		t.Fatalf("owner %v err %v", row, err)
 	}
-	if _, err := db.GetUser(context.Background(), owner); err != nil {
+	if _, err := db.GetUser(context.Background(), row.UserID); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -149,13 +170,14 @@ func TestFinishAltRefusesOtherUser(t *testing.T) {
 		t.Fatal(err)
 	}
 	const charID int64 = 2112625428
-	if err := db.UpsertCharacter(ctx, a.ID, store.CharacterRow{
-		CharacterID: charID, Name: janeDoe, RefreshToken: "a-rt",
+	chars := characters(db)
+	if err := chars.Upsert(ctx, character.Character{
+		ID: charID, UserID: a.ID, Name: janeDoe, RefreshToken: "a-rt",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	s := testServer(t, db)
-	err = s.finishAlt(ctx, &store.LoginState{UserID: b.ID}, &sso.CharacterToken{
+	err = s.finishAlt(ctx, &loginstate.Login{UserID: b.ID}, &sso.CharacterToken{
 		CharacterID: int(charID), CharacterName: janeDoe, RefreshToken: "b-rt",
 	})
 	if !errors.As(err, new(CharacterOwnedError)) {
@@ -164,18 +186,14 @@ func TestFinishAltRefusesOtherUser(t *testing.T) {
 	if !strings.Contains(err.Error(), "eve_auth_logout") {
 		t.Fatalf("want actionable message, got %q", err)
 	}
-	owner, ok, err := db.OwnerOf(ctx, charID)
-	if err != nil || !ok || owner != a.ID {
-		t.Fatalf("owner %s ok %v err %v", owner, ok, err)
-	}
-	row, err := db.GetCharacter(ctx, charID)
-	if err != nil {
-		t.Fatal(err)
+	row, err := chars.Get(ctx, charID)
+	if err != nil || row.UserID != a.ID {
+		t.Fatalf("owner %v err %v", row, err)
 	}
 	if row.RefreshToken != "a-rt" {
 		t.Fatalf("A must keep the token, got %s", row.RefreshToken)
 	}
-	if tok := s.SessionFor(b.ID).SSO.Store.Get(ctx, int(charID)); tok != nil {
+	if tok := s.SessionFor(b.ID).SSO.Get(ctx, int(charID)); tok != nil {
 		t.Fatal("B must not hold the character")
 	}
 }
@@ -189,29 +207,26 @@ func TestFinishAltRefreshesOwnCharacter(t *testing.T) {
 		t.Fatal(err)
 	}
 	const charID int64 = 99
-	if err := db.UpsertCharacter(ctx, u.ID, store.CharacterRow{
-		CharacterID: charID, Name: altName, RefreshToken: "old-rt",
+	chars := characters(db)
+	if err := chars.Upsert(ctx, character.Character{
+		ID: charID, UserID: u.ID, Name: altName, RefreshToken: "old-rt",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	s := testServer(t, db)
-	if err := s.finishAlt(ctx, &store.LoginState{UserID: u.ID}, &sso.CharacterToken{
+	if err := s.finishAlt(ctx, &loginstate.Login{UserID: u.ID}, &sso.CharacterToken{
 		CharacterID: int(charID), CharacterName: altName, RefreshToken: newRT,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	owner, ok, err := db.OwnerOf(ctx, charID)
-	if err != nil || !ok || owner != u.ID {
-		t.Fatalf("owner %s ok %v err %v", owner, ok, err)
-	}
-	row, err := db.GetCharacter(ctx, charID)
-	if err != nil {
-		t.Fatal(err)
+	row, err := chars.Get(ctx, charID)
+	if err != nil || row.UserID != u.ID {
+		t.Fatalf("owner %v err %v", row, err)
 	}
 	if row.RefreshToken != newRT {
 		t.Fatalf("refresh %s", row.RefreshToken)
 	}
-	n, err := db.ListCharacters(ctx, u.ID)
+	n, err := chars.ListByUser(ctx, u.ID)
 	if err != nil || len(n) != 1 {
 		t.Fatalf("rows %d err %v", len(n), err)
 	}

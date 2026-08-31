@@ -1,0 +1,28 @@
+package confirm
+
+import (
+	"context"
+	"errors"
+	"time"
+)
+
+const TTL = 300 * time.Second
+
+var ErrNotFound = errors.New("confirm: not found")
+
+type Confirm struct {
+	Value      string
+	UserID     string
+	Tool       string
+	ArgsDigest string
+	CreatedAt  time.Time
+}
+
+type Repository interface {
+	Put(ctx context.Context, c Confirm) error
+	Get(ctx context.Context, value string) (*Confirm, error)
+	Take(ctx context.Context, value string) (*Confirm, error)
+	Delete(ctx context.Context, value string) error
+	Count(ctx context.Context, userID string) (int, error)
+	DeleteExpired(ctx context.Context) (int64, error)
+}

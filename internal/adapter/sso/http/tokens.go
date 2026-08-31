@@ -1,8 +1,7 @@
-package sso
+package http
 
 import (
 	"context"
-	"errors"
 	"maps"
 	"sort"
 	"strings"
@@ -11,7 +10,8 @@ import (
 
 	"github.com/truewebber/gopkg/log"
 
-	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
+	"github.com/truewebber/eve-online-mcp/internal/domain/character"
 )
 
 type accessMem struct {
@@ -19,48 +19,47 @@ type accessMem struct {
 	AccessExpiresAt time.Time
 }
 
-// Refresh tokens live in Postgres when bound to a userID; access tokens
-// stay in process memory (SPEC §3.4). An empty userID is the MCP login
-// broker: memory only, until FinishEVE upserts into a user store.
-type TokenStore struct {
-	db     *store.Store
+// Refresh tokens live on the character row when bound to a userID; access
+// tokens stay in process memory (SPEC §3.4). An empty userID is the MCP
+// login broker: memory only, until FinishEVE upserts into a user store.
+type tokenStore struct {
+	chars  character.Repository
 	userID string
 	mu     sync.Mutex
 	logger log.Logger
-	tokens map[int]*CharacterToken // broker / unbound
-	access map[int]accessMem       // durable overlay
+	tokens map[int]*sso.CharacterToken
+	access map[int]accessMem
 }
 
-var ErrMissingCharacterID = errors.New("sso: missing character id")
-
-func newTokenStore(db *store.Store, userID string, logger log.Logger) *TokenStore {
-	return &TokenStore{
-		db:     db,
+func newTokenStore(chars character.Repository, userID string, logger log.Logger) *tokenStore {
+	return &tokenStore{
+		chars:  chars,
 		userID: userID,
 		logger: logger,
-		tokens: map[int]*CharacterToken{},
+		tokens: map[int]*sso.CharacterToken{},
 		access: map[int]accessMem{},
 	}
 }
 
-func (s *TokenStore) Upsert(ctx context.Context, token *CharacterToken) error {
+func (s *tokenStore) Upsert(ctx context.Context, token *sso.CharacterToken) error {
 	if token == nil || token.CharacterID == 0 {
-		return ErrMissingCharacterID
+		return sso.ErrMissingCharacterID
 	}
 	if !s.durable() {
 		return s.upsertMemory(token)
 	}
-	row := store.CharacterRow{
-		CharacterID:  int64(token.CharacterID),
+	row := character.Character{
+		ID:           int64(token.CharacterID),
+		UserID:       s.userID,
 		Name:         token.CharacterName,
 		OwnerHash:    token.OwnerHash,
 		RefreshToken: token.RefreshToken,
 		Scopes:       token.Scopes,
 	}
 	if token.AddedAt != 0 {
-		row.AddedAt = time.Unix(int64(token.AddedAt), 0).UTC()
+		row.CreatedAt = time.Unix(int64(token.AddedAt), 0).UTC()
 	}
-	err := s.db.UpsertCharacter(ctx, s.userID, row)
+	err := s.chars.Upsert(ctx, row)
 	if err != nil {
 		return wrap("Upsert", err)
 	}
@@ -76,7 +75,7 @@ func (s *TokenStore) Upsert(ctx context.Context, token *CharacterToken) error {
 	return nil
 }
 
-func (s *TokenStore) Remove(ctx context.Context, id int) bool {
+func (s *tokenStore) Remove(ctx context.Context, id int) bool {
 	if !s.durable() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -87,11 +86,11 @@ func (s *TokenStore) Remove(ctx context.Context, id int) bool {
 
 		return true
 	}
-	row, err := s.db.GetCharacter(ctx, int64(id))
+	row, err := s.chars.Get(ctx, int64(id))
 	if err != nil || row.UserID != s.userID {
 		return false
 	}
-	if err := s.db.DeleteCharacter(ctx, int64(id)); err != nil {
+	if err := s.chars.Delete(ctx, int64(id)); err != nil {
 		return false
 	}
 	s.mu.Lock()
@@ -101,14 +100,14 @@ func (s *TokenStore) Remove(ctx context.Context, id int) bool {
 	return true
 }
 
-func (s *TokenStore) Get(ctx context.Context, id int) *CharacterToken {
+func (s *tokenStore) Get(ctx context.Context, id int) *sso.CharacterToken {
 	if !s.durable() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 
 		return s.tokens[id]
 	}
-	row, err := s.db.GetCharacter(ctx, int64(id))
+	row, err := s.chars.Get(ctx, int64(id))
 	if err != nil || row.UserID != s.userID {
 		return nil
 	}
@@ -116,14 +115,14 @@ func (s *TokenStore) Get(ctx context.Context, id int) *CharacterToken {
 	acc := s.access[id]
 	s.mu.Unlock()
 
-	return tokenFromRow(row, acc)
+	return tokenFromCharacter(row, acc)
 }
 
-func (s *TokenStore) All(ctx context.Context) []*CharacterToken {
+func (s *tokenStore) All(ctx context.Context) []*sso.CharacterToken {
 	if !s.durable() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		out := make([]*CharacterToken, 0, len(s.tokens))
+		out := make([]*sso.CharacterToken, 0, len(s.tokens))
 		for _, t := range s.tokens {
 			out = append(out, t)
 		}
@@ -131,7 +130,7 @@ func (s *TokenStore) All(ctx context.Context) []*CharacterToken {
 
 		return out
 	}
-	rows, err := s.db.ListCharacters(ctx, s.userID)
+	rows, err := s.chars.ListByUser(ctx, s.userID)
 	if err != nil {
 		s.logger.Error("sso: list characters", "err", err)
 
@@ -141,16 +140,16 @@ func (s *TokenStore) All(ctx context.Context) []*CharacterToken {
 	access := make(map[int]accessMem, len(s.access))
 	maps.Copy(access, s.access)
 	s.mu.Unlock()
-	out := make([]*CharacterToken, 0, len(rows))
+	out := make([]*sso.CharacterToken, 0, len(rows))
 	for i := range rows {
-		out = append(out, tokenFromRow(&rows[i], access[int(rows[i].CharacterID)]))
+		out = append(out, tokenFromCharacter(&rows[i], access[int(rows[i].ID)]))
 	}
 	sortTokens(out)
 
 	return out
 }
 
-func (s *TokenStore) FindByName(ctx context.Context, name string) *CharacterToken {
+func (s *tokenStore) FindByName(ctx context.Context, name string) *sso.CharacterToken {
 	lowered := strings.ToLower(strings.TrimSpace(name))
 	tokens := s.All(ctx)
 	for _, t := range tokens {
@@ -167,11 +166,11 @@ func (s *TokenStore) FindByName(ctx context.Context, name string) *CharacterToke
 	return nil
 }
 
-func (s *TokenStore) durable() bool {
-	return s != nil && s.db != nil && s.userID != ""
+func (s *tokenStore) durable() bool {
+	return s != nil && s.chars != nil && s.userID != ""
 }
 
-func (s *TokenStore) upsertMemory(token *CharacterToken) error {
+func (s *tokenStore) upsertMemory(token *sso.CharacterToken) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if existing := s.tokens[token.CharacterID]; existing != nil {
@@ -191,7 +190,7 @@ func (s *TokenStore) upsertMemory(token *CharacterToken) error {
 	return nil
 }
 
-func (s *TokenStore) setAccess(token *CharacterToken) {
+func (s *tokenStore) setAccess(token *sso.CharacterToken) {
 	if token == nil || token.AccessToken == "" {
 		return
 	}
@@ -208,25 +207,25 @@ func (s *TokenStore) setAccess(token *CharacterToken) {
 	s.tokens[token.CharacterID] = token
 }
 
-func tokenFromRow(row *store.CharacterRow, acc accessMem) *CharacterToken {
+func tokenFromCharacter(row *character.Character, acc accessMem) *sso.CharacterToken {
 	scopes := row.Scopes
 	if scopes == nil {
 		scopes = []string{}
 	}
 
-	return &CharacterToken{
-		CharacterID:     int(row.CharacterID),
+	return &sso.CharacterToken{
+		CharacterID:     int(row.ID),
 		CharacterName:   row.Name,
 		RefreshToken:    row.RefreshToken,
 		Scopes:          scopes,
 		OwnerHash:       row.OwnerHash,
-		AddedAt:         float64(row.AddedAt.Unix()),
+		AddedAt:         float64(row.CreatedAt.Unix()),
 		AccessToken:     acc.AccessToken,
 		AccessExpiresAt: acc.AccessExpiresAt,
 	}
 }
 
-func sortTokens(out []*CharacterToken) {
+func sortTokens(out []*sso.CharacterToken) {
 	sort.Slice(out, func(i, j int) bool {
 		return strings.ToLower(out[i].CharacterName) < strings.ToLower(out[j].CharacterName)
 	})

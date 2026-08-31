@@ -707,16 +707,17 @@ cmd/eve-mcp/            package main: main.go (composition root),
                         config.go (env, no prefix)
 internal/
   adapter/              external systems; each package owns its Options
-    esi/                ESI HTTP: in-memory cache, error limit + budget,
-                        pagination, per-character bucket
-    sso/                EVE SSO: PKCE, token exchange, JWKS verify
-    store/              PostgreSQL (pgx + goose migrations): characters,
-                        sessions, oauth state, confirm tokens, audit log
-                        — see DB.md
-    names/              id→name resolution, reference prices and hub
-                        order-book quotes (memory-cached)
-  domain/               pure model, no upward imports
-    character/          Corporation, roles
+    esi/                ESI contract (Client, Result, name resolver);
+                        http/ implements it (in-memory cache, bucket)
+    sso/                SSO contract (Client, CharacterToken);
+                        http/ implements it (PKCE, token, JWKS)
+    store/              remaining tables until their domains land — see DB.md
+  domain/               entity + contract; implementation nested
+    character/          identity + repository; pgx/ implements it
+    oauthclient/        MCP DCR client + repository; pgx/
+    loginstate/         in-flight SSO handshake + repository; pgx/
+    authcode/           one-time MCP code + repository; pgx/
+    confirm/            one-shot consent token + repository; pgx/
     write/              capability catalog, Guard (confirm cycle, mail cap)
     universe/           reference constants (Jita, The Forge)
     j/                  map[string]any helpers
@@ -886,7 +887,7 @@ Remaining, in dependency order:
    key moves to the required `HMAC_KEY` env (§2).
 5. **In-memory caches** (§5.1): ESI responses (256 MiB / 2000 entries /
    8 MiB body cap), id→name (50 000), reference prices (1 h) become
-   bounded structures in `adapter/esi` and `adapter/names`.
+   bounded structures in `adapter/esi`.
 6. **Both scope checks** (§3.2, §3.5): compare the granted `scp` against
    the required set at the callback and end the sign-in there, with a
    page naming what is missing and where to add it; and revoke the

@@ -50,12 +50,14 @@ CONTACT=you@example.com      # identifies you to CCP
 ### 3. Build and run
 
 ```bash
+make postgres
+make migrate
 go build -o eve-mcp ./cmd/eve-mcp
 ./eve-mcp
 ```
 
-Or `make run` (starts local Postgres too). The process stays in the
-foreground and reads `./.env`.
+Or `make run` (Postgres, schema, then the binary). The process stays in
+the foreground and reads `./.env`. The binary does not apply schema.
 
 ### 4. Connect a client
 
@@ -208,6 +210,7 @@ either way the connection dies and the client asks for a new sign-in.
 
 ```bash
 make postgres                     # local Postgres (loopback :5432)
+make migrate                      # goose, against DATABASE_URL
 go build -o eve-mcp ./cmd/eve-mcp
 ./eve-mcp                         # foreground, reads ./.env or the environment
 go run ./evals all                # lint + smoke; needs EVE_MCP_TOKEN
@@ -216,6 +219,10 @@ go run ./evals all                # lint + smoke; needs EVE_MCP_TOKEN
 The server is a Go binary on the host. Postgres is Compose-only — do not
 put the app in Compose, and do not run `docker compose down -v`: that
 deletes the `eve-mcp-pg` volume. `make down` stops Postgres and keeps it.
+Schema is `make migrate` (or the same goose command in CI), never the
+server process. A volume created by the old boot-time migrator still
+works: the first goose file is `IF NOT EXISTS` and only records the
+version.
 
 Nothing reloads in place. Rebuild, then start the binary again.
 

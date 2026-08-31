@@ -2,12 +2,10 @@ package store
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/truewebber/gopkg/log"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -29,24 +27,20 @@ func Open(ctx context.Context, databaseURL string, logger log.Logger) (*Store, e
 
 		return nil, fmt.Errorf("store: ping: %w", err)
 	}
-	s := &Store{pool: pool, logger: logger}
-	if err := s.migrate(ctx); err != nil {
-		pool.Close()
 
-		return nil, err
+	return &Store{pool: pool, logger: logger}, nil
+}
+
+func (s *Store) Pool() *pgxpool.Pool {
+	if s == nil {
+		return nil
 	}
 
-	return s, nil
+	return s.pool
 }
 
 func (s *Store) Close() {
 	if s != nil && s.pool != nil {
 		s.pool.Close()
-	}
-}
-
-func (s *Store) rollbackTx(ctx context.Context, tx pgx.Tx) {
-	if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-		s.logger.Error("store: rollback", "err", err)
 	}
 }

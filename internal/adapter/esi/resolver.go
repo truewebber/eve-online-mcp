@@ -1,19 +1,15 @@
-package names
+package esi
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/truewebber/gopkg/log"
 
-	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
-	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
 	"github.com/truewebber/eve-online-mcp/internal/domain/j"
 )
 
@@ -26,84 +22,42 @@ const (
 	hubOrderPages    = 10
 )
 
-func categoryKind(key string) string {
-	switch key {
-	case "agents":
-		return "agent"
-	case "alliances":
-		return "alliance"
-	case "characters":
-		return "character"
-	case "constellations":
-		return "constellation"
-	case "corporations":
-		return "corporation"
-	case "factions":
-		return "faction"
-	case "inventory_types":
-		return "item type"
-	case "regions":
-		return "region"
-	case "stations":
-		return "station"
-	case "systems":
-		return "solar system"
-	default:
-		return ""
-	}
+type blobEntry struct {
+	value any
+	at    time.Time
 }
 
-type NameMatch struct {
-	ID       int
-	Name     string
-	Category string
-	Kind     string
+type blobCache struct {
+	mu sync.Mutex
+	m  map[string]blobEntry
 }
 
-type NameResolution struct {
-	Query        string
-	Chosen       *NameMatch
-	Alternatives []NameMatch
-}
-
-func (r NameResolution) Ambiguous() bool { return len(r.Alternatives) > 0 }
-
-func (r NameResolution) Describe() string {
-	if r.Chosen == nil {
-		return fmt.Sprintf("%q matched nothing", r.Query)
-	}
-	others := make([]string, 0, len(r.Alternatives))
-	for _, m := range r.Alternatives {
-		others = append(others, article(m.Kind)+fmt.Sprintf(" (#%d)", m.ID))
-	}
-	chosen := article(r.Chosen.Kind) + fmt.Sprintf(" (#%d)", r.Chosen.ID)
-
-	return fmt.Sprintf("%q is %s and also %s", r.Query, chosen, strings.Join(others, ", "))
-}
-
-func article(kind string) string {
-	if kind == "" {
-		return "a thing"
-	}
-	switch strings.ToLower(kind[:1]) {
-	case "a", "e", "i", "o", "u":
-		return "an " + kind
-	}
-
-	return "a " + kind
+type priceCache struct {
+	mu     sync.Mutex
+	prices map[int]map[string]float64
+	at     time.Time
 }
 
 type Resolver struct {
-	esi      *esi.Client
-	store    *store.Store
-	logger   log.Logger
-	prices   map[int]map[string]float64
-	pricesAt time.Time
-	priceMu  sync.Mutex
+	esi    Client
+	names  *nameCache
+	blobs  *blobCache
+	prices *priceCache
+	logger log.Logger
 }
 
-func New(e *esi.Client, db *store.Store, logger log.Logger) *Resolver {
-	return &Resolver{esi: e, store: db, logger: logger}
+func NewResolver(c Client, logger log.Logger) *Resolver {
+	return &Resolver{
+		esi:    c,
+		names:  newNameCache(),
+		blobs:  &blobCache{m: map[string]blobEntry{}},
+		prices: &priceCache{},
+		logger: logger,
+	}
+}
+
+func (r *Resolver) ForUser(c Client) *Resolver {
+	return &Resolver{esi: c, names: r.names, blobs: r.blobs, prices: r.prices, logger: r.logger}
 }
 
 func (r *Resolver) Names(ctx context.Context, ids []int, characterID *int) (map[int]string, error) {
@@ -111,10 +65,11 @@ func (r *Resolver) Names(ctx context.Context, ids []int, characterID *int) (map[
 	if len(wanted) == 0 {
 		return map[int]string{}, nil
 	}
-	out, missing, err := r.lookupCachedNames(ctx, wanted)
-	if err != nil {
-		return nil, err
+	list := make([]int, 0, len(wanted))
+	for id := range wanted {
+		list = append(list, id)
 	}
+	out, missing := r.names.get(list)
 	if len(missing) == 0 {
 		return out, nil
 	}
@@ -184,22 +139,15 @@ func (r *Resolver) ResolveNames(ctx context.Context, names []string, prefer, onl
 
 func (r *Resolver) TypeInfo(ctx context.Context, typeID int) (map[string]any, error) {
 	key := fmt.Sprintf("type:%d", typeID)
-	maxAge := staticBlobAge
-	cached, err := r.blob(ctx, key, &maxAge)
-	if err != nil {
-		return nil, err
-	}
-	if cached != nil {
+	if cached := r.blob(key, staticBlobAge); cached != nil {
 		return j.Map(cached), nil
 	}
-	result, err := r.esi.Get(ctx, esi.Path("universe", "types", esi.ID(typeID)), nil, nil, nil)
+	result, err := r.esi.Get(ctx, Path("universe", "types", ID(typeID)), nil, nil, nil)
 	if err != nil {
 		return nil, wrap("TypeInfo", err)
 	}
 	data := j.Map(result.Data)
-	if err := r.putBlob(ctx, key, data); err != nil {
-		r.logger.Error("names: put type", "key", key, "err", err)
-	}
+	r.putBlob(key, data)
 
 	return data, nil
 }
@@ -209,17 +157,14 @@ func (r *Resolver) GroupName(ctx context.Context, groupID int) string {
 		return "unknown"
 	}
 	key := fmt.Sprintf("group:%d", groupID)
-	maxAge := staticBlobAge
-	cached, err := r.blob(ctx, key, &maxAge)
-	if err != nil || cached == nil {
-		result, err := r.esi.Get(ctx, esi.Path("universe", "groups", esi.ID(groupID)), nil, nil, nil)
+	cached := r.blob(key, staticBlobAge)
+	if cached == nil {
+		result, err := r.esi.Get(ctx, Path("universe", "groups", ID(groupID)), nil, nil, nil)
 		if err != nil {
 			return fmt.Sprintf("Group #%d", groupID)
 		}
 		cached = result.Data
-		if err := r.putBlob(ctx, key, cached); err != nil {
-			r.logger.Error("names: put group", "key", key, "err", err)
-		}
+		r.putBlob(key, cached)
 	}
 	name := j.Str(j.Map(cached)["name"])
 	if name == "" {
@@ -269,44 +214,25 @@ func (r *Resolver) TypeInfos(ctx context.Context, typeIDs []int) map[int]map[str
 }
 
 func (r *Resolver) ReferencePrices(ctx context.Context) (map[int]map[string]float64, error) {
-	r.priceMu.Lock()
-	defer r.priceMu.Unlock()
-	if r.prices != nil && time.Since(r.pricesAt) < time.Duration(priceTTL*float64(time.Second)) {
-		return r.prices, nil
+	r.prices.mu.Lock()
+	defer r.prices.mu.Unlock()
+	if r.prices.prices != nil && time.Since(r.prices.at) < time.Duration(priceTTL*float64(time.Second)) {
+		return r.prices.prices, nil
 	}
-	ttl := time.Duration(priceTTL * float64(time.Second))
-	cached, err := r.blob(ctx, "markets:prices", &ttl)
+	result, err := r.esi.Get(ctx, "/markets/prices", nil, nil, nil)
 	if err != nil {
-		return nil, err
-	}
-	if cached == nil {
-		result, err := r.esi.Get(ctx, "/markets/prices", nil, nil, nil)
-		if err != nil {
-			return nil, wrap("ReferencePrices", err)
-		}
-		blob := map[string]any{}
-		for _, row := range j.Maps(result.Data) {
-			blob[strconv.Itoa(j.Int(row["type_id"]))] = map[string]any{
-				"average":  j.Float(row["average_price"]),
-				"adjusted": j.Float(row["adjusted_price"]),
-			}
-		}
-		if err := r.putBlob(ctx, "markets:prices", blob); err != nil {
-			r.logger.Error("names: put market prices", "err", err)
-		}
-		cached = blob
+		return nil, wrap("ReferencePrices", err)
 	}
 	prices := map[int]map[string]float64{}
-	for k, v := range j.Map(cached) {
-		var id int
-		if _, err := fmt.Sscanf(k, "%d", &id); err != nil {
-			continue
+	for _, row := range j.Maps(result.Data) {
+		id := j.Int(row["type_id"])
+		prices[id] = map[string]float64{
+			"average":  j.Float(row["average_price"]),
+			"adjusted": j.Float(row["adjusted_price"]),
 		}
-		m := j.Map(v)
-		prices[id] = map[string]float64{"average": j.Float(m["average"]), "adjusted": j.Float(m["adjusted"])}
 	}
-	r.prices = prices
-	r.pricesAt = time.Now()
+	r.prices.prices = prices
+	r.prices.at = time.Now()
 
 	return prices, nil
 }
@@ -327,7 +253,7 @@ func (r *Resolver) ReferencePrice(ctx context.Context, typeID int) float64 {
 func (r *Resolver) HubQuotes(ctx context.Context, typeID, regionID int, stationID *int) (map[string]any, error) {
 	result, err := r.esi.GetAllPages(
 		ctx,
-		esi.Path("markets", esi.ID(regionID), "orders"),
+		Path("markets", ID(regionID), "orders"),
 		nil,
 		map[string]any{"type_id": typeID, "order_type": "all"},
 		hubOrderPages,
@@ -393,32 +319,6 @@ func uniquePositive(ids []int) map[int]struct{} {
 	return wanted
 }
 
-func (r *Resolver) lookupCachedNames(ctx context.Context, wanted map[int]struct{}) (map[int]string, []int, error) {
-	list := make([]int, 0, len(wanted))
-	for id := range wanted {
-		list = append(list, id)
-	}
-	id64s := make([]int64, len(list))
-	for i, id := range list {
-		id64s[i] = int64(id)
-	}
-	cached, err := r.store.NameGet(ctx, id64s)
-	if err != nil {
-		return nil, nil, wrap("lookupCachedNames", err)
-	}
-	out := map[int]string{}
-	var missing []int
-	for id := range wanted {
-		if row, ok := cached[int64(id)]; ok {
-			out[id] = row.Name
-		} else {
-			missing = append(missing, id)
-		}
-	}
-
-	return out, missing, nil
-}
-
 func (r *Resolver) fillMissingNames(ctx context.Context, out map[int]string, missing []int, characterID *int) {
 	var universal, structures []int
 	for _, id := range missing {
@@ -440,22 +340,18 @@ func (r *Resolver) fillUniverseNames(ctx context.Context, out map[int]string, un
 		chunk := universal[start:end]
 		result, err := r.esi.Post(ctx, "/universe/names", nil, nil, chunk)
 		if err != nil {
-			r.logger.Error("names: bulk lookup", "ids", len(chunk), "err", err)
+			r.logger.Error("esi: bulk name lookup", "ids", len(chunk), "err", err)
 
 			continue
 		}
-		var entries []store.NameRow
 		for _, row := range j.Maps(result) {
 			id := j.Int(row["id"])
 			name := j.Str(row["name"])
 			if id == 0 || name == "" {
 				continue
 			}
-			entries = append(entries, store.NameRow{ID: int64(id), Name: name, Category: j.Str(row["category"])})
+			r.names.put(id, name)
 			out[id] = name
-		}
-		if err := r.store.NamePut(ctx, entries); err != nil {
-			r.logger.Error("names: put universe names", "err", err)
 		}
 	}
 }
@@ -473,17 +369,13 @@ func (r *Resolver) fillStructureNames(ctx context.Context, out map[int]string, s
 			ch <- box{sid, name, err == nil}
 		}(sid)
 	}
-	var entries []store.NameRow
 	for range structures {
 		b := <-ch
 		if !b.ok {
 			continue
 		}
-		entries = append(entries, store.NameRow{ID: int64(b.id), Name: b.name, Category: "structure"})
+		r.names.put(b.id, b.name)
 		out[b.id] = b.name
-	}
-	if err := r.store.NamePut(ctx, entries); err != nil {
-		r.logger.Error("names: put structure names", "err", err)
 	}
 }
 
@@ -566,7 +458,7 @@ func lessNameMatch(matches []NameMatch, rank map[string]int) func(i, j int) bool
 }
 
 func (r *Resolver) structureName(ctx context.Context, structureID, characterID int) (string, error) {
-	result, err := r.esi.Get(ctx, esi.Path("universe", "structures", esi.ID(structureID)), &characterID, nil, nil)
+	result, err := r.esi.Get(ctx, Path("universe", "structures", ID(structureID)), &characterID, nil, nil)
 	if err != nil {
 		return "", wrap("structureName", err)
 	}
@@ -578,24 +470,19 @@ func (r *Resolver) structureName(ctx context.Context, structureID, characterID i
 	return name, nil
 }
 
-func (r *Resolver) blob(ctx context.Context, key string, maxAge *time.Duration) (any, error) {
-	raw, err := r.store.BlobGet(ctx, key, maxAge)
-	if err != nil || raw == nil {
-		return nil, wrap("blob", err)
-	}
-	var v any
-	if err := json.Unmarshal(raw, &v); err != nil {
-		return nil, wrap("blob", err)
+func (r *Resolver) blob(key string, maxAge time.Duration) any {
+	r.blobs.mu.Lock()
+	defer r.blobs.mu.Unlock()
+	entry, ok := r.blobs.m[key]
+	if !ok || time.Since(entry.at) > maxAge {
+		return nil
 	}
 
-	return v, nil
+	return entry.value
 }
 
-func (r *Resolver) putBlob(ctx context.Context, key string, value any) error {
-	raw, err := json.Marshal(value)
-	if err != nil {
-		return wrap("putBlob", err)
-	}
-
-	return wrap("putBlob", r.store.BlobPut(ctx, key, raw))
+func (r *Resolver) putBlob(key string, value any) {
+	r.blobs.mu.Lock()
+	defer r.blobs.mu.Unlock()
+	r.blobs.m[key] = blobEntry{value: value, at: time.Now()}
 }

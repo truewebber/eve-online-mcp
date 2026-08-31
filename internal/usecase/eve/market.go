@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/truewebber/eve-online-mcp/internal/adapter/names"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
 	"github.com/truewebber/eve-online-mcp/internal/domain/j"
 	"github.com/truewebber/eve-online-mcp/internal/domain/universe"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
@@ -86,10 +86,10 @@ func eveMarketPrice(ctx context.Context, a *session.Session, in marketPriceIn) (
 	return out, nil
 }
 
-func resolveNamed(ctx context.Context, a *session.Session, name string, only []string) (names.NameResolution, error) {
+func resolveNamed(ctx context.Context, a *session.Session, name string, only []string) (esi.NameResolution, error) {
 	resolved, err := a.Resolver.ResolveNames(ctx, []string{name}, nil, only)
 	if err != nil {
-		return names.NameResolution{}, wrap("resolveNamed", err)
+		return esi.NameResolution{}, wrap("resolveNamed", err)
 	}
 
 	return resolved[strings.ToLower(strings.TrimSpace(name))], nil
@@ -121,7 +121,7 @@ func marketPlace(ctx context.Context, a *session.Session, in marketPriceIn) (mar
 	return out, nil
 }
 
-func marketQuoteView(ctx context.Context, a *session.Session, match names.NameResolution, quotes map[string]any, place marketPlaceResult, item string) (map[string]any, error) {
+func marketQuoteView(ctx context.Context, a *session.Session, match esi.NameResolution, quotes map[string]any, place marketPlaceResult, item string) (map[string]any, error) {
 	typeID := match.Chosen.ID
 	average := a.Resolver.ReferencePrice(ctx, typeID)
 	info, err := a.Resolver.TypeInfo(ctx, typeID)

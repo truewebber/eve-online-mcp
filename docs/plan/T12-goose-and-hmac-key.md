@@ -10,7 +10,7 @@
 Two infrastructure changes, neither touching product behaviour:
 
 1. The hand-rolled `schema_migrations` migrator becomes **goose**
-   (`github.com/pressly/goose/v3`) with SQL in `store/sql/`. Applying
+   (`github.com/pressly/goose/v3`) with SQL in `sql/` at the repository root. Applying
    those files is an operator step or CI/CD, never a path inside the
    running server (RULES.md §14). `Store.Open` connects; it does not
    run SQL.
@@ -71,7 +71,7 @@ restart = every client re-authenticates, EVE grants unaffected.
 ## Files
 
 - Edit: `internal/adapter/store/migrate.go`, `internal/adapter/store/oauth.go`,
-  `internal/adapter/store/sql/*`, `internal/adapter/store/store.go`,
+  `sql/*`, `internal/adapter/store/store.go`,
   `internal/usecase/oauth/oauth.go`, `cmd/eve-mcp/config.go`,
   `cmd/eve-mcp/main.go`, `Makefile`, `go.mod`
 - Add: one migration file

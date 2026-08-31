@@ -8,7 +8,7 @@ Anything not listed here does not exist.
 ## Migrations
 
 Managed by a migration tool (goose, `github.com/pressly/goose/v3`),
-SQL in `internal/adapter/store/sql/`. Forward-only. The tool's own
+SQL in `sql/` at the repository root. Forward-only. The tool's own
 bookkeeping table is its business, not part of this schema.
 
 Applying them is an operator step or CI/CD, never a path inside the

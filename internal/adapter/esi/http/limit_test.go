@@ -1,16 +1,16 @@
-package esi
+package http
 
 import (
-	"net/http"
+	nhttp "net/http"
 	"testing"
 	"time"
 )
 
 func TestLimitErrorParsesHeaders(t *testing.T) {
 	t.Parallel()
-	resp := &http.Response{
+	resp := &nhttp.Response{
 		StatusCode: 420,
-		Header:     http.Header{},
+		Header:     nhttp.Header{},
 	}
 	resp.Header.Set("Retry-After", "8")
 	resp.Header.Set("X-Esi-Error-Limit-Remain", "0")
@@ -39,8 +39,8 @@ func TestLimitErrorParsesHeaders(t *testing.T) {
 
 func TestRetryAfterHTTPDate(t *testing.T) {
 	t.Parallel()
-	when := time.Now().UTC().Add(25 * time.Second).Format(http.TimeFormat)
-	resp := &http.Response{Header: http.Header{}}
+	when := time.Now().UTC().Add(25 * time.Second).Format(nhttp.TimeFormat)
+	resp := &nhttp.Response{Header: nhttp.Header{}}
 	resp.Header.Set("Retry-After", when)
 	d := retryAfter(resp)
 	if d < 20*time.Second || d > 30*time.Second {

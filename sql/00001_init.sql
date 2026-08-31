@@ -1,9 +1,15 @@
-CREATE TABLE users (
+-- +goose Up
+-- Creates the current schema outright. A database from the users era is
+-- dropped by hand, not transformed (DB.md). IF NOT EXISTS lets a volume
+-- that the old boot-time migrator already created take a goose version
+-- without a rebuild.
+
+CREATE TABLE IF NOT EXISTS users (
     id         TEXT PRIMARY KEY,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE characters (
+CREATE TABLE IF NOT EXISTS characters (
     character_id  BIGINT PRIMARY KEY,
     user_id       TEXT NOT NULL REFERENCES users (id),
     name          TEXT NOT NULL,
@@ -12,15 +18,15 @@ CREATE TABLE characters (
     scopes        TEXT[] NOT NULL DEFAULT '{}',
     added_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX characters_user_id ON characters (user_id);
+CREATE INDEX IF NOT EXISTS characters_user_id ON characters (user_id);
 
-CREATE TABLE oauth_clients (
+CREATE TABLE IF NOT EXISTS oauth_clients (
     client_id     TEXT PRIMARY KEY,
     redirect_uris TEXT[] NOT NULL DEFAULT '{}',
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE login_states (
+CREATE TABLE IF NOT EXISTS login_states (
     state          TEXT PRIMARY KEY,
     pkce_verifier  TEXT NOT NULL,
     scopes         TEXT[] NOT NULL DEFAULT '{}',
@@ -33,7 +39,7 @@ CREATE TABLE login_states (
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE auth_codes (
+CREATE TABLE IF NOT EXISTS auth_codes (
     code           TEXT PRIMARY KEY,
     user_id        TEXT NOT NULL REFERENCES users (id),
     mcp_client_id  TEXT NOT NULL,
@@ -42,7 +48,7 @@ CREATE TABLE auth_codes (
     expires_at     TIMESTAMPTZ NOT NULL
 );
 
-CREATE TABLE confirm_tokens (
+CREATE TABLE IF NOT EXISTS confirm_tokens (
     token       TEXT PRIMARY KEY,
     user_id     TEXT NOT NULL,
     tool        TEXT NOT NULL,
@@ -50,13 +56,13 @@ CREATE TABLE confirm_tokens (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE mail_log (
+CREATE TABLE IF NOT EXISTS mail_log (
     user_id TEXT NOT NULL,
     sent_at TIMESTAMPTZ NOT NULL
 );
-CREATE INDEX mail_log_user_sent ON mail_log (user_id, sent_at);
+CREATE INDEX IF NOT EXISTS mail_log_user_sent ON mail_log (user_id, sent_at);
 
-CREATE TABLE http_cache (
+CREATE TABLE IF NOT EXISTS http_cache (
     key        TEXT PRIMARY KEY,
     etag       TEXT NOT NULL DEFAULT '',
     expires_at TIMESTAMPTZ NOT NULL,
@@ -64,21 +70,21 @@ CREATE TABLE http_cache (
     pages      INTEGER,
     body       JSONB NOT NULL
 );
-CREATE INDEX http_cache_expires ON http_cache (expires_at);
+CREATE INDEX IF NOT EXISTS http_cache_expires ON http_cache (expires_at);
 
-CREATE TABLE names (
+CREATE TABLE IF NOT EXISTS names (
     id       BIGINT PRIMARY KEY,
     name     TEXT NOT NULL,
     category TEXT NOT NULL DEFAULT ''
 );
 
-CREATE TABLE blobs (
+CREATE TABLE IF NOT EXISTS blobs (
     key       TEXT PRIMARY KEY,
     stored_at TIMESTAMPTZ NOT NULL,
     value     JSONB NOT NULL
 );
 
-CREATE TABLE app_secrets (
+CREATE TABLE IF NOT EXISTS app_secrets (
     name  TEXT PRIMARY KEY,
     value BYTEA NOT NULL
 );

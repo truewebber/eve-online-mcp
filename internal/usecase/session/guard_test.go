@@ -3,39 +3,30 @@ package session
 import (
 	"context"
 	"errors"
-	"os"
+	nhttp "net/http"
 	"strings"
 	"testing"
 
-	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
+	esihttp "github.com/truewebber/eve-online-mcp/internal/adapter/esi/http"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
+	ssohttp "github.com/truewebber/eve-online-mcp/internal/adapter/sso/http"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/store/storetest"
+	confirmpgx "github.com/truewebber/eve-online-mcp/internal/domain/confirm/pgx"
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 	"github.com/truewebber/eve-online-mcp/internal/logtest"
 )
 
 func TestGuardMailCapUsesStore(t *testing.T) {
 	t.Parallel()
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		t.Skip("DATABASE_URL is unset; run `make postgres`")
-	}
 	ctx := context.Background()
-	db, err := store.Open(ctx, dsn, logtest.Silent{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	release, err := db.HoldTestLock(ctx)
-	if err != nil {
-		db.Close()
-		t.Fatal(err)
-	}
-	t.Cleanup(db.Close)
-	t.Cleanup(release)
-	if err := db.ResetTables(ctx); err != nil {
-		t.Fatal(err)
-	}
+	db := storetest.Open(t, logtest.Silent{})
 	runtime, err := Open(Options{
-		Store:  db,
-		Logger: logtest.Silent{},
+		Store:    db,
+		Confirms: confirmpgx.New(db.Pool()),
+		ESI:      esihttp.New(esi.Options{}, nhttp.DefaultClient, logtest.Silent{}),
+		SSO:      ssohttp.New(sso.Options{}, nhttp.DefaultClient, logtest.Silent{}),
+		Logger:   logtest.Silent{},
 	})
 	if err != nil {
 		t.Fatal(err)

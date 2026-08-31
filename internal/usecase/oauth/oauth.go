@@ -23,6 +23,10 @@ import (
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
+	"github.com/truewebber/eve-online-mcp/internal/domain/authcode"
+	"github.com/truewebber/eve-online-mcp/internal/domain/character"
+	"github.com/truewebber/eve-online-mcp/internal/domain/loginstate"
+	"github.com/truewebber/eve-online-mcp/internal/domain/oauthclient"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -110,12 +114,13 @@ func (h Host) URL(elem ...string) string {
 }
 
 type Server struct {
-	pub     Host
-	db      *store.Store
-	runtime *session.Session
-	// login talks to CCP for MCP authorize and for completing any replica's
-	// handshake. Character tokens are written to the owning user's store.
-	login    *sso.Client
+	pub      Host
+	db       *store.Store
+	runtime  *session.Session
+	clients  oauthclient.Repository
+	logins   loginstate.Repository
+	codes    authcode.Repository
+	login    sso.Client
 	hmacKey  []byte
 	sessions sync.Map
 	logger   log.Logger
@@ -135,15 +140,15 @@ func Open(pub Host, runtime *session.Session, db *store.Store, logger log.Logger
 	if len(key) < hmacMinBytes {
 		return nil, ErrHMACTooShort
 	}
-	brokerOpts := runtime.Opts.SSO
-	brokerOpts.UserID = ""
-	brokerOpts.DB = nil
 
 	return &Server{
 		pub:     pub,
 		db:      db,
 		runtime: runtime,
-		login:   sso.New(brokerOpts, runtime.HTTP, logger),
+		clients: runtime.Clients,
+		logins:  runtime.Logins,
+		codes:   runtime.Codes,
+		login:   runtime.Opts.SSO.ForUser("", nil),
 		hmacKey: key,
 		logger:  logger,
 	}, nil
@@ -229,7 +234,7 @@ func (s *Server) ServeRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := randomID(clientIDBytes)
-	err = s.db.PutClient(r.Context(), store.Client{ID: id, RedirectURIs: allowed})
+	err = s.clients.Upsert(r.Context(), oauthclient.Client{ID: id, RedirectURIs: allowed})
 	if err != nil {
 		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
 
@@ -281,11 +286,11 @@ func (s *Server) ServeAuthorize(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	if err := s.db.PutLoginState(r.Context(), store.LoginState{
+	if err := s.logins.Put(r.Context(), loginstate.Login{
 		State:         prep.State,
 		PKCEVerifier:  prep.Verifier,
 		Scopes:        prep.Scopes,
-		Kind:          store.LoginMCP,
+		Kind:          loginstate.KindMCP,
 		MCPClientID:   mcpClient,
 		RedirectURI:   redirect,
 		MCPState:      state,
@@ -305,23 +310,23 @@ type Callback struct {
 
 func (s *Server) CompleteCallback(ctx context.Context, code, eveState string) (Callback, error) {
 	s.purge(ctx)
-	st, ok, err := s.db.TakeLoginState(ctx, eveState)
+	st, err := s.logins.Take(ctx, eveState)
+	if errors.Is(err, loginstate.ErrNotFound) {
+		return Callback{}, ErrUnknownLogin
+	}
 	if err != nil {
 		return Callback{}, wrap("CompleteCallback", err)
-	}
-	if !ok {
-		return Callback{}, ErrUnknownLogin
 	}
 	token, err := s.login.ExchangeCode(ctx, code, st.PKCEVerifier)
 	if err != nil {
 		return Callback{}, wrap("CompleteCallback", err)
 	}
 	switch st.Kind {
-	case store.LoginMCP:
+	case loginstate.KindMCP:
 		loc, err := s.finishMCP(ctx, st, token)
 
 		return Callback{Redirect: loc, Token: token}, err
-	case store.LoginAlt:
+	case loginstate.KindAlt:
 		err := s.finishAlt(ctx, st, token)
 		if err != nil {
 			return Callback{Token: token}, err
@@ -396,7 +401,7 @@ func (s *Server) ProtectMCP(next http.Handler) http.Handler {
 	})(inner)
 }
 
-func (s *Server) finishMCP(ctx context.Context, p *store.LoginState, token *sso.CharacterToken) (string, error) {
+func (s *Server) finishMCP(ctx context.Context, p *loginstate.Login, token *sso.CharacterToken) (string, error) {
 	userID, err := s.ownerOf(ctx, token.CharacterID)
 	if err != nil {
 		return "", err
@@ -408,13 +413,13 @@ func (s *Server) finishMCP(ctx context.Context, p *store.LoginState, token *sso.
 		}
 		userID = u.ID
 	}
-	if err := s.SessionFor(userID).SSO.Store.Upsert(ctx, token); err != nil {
+	if err := s.SessionFor(userID).SSO.Upsert(ctx, token); err != nil {
 		return "", wrap("finishMCP", err)
 	}
 
 	code := randomID(authCodeBytes)
-	if err := s.db.PutAuthCode(ctx, store.AuthCode{
-		Code:          code,
+	if err := s.codes.Put(ctx, authcode.Code{
+		Value:         code,
 		UserID:        userID,
 		MCPClientID:   p.MCPClientID,
 		RedirectURI:   p.RedirectURI,
@@ -438,7 +443,7 @@ func (s *Server) finishMCP(ctx context.Context, p *store.LoginState, token *sso.
 	return u.String(), nil
 }
 
-func (s *Server) finishAlt(ctx context.Context, st *store.LoginState, token *sso.CharacterToken) error {
+func (s *Server) finishAlt(ctx context.Context, st *loginstate.Login, token *sso.CharacterToken) error {
 	if st.UserID == "" {
 		return errAltMissingUser
 	}
@@ -449,8 +454,8 @@ func (s *Server) finishAlt(ctx context.Context, st *store.LoginState, token *sso
 	if owner != "" && owner != st.UserID {
 		return CharacterOwnedError{CharacterName: token.CharacterName}
 	}
-	if err := s.SessionFor(st.UserID).SSO.Store.Upsert(ctx, token); err != nil {
-		if errors.Is(err, store.ErrOwned) {
+	if err := s.SessionFor(st.UserID).SSO.Upsert(ctx, token); err != nil {
+		if errors.Is(err, character.ErrOwned) {
 			return CharacterOwnedError{CharacterName: token.CharacterName}
 		}
 
@@ -462,29 +467,32 @@ func (s *Server) finishAlt(ctx context.Context, st *store.LoginState, token *sso
 }
 
 func (s *Server) ownerOf(ctx context.Context, characterID int) (string, error) {
-	userID, ok, err := s.db.OwnerOf(ctx, int64(characterID))
+	if s.runtime.Characters == nil {
+		return "", nil
+	}
+	c, err := s.runtime.Characters.Get(ctx, int64(characterID))
+	if errors.Is(err, character.ErrNotFound) {
+		return "", nil
+	}
 	if err != nil {
 		return "", wrap("ownerOf", err)
 	}
-	if !ok {
-		return "", nil
-	}
 
-	return userID, nil
+	return c.UserID, nil
 }
 
 func (s *Server) exchangeCode(w http.ResponseWriter, r *http.Request) {
 	code := r.Form.Get(paramCode)
 	verifier := r.Form.Get(paramCodeVerifier)
 	redirect := r.Form.Get(paramRedirectURI)
-	ac, ok, err := s.db.TakeAuthCode(r.Context(), code)
-	if err != nil {
-		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
+	ac, err := s.codes.Take(r.Context(), code)
+	if errors.Is(err, authcode.ErrNotFound) {
+		http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
 
 		return
 	}
-	if !ok {
-		http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
+	if err != nil {
+		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
 
 		return
 	}
@@ -638,8 +646,8 @@ func (s *Server) clientRedirectOK(ctx context.Context, clientID, redirect string
 	if !redirectOK(redirect) {
 		return false
 	}
-	c, ok, err := s.db.GetClient(ctx, clientID)
-	if err != nil || !ok {
+	c, err := s.clients.Get(ctx, clientID)
+	if err != nil {
 		return true
 	}
 	if slices.Contains(c.RedirectURIs, redirect) {
@@ -650,11 +658,15 @@ func (s *Server) clientRedirectOK(ctx context.Context, clientID, redirect string
 }
 
 func (s *Server) purge(ctx context.Context) {
-	if s.db == nil {
-		return
+	if s.logins != nil {
+		if _, err := s.logins.DeleteExpired(ctx); err != nil {
+			s.logger.Error("oauth: purge logins", "err", err)
+		}
 	}
-	if _, err := s.db.PurgeExpired(ctx); err != nil {
-		s.logger.Error("oauth: purge", "err", err)
+	if s.codes != nil {
+		if _, err := s.codes.DeleteExpired(ctx); err != nil {
+			s.logger.Error("oauth: purge codes", "err", err)
+		}
 	}
 }
 

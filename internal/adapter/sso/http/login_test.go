@@ -1,15 +1,16 @@
-package sso
+package http
 
 import (
 	"net/url"
 	"testing"
 
+	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
 	"github.com/truewebber/eve-online-mcp/internal/logtest"
 )
 
 func TestPrepareLoginAssemblesAuthorizeURL(t *testing.T) {
 	t.Parallel()
-	c := New(Options{
+	c := New(sso.Options{
 		ClientID:    "cid",
 		CallbackURL: "http://127.0.0.1/auth/callback",
 		Scopes:      []string{"esi-wallet.read_character_wallet.v1"},

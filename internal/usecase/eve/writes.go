@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
-	"github.com/truewebber/eve-online-mcp/internal/adapter/names"
 	"github.com/truewebber/eve-online-mcp/internal/domain/j"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 
@@ -485,7 +484,7 @@ func resolveMailRecipients(ctx context.Context, a *session.Session, to []string)
 	var recipients []map[string]any
 	var resolvedNames []string
 	var unknown []string
-	var ambiguous []names.NameResolution
+	var ambiguous []esi.NameResolution
 	seen := map[int]struct{}{}
 	for _, asked := range to {
 		match := resolutions[strings.ToLower(strings.TrimSpace(asked))]
@@ -775,15 +774,15 @@ func registerCalendar(s *mcp.Server) {
 	})
 }
 
-func resolveContacts(ctx context.Context, a *session.Session, namesIn []string) ([]names.NameMatch, map[string]any, error) {
+func resolveContacts(ctx context.Context, a *session.Session, namesIn []string) ([]esi.NameMatch, map[string]any, error) {
 	only := []string{fCharacters, fCorporations, fAlliances}
 	resolutions, err := a.Resolver.ResolveNames(ctx, namesIn, nil, only)
 	if err != nil {
 		return nil, nil, wrap("resolveContacts", err)
 	}
-	var matches []names.NameMatch
+	var matches []esi.NameMatch
 	var unknown []string
-	var ambiguous []names.NameResolution
+	var ambiguous []esi.NameResolution
 	seen := map[int]struct{}{}
 	for _, asked := range namesIn {
 		match := resolutions[strings.ToLower(strings.TrimSpace(asked))]

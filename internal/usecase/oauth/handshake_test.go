@@ -12,7 +12,8 @@ import (
 	"time"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
-	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
+	"github.com/truewebber/eve-online-mcp/internal/domain/authcode"
+	"github.com/truewebber/eve-online-mcp/internal/domain/loginstate"
 )
 
 func TestHMACStableAcrossOpen(t *testing.T) {
@@ -50,11 +51,11 @@ func TestStartAltLoginRecordsUserID(t *testing.T) {
 	if !strings.Contains(login.URL, "login.eveonline.com") || login.State == "" {
 		t.Fatalf("url %s state %s", login.URL, login.State)
 	}
-	st, ok, err := db.GetLoginState(ctx, login.State)
-	if err != nil || !ok {
-		t.Fatalf("ok %v err %v", ok, err)
+	st, err := logins(db).Get(ctx, login.State)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if st.Kind != store.LoginAlt || st.UserID != u.ID || st.PKCEVerifier == "" {
+	if st.Kind != loginstate.KindAlt || st.UserID != u.ID || st.PKCEVerifier == "" {
 		t.Fatalf("login state %+v", st)
 	}
 }
@@ -85,11 +86,11 @@ func TestAuthorizePersistsMCPLoginState(t *testing.T) {
 	if eveState == "" {
 		t.Fatalf("location %s", loc)
 	}
-	st, ok, err := db.GetLoginState(context.Background(), eveState)
-	if err != nil || !ok {
-		t.Fatalf("ok %v err %v", ok, err)
+	st, err := logins(db).Get(context.Background(), eveState)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if st.Kind != store.LoginMCP || st.UserID != "" || st.MCPClientID != "mcp-client" ||
+	if st.Kind != loginstate.KindMCP || st.UserID != "" || st.MCPClientID != "mcp-client" ||
 		st.RedirectURI != redirect || st.MCPState != "mcp-state" ||
 		st.CodeChallenge == "" || st.PKCEVerifier == "" {
 		t.Fatalf("login state %+v", st)
@@ -115,12 +116,12 @@ func TestFinishAltUsesRecordedUser(t *testing.T) {
 	}
 	s := testServer(t, db)
 	tok := &sso.CharacterToken{CharacterID: 7, CharacterName: altName, RefreshToken: "rt"}
-	if err := s.finishAlt(ctx, &store.LoginState{UserID: u.ID}, tok); err != nil {
+	if err := s.finishAlt(ctx, &loginstate.Login{UserID: u.ID}, tok); err != nil {
 		t.Fatal(err)
 	}
-	owner, ok, err := db.OwnerOf(ctx, 7)
-	if err != nil || !ok || owner != u.ID {
-		t.Fatalf("owner %s ok %v err %v", owner, ok, err)
+	row, err := characters(db).Get(ctx, 7)
+	if err != nil || row.UserID != u.ID {
+		t.Fatalf("owner %v err %v", row, err)
 	}
 }
 
@@ -140,8 +141,8 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 
 	put := func(t *testing.T, code string, expires time.Time) {
 		t.Helper()
-		err := db.PutAuthCode(ctx, store.AuthCode{
-			Code: code, UserID: u.ID, MCPClientID: "c",
+		err := codes(db).Put(ctx, authcode.Code{
+			Value: code, UserID: u.ID, MCPClientID: "c",
 			RedirectURI: redirect, CodeChallenge: challenge, ExpiresAt: expires,
 		})
 		if err != nil {

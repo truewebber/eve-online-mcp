@@ -8,8 +8,15 @@ import (
 	"github.com/truewebber/gopkg/log"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
+	esihttp "github.com/truewebber/eve-online-mcp/internal/adapter/esi/http"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
+	ssohttp "github.com/truewebber/eve-online-mcp/internal/adapter/sso/http"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
+	authcodepgx "github.com/truewebber/eve-online-mcp/internal/domain/authcode/pgx"
+	characterpgx "github.com/truewebber/eve-online-mcp/internal/domain/character/pgx"
+	confirmpgx "github.com/truewebber/eve-online-mcp/internal/domain/confirm/pgx"
+	loginstatepgx "github.com/truewebber/eve-online-mcp/internal/domain/loginstate/pgx"
+	oauthclientpgx "github.com/truewebber/eve-online-mcp/internal/domain/oauthclient/pgx"
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 	httpsvc "github.com/truewebber/eve-online-mcp/internal/service/http"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/oauth"
@@ -52,22 +59,31 @@ func start(logger log.Logger) error {
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
-	runtime, err := session.Open(session.Options{
-		UserAgent: cfg.UserAgent,
-		Store:     db,
-		Logger:    logger,
-		ESI: esi.Options{
-			UserAgent:  cfg.UserAgent,
-			CompatDate: defaultCompatDate,
-		},
-		SSO: sso.Options{
-			ClientID:     cfg.ClientID,
-			ClientSecret: cfg.ClientSecret,
-			CallbackURL:  cfg.CallbackURL,
-			UserAgent:    cfg.UserAgent,
-			Scopes:       write.RequestedScopes(),
-		},
-	})
+	pool := db.Pool()
+	chars := characterpgx.New(pool, logger)
+	opts := session.Options{
+		UserAgent:  cfg.UserAgent,
+		Store:      db,
+		Characters: chars,
+		Clients:    oauthclientpgx.New(pool),
+		Logins:     loginstatepgx.New(pool),
+		Codes:      authcodepgx.New(pool),
+		Confirms:   confirmpgx.New(pool),
+		Logger:     logger,
+	}
+	opts.HTTP = session.NewHTTPClient(opts)
+	opts.ESI = esihttp.New(esi.Options{
+		UserAgent:  cfg.UserAgent,
+		CompatDate: defaultCompatDate,
+	}, opts.HTTP, logger)
+	opts.SSO = ssohttp.New(sso.Options{
+		ClientID:     cfg.ClientID,
+		ClientSecret: cfg.ClientSecret,
+		CallbackURL:  cfg.CallbackURL,
+		UserAgent:    cfg.UserAgent,
+		Scopes:       write.RequestedScopes(),
+	}, opts.HTTP, logger)
+	runtime, err := session.Open(opts)
 	if err != nil {
 		return fmt.Errorf("open session: %w", err)
 	}

@@ -2,39 +2,47 @@ package session
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
+	"github.com/truewebber/eve-online-mcp/internal/domain/confirm"
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 )
 
-type guardPersist struct{ db *store.Store }
+type guardPersist struct {
+	db       *store.Store
+	confirms confirm.Repository
+}
 
 func (p guardPersist) PutConfirm(ctx context.Context, c write.Confirm) error {
-	return wrap("PutConfirm", p.db.PutConfirmToken(ctx, store.ConfirmToken{
-		Token: c.Token, UserID: c.UserID, Tool: c.Tool,
+	return wrap("PutConfirm", p.confirms.Put(ctx, confirm.Confirm{
+		Value: c.Token, UserID: c.UserID, Tool: c.Tool,
 		ArgsDigest: c.ArgsDigest, CreatedAt: c.CreatedAt,
 	}))
 }
 
 func (p guardPersist) GetConfirm(ctx context.Context, token string) (*write.Confirm, bool, error) {
-	row, ok, err := p.db.GetConfirmToken(ctx, token)
-	if err != nil || !ok {
-		return nil, ok, wrap("GetConfirm", err)
+	row, err := p.confirms.Get(ctx, token)
+	if errors.Is(err, confirm.ErrNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, wrap("GetConfirm", err)
 	}
 
 	return &write.Confirm{
-		Token: row.Token, UserID: row.UserID, Tool: row.Tool,
+		Token: row.Value, UserID: row.UserID, Tool: row.Tool,
 		ArgsDigest: row.ArgsDigest, CreatedAt: row.CreatedAt,
 	}, true, nil
 }
 
 func (p guardPersist) DeleteConfirm(ctx context.Context, token string) error {
-	return wrap("DeleteConfirm", p.db.DeleteConfirmToken(ctx, token))
+	return wrap("DeleteConfirm", p.confirms.Delete(ctx, token))
 }
 
 func (p guardPersist) CountConfirm(ctx context.Context, userID string) (int, error) {
-	n, err := p.db.CountConfirmTokens(ctx, userID)
+	n, err := p.confirms.Count(ctx, userID)
 
 	return n, wrap("CountConfirm", err)
 }

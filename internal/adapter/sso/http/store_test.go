@@ -1,13 +1,16 @@
-package sso
+package http
 
 import (
 	"context"
 	"errors"
-	"os"
 	"testing"
 	"time"
 
+	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/store/storetest"
+	"github.com/truewebber/eve-online-mcp/internal/domain/character"
+	characterpgx "github.com/truewebber/eve-online-mcp/internal/domain/character/pgx"
 	"github.com/truewebber/eve-online-mcp/internal/logtest"
 )
 
@@ -15,39 +18,28 @@ const testRefreshToken = "rt-1"
 
 func openStore(t *testing.T) *store.Store {
 	t.Helper()
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		t.Skip("DATABASE_URL is unset; run `make postgres`")
-	}
-	ctx := context.Background()
-	s, err := store.Open(ctx, dsn, logtest.Silent{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	release, err := s.HoldTestLock(ctx)
-	if err != nil {
-		s.Close()
-		t.Fatal(err)
-	}
-	t.Cleanup(s.Close)
-	t.Cleanup(release)
-	if err := s.ResetTables(ctx); err != nil {
-		t.Fatal(err)
-	}
 
-	return s
+	return storetest.Open(t, logtest.Silent{})
+}
+
+func openChars(t *testing.T, db *store.Store) character.Repository {
+	t.Helper()
+
+	return characterpgx.New(db.Pool(), logtest.Silent{})
 }
 
 func TestTokenStorePersistsRefreshNotAccess(t *testing.T) {
 	t.Parallel()
 	db := openStore(t)
+	chars := openChars(t, db)
 	ctx := context.Background()
 	u, err := db.CreateUser(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts := newTokenStore(db, u.ID, logtest.Silent{})
-	tok := &CharacterToken{
+	base := New(sso.Options{}, nil, logtest.Silent{})
+	ts := base.ForUser(u.ID, chars)
+	tok := &sso.CharacterToken{
 		CharacterID:     2112625428,
 		CharacterName:   "Jane Doe",
 		RefreshToken:    testRefreshToken,
@@ -64,7 +56,7 @@ func TestTokenStorePersistsRefreshNotAccess(t *testing.T) {
 		t.Fatalf("same process got %+v", got)
 	}
 
-	fresh := newTokenStore(db, u.ID, logtest.Silent{})
+	fresh := base.ForUser(u.ID, chars)
 	got = fresh.Get(ctx, tok.CharacterID)
 	if got == nil || got.RefreshToken != testRefreshToken {
 		t.Fatalf("reload %+v", got)
@@ -87,6 +79,7 @@ func TestTokenStorePersistsRefreshNotAccess(t *testing.T) {
 func TestTokenStoreRejectsOtherOwner(t *testing.T) {
 	t.Parallel()
 	db := openStore(t)
+	chars := openChars(t, db)
 	ctx := context.Background()
 	a, err := db.CreateUser(ctx)
 	if err != nil {
@@ -96,17 +89,18 @@ func TestTokenStoreRejectsOtherOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tok := &CharacterToken{
+	base := New(sso.Options{}, nil, logtest.Silent{})
+	tok := &sso.CharacterToken{
 		CharacterID: 99, CharacterName: "Lock", RefreshToken: "rt",
 	}
-	if err := newTokenStore(db, a.ID, logtest.Silent{}).Upsert(ctx, tok); err != nil {
+	if err := base.ForUser(a.ID, chars).Upsert(ctx, tok); err != nil {
 		t.Fatal(err)
 	}
-	err = newTokenStore(db, b.ID, logtest.Silent{}).Upsert(ctx, tok)
-	if !errors.Is(err, store.ErrOwned) {
+	err = base.ForUser(b.ID, chars).Upsert(ctx, tok)
+	if !errors.Is(err, character.ErrOwned) {
 		t.Fatalf("want ErrOwned, got %v", err)
 	}
-	if newTokenStore(db, b.ID, logtest.Silent{}).Get(ctx, 99) != nil {
+	if base.ForUser(b.ID, chars).Get(ctx, 99) != nil {
 		t.Fatal("other user must not see the character")
 	}
 }
@@ -114,15 +108,16 @@ func TestTokenStoreRejectsOtherOwner(t *testing.T) {
 func TestBrokerStoreStaysInMemory(t *testing.T) {
 	t.Parallel()
 	db := openStore(t)
+	chars := openChars(t, db)
 	ctx := context.Background()
-	broker := newTokenStore(db, "", logtest.Silent{})
-	tok := &CharacterToken{CharacterID: 7, CharacterName: "Broker", RefreshToken: "rt"}
+	broker := New(sso.Options{}, nil, logtest.Silent{}).ForUser("", chars)
+	tok := &sso.CharacterToken{CharacterID: 7, CharacterName: "Broker", RefreshToken: "rt"}
 	if err := broker.Upsert(ctx, tok); err != nil {
 		t.Fatal(err)
 	}
-	_, ok, err := db.OwnerOf(context.Background(), 7)
-	if err != nil || ok {
-		t.Fatalf("broker must not persist, ok=%v err=%v", ok, err)
+	_, err := chars.Get(ctx, 7)
+	if !errors.Is(err, character.ErrNotFound) {
+		t.Fatalf("broker must not persist, err=%v", err)
 	}
 	if broker.Get(ctx, 7) == nil {
 		t.Fatal("broker memory miss")
