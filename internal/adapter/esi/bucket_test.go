@@ -82,7 +82,7 @@ func TestFreshCacheHitDoesNotTakeToken(t *testing.T) {
 			StoredAt:  time.Now(),
 		},
 	}}
-	res, err := c.Get("/status", nil, nil, nil)
+	res, err := c.Get(t.Context(), "/status", nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestNetworkGetTakesToken(t *testing.T) {
 	c := New(Options{BaseURL: srv.URL, CompatDate: "2026-08-18"}, srv.Client(), nil, nil)
 	now := time.Now()
 	c.bucket.now = func() time.Time { return now }
-	if _, err := c.Get("/status", nil, nil, nil); err != nil {
+	if _, err := c.Get(t.Context(), "/status", nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := c.bucket.remaining(); got != UserBucketCapacity-1 {
@@ -119,7 +119,7 @@ func TestNetworkGetTakesToken(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	_, err := c.Get("/status", nil, nil, nil)
+	_, err := c.Get(t.Context(), "/status", nil, nil, nil)
 	if _, ok := errors.AsType[UserLimitedError](err); !ok {
 		t.Fatalf("empty bucket Get: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestNotModifiedRefundsToken(t *testing.T) {
 			StoredAt:  time.Now().Add(-time.Hour),
 		},
 	}}
-	res, err := c.Get("/status", nil, nil, nil)
+	res, err := c.Get(t.Context(), "/status", nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

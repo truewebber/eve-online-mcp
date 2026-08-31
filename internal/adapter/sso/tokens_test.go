@@ -6,17 +6,17 @@ func TestMemoryTokenStore(t *testing.T) {
 	t.Parallel()
 	ts := newTokenStore(nil, "")
 	tok := &CharacterToken{CharacterID: 1, CharacterName: "A", RefreshToken: "rt"}
-	err := ts.Upsert(tok)
+	err := ts.Upsert(t.Context(), tok)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ts.Get(1) == nil || ts.Get(1).RefreshToken != "rt" {
+	if ts.Get(t.Context(), 1) == nil || ts.Get(t.Context(), 1).RefreshToken != "rt" {
 		t.Fatal("get")
 	}
-	if ts.FindByName("a") == nil {
+	if ts.FindByName(t.Context(), "a") == nil {
 		t.Fatal("find")
 	}
-	if !ts.Remove(1) || ts.Get(1) != nil {
+	if !ts.Remove(t.Context(), 1) || ts.Get(t.Context(), 1) != nil {
 		t.Fatal("remove")
 	}
 }

@@ -44,8 +44,8 @@ func registerIndustry(s *mcp.Server) {
 	}, sessionTool(eveIndustryMining))
 }
 
-func eveIndustryJobs(_ context.Context, a *session.Session, in industryJobsIn) (any, error) {
-	token, err := a.ResolveCharacter(in.Character)
+func eveIndustryJobs(ctx context.Context, a *session.Session, in industryJobsIn) (any, error) {
+	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
@@ -53,16 +53,16 @@ func eveIndustryJobs(_ context.Context, a *session.Session, in industryJobsIn) (
 		return nil, err
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.Get(fmt.Sprintf("/characters/%d/industry/jobs", cid), &cid, map[string]any{"include_completed": boolDef(in.IncludeCompleted, false)}, nil)
+	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/industry/jobs", cid), &cid, map[string]any{"include_completed": boolDef(in.IncludeCompleted, false)}, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	return industryJobsResult(a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, 20), concise(in.ResponseFormat), false), nil
+	return industryJobsResult(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, 20), concise(in.ResponseFormat), false), nil
 }
 
-func eveIndustryPlanets(_ context.Context, a *session.Session, in industryPlanetsIn) (any, error) {
-	token, err := a.ResolveCharacter(in.Character)
+func eveIndustryPlanets(ctx context.Context, a *session.Session, in industryPlanetsIn) (any, error) {
+	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +70,7 @@ func eveIndustryPlanets(_ context.Context, a *session.Session, in industryPlanet
 		return nil, err
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.Get(fmt.Sprintf("/characters/%d/planets", cid), &cid, nil, nil)
+	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/planets", cid), &cid, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func eveIndustryPlanets(_ context.Context, a *session.Session, in industryPlanet
 		idSet[j.Int(c["planet_id"])] = struct{}{}
 		idSet[j.Int(c["solar_system_id"])] = struct{}{}
 	}
-	names, _ := a.Resolver.Names(setToList(idSet), nil)
+	names, _ := a.Resolver.Names(ctx, setToList(idSet), nil)
 	var rows []map[string]any
 	for _, c := range colonies {
 		rows = append(rows, map[string]any{
@@ -93,7 +93,7 @@ func eveIndustryPlanets(_ context.Context, a *session.Session, in industryPlanet
 		})
 	}
 	if boolDef(in.Detail, false) {
-		decorateColonyDetails(a, cid, colonies, rows)
+		decorateColonyDetails(ctx, a, cid, colonies, rows)
 	}
 
 	return map[string]any{
@@ -102,8 +102,8 @@ func eveIndustryPlanets(_ context.Context, a *session.Session, in industryPlanet
 	}, nil
 }
 
-func eveIndustryMining(_ context.Context, a *session.Session, in industryMiningIn) (any, error) {
-	token, err := a.ResolveCharacter(in.Character)
+func eveIndustryMining(ctx context.Context, a *session.Session, in industryMiningIn) (any, error) {
+	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +111,7 @@ func eveIndustryMining(_ context.Context, a *session.Session, in industryMiningI
 		return nil, err
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.GetAllPages(fmt.Sprintf("/characters/%d/mining", cid), &cid, nil, 40)
+	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/mining", cid), &cid, nil, 40)
 	if err != nil {
 		return nil, err
 	}
@@ -120,8 +120,8 @@ func eveIndustryMining(_ context.Context, a *session.Session, in industryMiningI
 		return map[string]any{"character": token.CharacterName, "ores": []any{}, "note": "Nothing mined recently."}, nil
 	}
 	totals, bySystem := sumMining(entries)
-	names, _ := a.Resolver.Names(append(keys(totals), keys(bySystem)...), nil)
-	prices, _ := a.Resolver.ReferencePrices()
+	names, _ := a.Resolver.Names(ctx, append(keys(totals), keys(bySystem)...), nil)
+	prices, _ := a.Resolver.ReferencePrices(ctx)
 	rows, grand := miningOreRows(totals, names, prices)
 	visible, meta := page(rows, limitOr(in.Limit, 15), "")
 
@@ -174,7 +174,7 @@ func topMiningSystems(bySystem map[int]int, names map[int]string, n int) []map[s
 	return top
 }
 
-func industryJobsResult(a *session.Session, character string, cid int, data any, stale string, limit int, conciseMode, withInstaller bool) map[string]any {
+func industryJobsResult(ctx context.Context, a *session.Session, character string, cid int, data any, stale string, limit int, conciseMode, withInstaller bool) map[string]any {
 	jobs := j.Maps(data)
 	if len(jobs) == 0 {
 		return map[string]any{
@@ -201,8 +201,8 @@ func industryJobsResult(a *session.Session, character string, cid int, data any,
 			people[j.Int(job["installer_id"])] = struct{}{}
 		}
 	}
-	names, _ := a.Resolver.Names(append(setToList(idSet), setToList(people)...), nil)
-	places, _ := a.Resolver.Names(setToList(placeSet), &cid)
+	names, _ := a.Resolver.Names(ctx, append(setToList(idSet), setToList(people)...), nil)
+	places, _ := a.Resolver.Names(ctx, setToList(placeSet), &cid)
 	now := time.Now().UTC()
 	var rows []map[string]any
 	for _, job := range jobs {
@@ -255,15 +255,15 @@ func industryJobsResult(a *session.Session, character string, cid int, data any,
 	}, meta)
 }
 
-func decorateColonyDetails(a *session.Session, cid int, colonies, rows []map[string]any) {
+func decorateColonyDetails(ctx context.Context, a *session.Session, cid int, colonies, rows []map[string]any) {
 	now := time.Now().UTC()
 	for i, c := range colonies {
-		decorateColonyDetail(a, cid, c, rows[i], now)
+		decorateColonyDetail(ctx, a, cid, c, rows[i], now)
 	}
 }
 
-func decorateColonyDetail(a *session.Session, cid int, colony, row map[string]any, now time.Time) {
-	layout, err := a.ESI.Get(fmt.Sprintf("/characters/%d/planets/%d", cid, j.Int(colony["planet_id"])), &cid, nil, nil)
+func decorateColonyDetail(ctx context.Context, a *session.Session, cid int, colony, row map[string]any, now time.Time) {
+	layout, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/planets/%d", cid, j.Int(colony["planet_id"])), &cid, nil, nil)
 	if err != nil {
 		return
 	}
@@ -271,7 +271,7 @@ func decorateColonyDetail(a *session.Session, cid int, colony, row map[string]an
 	if expiry := colonyExtractorExpiry(pins, now); expiry != "" {
 		row["extractor_expires_in"] = expiry
 	}
-	if stored := colonyStored(a, pins); len(stored) > 0 {
+	if stored := colonyStored(ctx, a, pins); len(stored) > 0 {
 		row["stored"] = stored
 	}
 }
@@ -297,7 +297,7 @@ func colonyExtractorExpiry(pins []map[string]any, now time.Time) string {
 	return humanDelta(soonest.Sub(now))
 }
 
-func colonyStored(a *session.Session, pins []map[string]any) map[string]int {
+func colonyStored(ctx context.Context, a *session.Session, pins []map[string]any) map[string]int {
 	stored := map[int]int{}
 	for _, p := range pins {
 		for _, content := range j.Maps(p["contents"]) {
@@ -307,7 +307,7 @@ func colonyStored(a *session.Session, pins []map[string]any) map[string]int {
 	if len(stored) == 0 {
 		return nil
 	}
-	pn, _ := a.Resolver.Names(keys(stored), nil)
+	pn, _ := a.Resolver.Names(ctx, keys(stored), nil)
 	type kv struct {
 		n string
 		q int

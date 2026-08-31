@@ -85,7 +85,7 @@ func registerUniverse(s *mcp.Server) {
 	}, sessionTool(eveUniverseHotspots))
 }
 
-func eveUniverseSearch(_ context.Context, a *session.Session, in universeSearchIn) (any, error) {
+func eveUniverseSearch(ctx context.Context, a *session.Session, in universeSearchIn) (any, error) {
 	if len(strings.TrimSpace(in.Query)) < 3 {
 		return map[string]any{"error": "query must be at least 3 characters"}, nil
 	}
@@ -93,19 +93,19 @@ func eveUniverseSearch(_ context.Context, a *session.Session, in universeSearchI
 	if invalid := universeSearchInvalid(wanted); len(invalid) > 0 {
 		return map[string]any{"error": fmt.Sprintf("Unknown categories %v. Valid values: %s", invalid, strings.Join(searchCategories(), ", "))}, nil
 	}
-	token, err := a.ResolveCharacter(in.Character)
+	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
 	if err := a.RequireScope(token, "esi-search.search_structures.v1", "the search index"); err != nil {
 		return nil, err
 	}
-	raw, used, err := searchWithFallback(a, token.CharacterID, wanted, in.Query, boolDef(in.Strict, false))
+	raw, used, err := searchWithFallback(ctx, a, token.CharacterID, wanted, in.Query, boolDef(in.Strict, false))
 	if err != nil {
 		return nil, err
 	}
 
-	return universeSearchAssemble(a, token.CharacterID, in, raw, used), nil
+	return universeSearchAssemble(ctx, a, token.CharacterID, in, raw, used), nil
 }
 
 func universeSearchWanted(categories string) []string {
@@ -139,10 +139,10 @@ func universeSearchInvalid(wanted []string) []string {
 	return invalid
 }
 
-func universeSearchAssemble(a *session.Session, characterID int, in universeSearchIn, raw map[string][]int, used string) map[string]any {
+func universeSearchAssemble(ctx context.Context, a *session.Session, characterID int, in universeSearchIn, raw map[string][]int, used string) map[string]any {
 	limit := limitOr(in.Limit, 10)
 	pool := min(max(4*limit, 50), 200)
-	names, _ := a.Resolver.Names(setToList(universeSearchIDSet(raw, pool)), &characterID)
+	names, _ := a.Resolver.Names(ctx, setToList(universeSearchIDSet(raw, pool)), &characterID)
 	out := map[string]any{"query": in.Query, "strict": boolDef(in.Strict, false)}
 	if used != in.Query {
 		out["matched_on_prefix"] = used
@@ -197,8 +197,8 @@ func universeSearchRanked(ids []int, names map[int]string, pool, limit int) []ma
 	return ranked
 }
 
-func eveUniverseItem(_ context.Context, a *session.Session, in universeItemIn) (any, error) {
-	resolved, err := a.Resolver.ResolveNames([]string{in.Item}, nil, []string{"inventory_types"})
+func eveUniverseItem(ctx context.Context, a *session.Session, in universeItemIn) (any, error) {
+	resolved, err := a.Resolver.ResolveNames(ctx, []string{in.Item}, nil, []string{"inventory_types"})
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +206,7 @@ func eveUniverseItem(_ context.Context, a *session.Session, in universeItemIn) (
 	if match.Chosen == nil {
 		return map[string]any{"error": fmt.Sprintf("No item type is named exactly %q. Call eve_universe_search with this text to find the real name.", in.Item)}, nil
 	}
-	info, err := a.Resolver.TypeInfo(match.Chosen.ID)
+	info, err := a.Resolver.TypeInfo(ctx, match.Chosen.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -216,10 +216,10 @@ func eveUniverseItem(_ context.Context, a *session.Session, in universeItemIn) (
 	}
 	out := map[string]any{
 		"item": info["name"], "type_id": match.Chosen.ID,
-		"group":     a.Resolver.GroupName(j.Int(info["group_id"])),
+		"group":     a.Resolver.GroupName(ctx, j.Int(info["group_id"])),
 		"volume_m3": info["volume"], "packaged_volume_m3": info["packaged_volume"],
 		"mass_kg": info["mass"], "capacity_m3": info["capacity"],
-		"published": info["published"], "ccp_average_price": isk(a.Resolver.ReferencePrice(match.Chosen.ID)),
+		"published": info["published"], "ccp_average_price": isk(a.Resolver.ReferencePrice(ctx, match.Chosen.ID)),
 		"description": desc,
 	}
 	if match.Ambiguous() {
@@ -237,8 +237,8 @@ type universeSystemESI struct {
 	info, kills, jumps esi.Result
 }
 
-func eveUniverseSystem(_ context.Context, a *session.Session, in universeSystemIn) (any, error) {
-	resolved, err := a.Resolver.ResolveNames([]string{in.System}, nil, []string{"systems"})
+func eveUniverseSystem(ctx context.Context, a *session.Session, in universeSystemIn) (any, error) {
+	resolved, err := a.Resolver.ResolveNames(ctx, []string{in.System}, nil, []string{"systems"})
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +247,7 @@ func eveUniverseSystem(_ context.Context, a *session.Session, in universeSystemI
 		return map[string]any{"error": fmt.Sprintf("No solar system is named exactly %q. Call eve_universe_search with categories='solar_system'.", in.System)}, nil
 	}
 	sid, name := match.Chosen.ID, match.Chosen.Name
-	got, err := universeSystemLookups(a, sid)
+	got, err := universeSystemLookups(ctx, a, sid)
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +257,7 @@ func eveUniverseSystem(_ context.Context, a *session.Session, in universeSystemI
 	sec := j.Float(info["security_status"])
 
 	return map[string]any{
-		"system": name, "system_id": sid, "region": universeRegionName(a, info),
+		"system": name, "system_id": sid, "region": universeRegionName(ctx, a, info),
 		"security_status": mathRound(sec, 2), "security_class": secBand(sec),
 		"stations": len(j.Slice(info["stations"])), "stargates": len(j.Slice(info["stargates"])),
 		"ship_kills_last_hour": j.Int(kills["ship_kills"]), "pod_kills_last_hour": j.Int(kills["pod_kills"]),
@@ -266,16 +266,16 @@ func eveUniverseSystem(_ context.Context, a *session.Session, in universeSystemI
 	}, nil
 }
 
-func universeSystemLookups(a *session.Session, sid int) (universeSystemESI, error) {
-	infoRes, err := a.ESI.Get(fmt.Sprintf("/universe/systems/%d", sid), nil, nil, nil)
+func universeSystemLookups(ctx context.Context, a *session.Session, sid int) (universeSystemESI, error) {
+	infoRes, err := a.ESI.Get(ctx, fmt.Sprintf("/universe/systems/%d", sid), nil, nil, nil)
 	if err != nil {
 		return universeSystemESI{}, err
 	}
-	killsRes, err := a.ESI.Get("/universe/system_kills", nil, nil, nil)
+	killsRes, err := a.ESI.Get(ctx, "/universe/system_kills", nil, nil, nil)
 	if err != nil {
 		return universeSystemESI{}, err
 	}
-	jumpsRes, err := a.ESI.Get("/universe/system_jumps", nil, nil, nil)
+	jumpsRes, err := a.ESI.Get(ctx, "/universe/system_jumps", nil, nil, nil)
 	if err != nil {
 		return universeSystemESI{}, err
 	}
@@ -293,11 +293,11 @@ func universeSystemStat(data any, sid int) map[string]any {
 	return nil
 }
 
-func universeRegionName(a *session.Session, info map[string]any) any {
+func universeRegionName(ctx context.Context, a *session.Session, info map[string]any) any {
 	if j.Int(info["constellation_id"]) == 0 {
 		return nil
 	}
-	c, err := a.ESI.Get(fmt.Sprintf("/universe/constellations/%d", j.Int(info["constellation_id"])), nil, nil, nil)
+	c, err := a.ESI.Get(ctx, fmt.Sprintf("/universe/constellations/%d", j.Int(info["constellation_id"])), nil, nil, nil)
 	if err != nil {
 		return nil
 	}
@@ -305,7 +305,7 @@ func universeRegionName(a *session.Session, info map[string]any) any {
 	if rid == 0 {
 		return nil
 	}
-	regionName, _ := a.Resolver.Name(rid, nil)
+	regionName, _ := a.Resolver.Name(ctx, rid, nil)
 
 	return regionName
 }
@@ -320,7 +320,7 @@ type universeRouteWalk struct {
 	lowsec, nullsec int
 }
 
-func eveUniverseRoute(_ context.Context, a *session.Session, in universeRouteIn) (any, error) {
+func eveUniverseRoute(ctx context.Context, a *session.Session, in universeRouteIn) (any, error) {
 	prefKey := strings.ToLower(strings.TrimSpace(in.Preference))
 	if prefKey == "" {
 		prefKey = "shorter"
@@ -329,7 +329,7 @@ func eveUniverseRoute(_ context.Context, a *session.Session, in universeRouteIn)
 	if !ok {
 		return map[string]any{"error": fmt.Sprintf("preference must be one of %v", []string{"shorter", "safer", "less_secure"})}, nil
 	}
-	found, err := universeResolveSystems(a, in)
+	found, err := universeResolveSystems(ctx, a, in)
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +338,7 @@ func eveUniverseRoute(_ context.Context, a *session.Session, in universeRouteIn)
 		return universeRouteMissing(in, oid, did), nil
 	}
 	req := universeRouteBody(in, found, pref)
-	route, err := a.ESI.Post(fmt.Sprintf("/route/%d/%d", oid, did), nil, nil, req.body)
+	route, err := a.ESI.Post(ctx, fmt.Sprintf("/route/%d/%d", oid, did), nil, nil, req.body)
 	if err != nil {
 		return nil, err
 	}
@@ -347,17 +347,17 @@ func eveUniverseRoute(_ context.Context, a *session.Session, in universeRouteIn)
 		return map[string]any{"error": "No gate route exists between those systems. They may be in wormhole space, or every path is excluded by `avoid`."}, nil
 	}
 
-	return universeRouteSummary(in, pref, req.avoided, universeWalkHops(a, hops)), nil
+	return universeRouteSummary(in, pref, req.avoided, universeWalkHops(ctx, a, hops)), nil
 }
 
-func universeResolveSystems(a *session.Session, in universeRouteIn) (map[string]int, error) {
+func universeResolveSystems(ctx context.Context, a *session.Session, in universeRouteIn) (map[string]int, error) {
 	wanted := []string{in.Origin, in.Destination}
 	for part := range strings.SplitSeq(in.Avoid, ",") {
 		if s := strings.TrimSpace(part); s != "" {
 			wanted = append(wanted, s)
 		}
 	}
-	lookup, err := a.Resolver.IDsFromNames(wanted)
+	lookup, err := a.Resolver.IDsFromNames(ctx, wanted)
 	if err != nil {
 		return nil, err
 	}
@@ -418,7 +418,7 @@ func universeRouteHops(route any) []int {
 	return hops
 }
 
-func universeHopData(a *session.Session, hops []int) map[int]map[string]any {
+func universeHopData(ctx context.Context, a *session.Session, hops []int) map[int]map[string]any {
 	type box struct {
 		sid int
 		m   map[string]any
@@ -426,7 +426,7 @@ func universeHopData(a *session.Session, hops []int) map[int]map[string]any {
 	ch := make(chan box, len(hops))
 	for _, sid := range hops {
 		go func(sid int) {
-			r, err := a.ESI.Get(fmt.Sprintf("/universe/systems/%d", sid), nil, nil, nil)
+			r, err := a.ESI.Get(ctx, fmt.Sprintf("/universe/systems/%d", sid), nil, nil, nil)
 			if err != nil {
 				ch <- box{sid, map[string]any{"name": strconv.Itoa(sid)}}
 
@@ -444,8 +444,8 @@ func universeHopData(a *session.Session, hops []int) map[int]map[string]any {
 	return byID
 }
 
-func universeWalkHops(a *session.Session, hops []int) universeRouteWalk {
-	byID := universeHopData(a, hops)
+func universeWalkHops(ctx context.Context, a *session.Session, hops []int) universeRouteWalk {
+	byID := universeHopData(ctx, a, hops)
 	steps := make([]map[string]any, 0, len(hops))
 	lowsec, nullsec := 0, 0
 	for _, sid := range hops {
@@ -500,8 +500,8 @@ func universeDangerousHops(steps []map[string]any) []string {
 	return dang
 }
 
-func eveUniverseHotspots(_ context.Context, a *session.Session, in universeHotspotsIn) (any, error) {
-	result, err := a.ESI.Get("/universe/system_kills", nil, nil, nil)
+func eveUniverseHotspots(ctx context.Context, a *session.Session, in universeHotspotsIn) (any, error) {
+	result, err := a.ESI.Get(ctx, "/universe/system_kills", nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -517,7 +517,7 @@ func eveUniverseHotspots(_ context.Context, a *session.Session, in universeHotsp
 	for _, r := range rows {
 		idSet[j.Int(r["system_id"])] = struct{}{}
 	}
-	names, _ := a.Resolver.Names(setToList(idSet), nil)
+	names, _ := a.Resolver.Names(ctx, setToList(idSet), nil)
 	var outRows []map[string]any
 	for _, r := range rows {
 		outRows = append(outRows, map[string]any{
@@ -530,10 +530,10 @@ func eveUniverseHotspots(_ context.Context, a *session.Session, in universeHotsp
 	return merge(map[string]any{"window": "last hour", "data_age": result.StaleNote(), "systems": visible}, meta), nil
 }
 
-func searchWithFallback(a *session.Session, characterID int, categories []string, query string, strict bool) (map[string][]int, string, error) {
+func searchWithFallback(ctx context.Context, a *session.Session, characterID int, categories []string, query string, strict bool) (map[string][]int, string, error) {
 	attempt := strings.TrimSpace(query)
 	for {
-		result, err := a.ESI.Get(fmt.Sprintf("/characters/%d/search", characterID), &characterID, map[string]any{
+		result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/search", characterID), &characterID, map[string]any{
 			"categories": categories, "search": attempt, "strict": strict,
 		}, nil)
 		if err != nil {

@@ -53,8 +53,8 @@ func registerCharacter(s *mcp.Server) {
 	}, sessionTool(eveCharacterStandings))
 }
 
-func eveCharacterSkills(_ context.Context, a *session.Session, in characterSkillsIn) (any, error) {
-	token, err := a.ResolveCharacter(in.Character)
+func eveCharacterSkills(ctx context.Context, a *session.Session, in characterSkillsIn) (any, error) {
+	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +62,7 @@ func eveCharacterSkills(_ context.Context, a *session.Session, in characterSkill
 		return nil, err
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.Get(fmt.Sprintf("/characters/%d/skills", cid), &cid, nil, nil)
+	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/skills", cid), &cid, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +72,7 @@ func eveCharacterSkills(_ context.Context, a *session.Session, in characterSkill
 	for _, s := range skills {
 		ids = append(ids, j.Int(s["skill_id"]))
 	}
-	names, _ := a.Resolver.Names(ids, nil)
+	names, _ := a.Resolver.Names(ctx, ids, nil)
 	view := filterCharacterSkills(skills, names, in.Search, boolDef(in.TrainedOnly, true))
 	sort.Slice(view.rows, func(i, k int) bool { return j.Str(view.rows[i]["skill"]) < j.Str(view.rows[k]["skill"]) })
 	visible, meta := page(view.rows, limitOr(in.Limit, 20), "Narrow with `search`, or raise `limit`.")
@@ -140,8 +140,8 @@ func keepCharacterSkill(name string, level int, needle string, trainedOnly bool)
 	return true
 }
 
-func eveCharacterSkillQueue(_ context.Context, a *session.Session, in characterSkillQueueIn) (any, error) {
-	token, err := a.ResolveCharacter(in.Character)
+func eveCharacterSkillQueue(ctx context.Context, a *session.Session, in characterSkillQueueIn) (any, error) {
+	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +149,7 @@ func eveCharacterSkillQueue(_ context.Context, a *session.Session, in characterS
 		return nil, err
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.Get(fmt.Sprintf("/characters/%d/skillqueue", cid), &cid, nil, nil)
+	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/skillqueue", cid), &cid, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +164,7 @@ func eveCharacterSkillQueue(_ context.Context, a *session.Session, in characterS
 	for _, e := range entries {
 		ids = append(ids, j.Int(e["skill_id"]))
 	}
-	names, _ := a.Resolver.Names(ids, nil)
+	names, _ := a.Resolver.Names(ctx, ids, nil)
 	now := time.Now().UTC()
 	sort.Slice(entries, func(i, k int) bool { return j.Int(entries[i]["queue_position"]) < j.Int(entries[k]["queue_position"]) })
 	rows := formatSkillQueue(entries, names, now)
@@ -203,8 +203,8 @@ func formatSkillQueue(entries []map[string]any, names map[int]string, now time.T
 	return rows
 }
 
-func eveCharacterClones(_ context.Context, a *session.Session, in characterClonesIn) (any, error) {
-	token, err := a.ResolveCharacter(in.Character)
+func eveCharacterClones(ctx context.Context, a *session.Session, in characterClonesIn) (any, error) {
+	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
@@ -215,11 +215,11 @@ func eveCharacterClones(_ context.Context, a *session.Session, in characterClone
 		return nil, err
 	}
 	cid := token.CharacterID
-	clonesRes, err := a.ESI.Get(fmt.Sprintf("/characters/%d/clones", cid), &cid, nil, nil)
+	clonesRes, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/clones", cid), &cid, nil, nil)
 	if err != nil {
 		return nil, err
 	}
-	implantsRes, err := a.ESI.Get(fmt.Sprintf("/characters/%d/implants", cid), &cid, nil, nil)
+	implantsRes, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/implants", cid), &cid, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +227,7 @@ func eveCharacterClones(_ context.Context, a *session.Session, in characterClone
 	implants := j.Slice(implantsRes.Data)
 	jump := j.Maps(clones["jump_clones"])
 	home := j.Map(clones["home_location"])
-	names, _ := a.Resolver.Names(collectCloneIDs(implants, jump, home), &cid)
+	names, _ := a.Resolver.Names(ctx, collectCloneIDs(implants, jump, home), &cid)
 
 	return map[string]any{
 		"character":       token.CharacterName,
@@ -287,8 +287,8 @@ func formatJumpClones(jump []map[string]any, names map[int]string) []map[string]
 	return jumps
 }
 
-func eveCharacterStandings(_ context.Context, a *session.Session, in characterStandingsIn) (any, error) {
-	token, err := a.ResolveCharacter(in.Character)
+func eveCharacterStandings(ctx context.Context, a *session.Session, in characterStandingsIn) (any, error) {
+	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
@@ -296,15 +296,15 @@ func eveCharacterStandings(_ context.Context, a *session.Session, in characterSt
 		return nil, err
 	}
 	cid := token.CharacterID
-	standingsRes, standingsErr := a.ESI.Get(fmt.Sprintf("/characters/%d/standings", cid), &cid, nil, nil)
+	standingsRes, standingsErr := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/standings", cid), &cid, nil, nil)
 	lpScope := "esi-characters.read_loyalty.v1"
 	lpGranted := a.HasScope(token, lpScope)
-	lpData, lpErr := fetchCharacterLP(a, cid, lpGranted)
+	lpData, lpErr := fetchCharacterLP(ctx, a, cid, lpGranted)
 	var standings []map[string]any
 	if standingsErr == nil {
 		standings = j.Maps(standingsRes.Data)
 	}
-	names, _ := a.Resolver.Names(standingsNameIDs(standings, lpData), nil)
+	names, _ := a.Resolver.Names(ctx, standingsNameIDs(standings, lpData), nil)
 	rows := formatCharacterStandings(standings, names)
 	visible, meta := page(rows, limitOr(in.Limit, 20), "")
 	out := merge(map[string]any{
@@ -315,11 +315,11 @@ func eveCharacterStandings(_ context.Context, a *session.Session, in characterSt
 	return out, nil
 }
 
-func fetchCharacterLP(a *session.Session, cid int, granted bool) ([]map[string]any, error) {
+func fetchCharacterLP(ctx context.Context, a *session.Session, cid int, granted bool) ([]map[string]any, error) {
 	if !granted {
 		return nil, nil
 	}
-	lpRes, err := a.ESI.Get(fmt.Sprintf("/characters/%d/loyalty/points", cid), &cid, nil, nil)
+	lpRes, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/loyalty/points", cid), &cid, nil, nil)
 	if err != nil {
 		return nil, err
 	}

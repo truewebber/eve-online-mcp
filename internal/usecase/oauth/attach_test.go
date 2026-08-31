@@ -97,7 +97,7 @@ func TestFinishMCPAttachesExistingOwner(t *testing.T) {
 	if row.RefreshToken != "new-rt" {
 		t.Fatalf("refresh %s", row.RefreshToken)
 	}
-	if tok := s.SessionFor(u.ID).SSO.Store.Get(int(charID)); tok == nil {
+	if tok := s.SessionFor(u.ID).SSO.Store.Get(ctx, int(charID)); tok == nil {
 		t.Fatal("session store miss")
 	}
 }
@@ -166,7 +166,7 @@ func TestFinishAltRefusesOtherUser(t *testing.T) {
 	if row.RefreshToken != "a-rt" {
 		t.Fatalf("A must keep the token, got %s", row.RefreshToken)
 	}
-	if tok := s.SessionFor(b.ID).SSO.Store.Get(int(charID)); tok != nil {
+	if tok := s.SessionFor(b.ID).SSO.Store.Get(ctx, int(charID)); tok != nil {
 		t.Fatal("B must not hold the character")
 	}
 }

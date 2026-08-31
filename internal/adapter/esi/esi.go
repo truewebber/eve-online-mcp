@@ -122,21 +122,21 @@ func New(opts Options, httpClient *http.Client, db *store.Store, ssoClient *sso.
 	}
 }
 
-func (c *Client) Get(path string, characterID *int, params map[string]any, cacheTTL *float64) (Result, error) {
+func (c *Client) Get(ctx context.Context, path string, characterID *int, params map[string]any, cacheTTL *float64) (Result, error) {
 	if params == nil {
 		params = map[string]any{}
 	}
 
-	return c.cachedGet(path, characterID, params, cacheTTL)
+	return c.cachedGet(ctx, path, characterID, params, cacheTTL)
 }
 
-func (c *Client) GetAllPages(path string, characterID *int, params map[string]any, maxPages int) (Result, error) {
+func (c *Client) GetAllPages(ctx context.Context, path string, characterID *int, params map[string]any, maxPages int) (Result, error) {
 	if params == nil {
 		params = map[string]any{}
 	}
 	firstParams := clone(params)
 	firstParams["page"] = 1
-	first, err := c.cachedGet(path, characterID, firstParams, nil)
+	first, err := c.cachedGet(ctx, path, characterID, firstParams, nil)
 	if err != nil {
 		return Result{}, err
 	}
@@ -160,7 +160,7 @@ func (c *Client) GetAllPages(path string, characterID *int, params map[string]an
 		p := clone(params)
 		p["page"] = page
 		go func() {
-			r, err := c.cachedGet(path, characterID, p, nil)
+			r, err := c.cachedGet(ctx, path, characterID, p, nil)
 			ch <- box{r, err}
 		}()
 	}
@@ -201,7 +201,7 @@ type cursorWalk struct {
 	truncated                    bool
 }
 
-func (c *Client) GetCursorPages(path string, characterID *int, params map[string]any, cursorParam, cursorKey string, batchSize, maxPages int) (Result, error) {
+func (c *Client) GetCursorPages(ctx context.Context, path string, characterID *int, params map[string]any, cursorParam, cursorKey string, batchSize, maxPages int) (Result, error) {
 	if params == nil {
 		params = map[string]any{}
 	}
@@ -219,7 +219,7 @@ func (c *Client) GetCursorPages(path string, characterID *int, params map[string
 		seen: map[any]struct{}{}, allCached: true,
 	}
 	for index := range maxPages {
-		cont, err := c.stepCursor(&walk, index)
+		cont, err := c.stepCursor(ctx, &walk, index)
 		if err != nil {
 			return Result{}, err
 		}
@@ -235,20 +235,20 @@ func (c *Client) GetCursorPages(path string, characterID *int, params map[string
 	}, nil
 }
 
-func (c *Client) Post(path string, characterID *int, params map[string]any, jsonBody any) (any, error) {
-	return c.write(http.MethodPost, path, characterID, params, jsonBody)
+func (c *Client) Post(ctx context.Context, path string, characterID *int, params map[string]any, jsonBody any) (any, error) {
+	return c.write(ctx, http.MethodPost, path, characterID, params, jsonBody)
 }
-func (c *Client) Put(path string, characterID *int, params map[string]any, jsonBody any) (any, error) {
-	return c.write(http.MethodPut, path, characterID, params, jsonBody)
+func (c *Client) Put(ctx context.Context, path string, characterID *int, params map[string]any, jsonBody any) (any, error) {
+	return c.write(ctx, http.MethodPut, path, characterID, params, jsonBody)
 }
-func (c *Client) Delete(path string, characterID *int, params map[string]any, jsonBody any) (any, error) {
-	return c.write(http.MethodDelete, path, characterID, params, jsonBody)
+func (c *Client) Delete(ctx context.Context, path string, characterID *int, params map[string]any, jsonBody any) (any, error) {
+	return c.write(ctx, http.MethodDelete, path, characterID, params, jsonBody)
 }
 
-func (c *Client) stepCursor(w *cursorWalk, index int) (bool, error) {
+func (c *Client) stepCursor(ctx context.Context, w *cursorWalk, index int) (bool, error) {
 	q := clone(w.base)
 	q[w.cursorParam] = w.cursor
-	result, err := c.cachedGet(w.path, w.characterID, q, nil)
+	result, err := c.cachedGet(ctx, w.path, w.characterID, q, nil)
 	if err != nil {
 		return false, err
 	}
@@ -327,13 +327,13 @@ func (c *Client) cacheKey(path string, characterID *int, params map[string]any) 
 	return hex.EncodeToString(sum[:])
 }
 
-func (c *Client) headers(characterID *int) (http.Header, error) {
+func (c *Client) headers(ctx context.Context, characterID *int) (http.Header, error) {
 	h := http.Header{}
 	h.Set("User-Agent", c.opts.UserAgent)
 	h.Set("X-Compatibility-Date", c.opts.CompatDate)
 	h.Set("Accept", "application/json")
 	if characterID != nil {
-		token, err := c.sso.AccessToken(*characterID)
+		token, err := c.sso.AccessToken(ctx, *characterID)
 		if err != nil {
 			return nil, err
 		}
@@ -343,8 +343,7 @@ func (c *Client) headers(characterID *int) (http.Header, error) {
 	return h, nil
 }
 
-func (c *Client) cachedGet(path string, characterID *int, params map[string]any, cacheTTL *float64) (Result, error) {
-	ctx := context.Background()
+func (c *Client) cachedGet(ctx context.Context, path string, characterID *int, params map[string]any, cacheTTL *float64) (Result, error) {
 	key := c.cacheKey(path, characterID, params)
 	var cached *store.CachedResponse
 	if cache := c.cache(); cache != nil {
@@ -357,14 +356,14 @@ func (c *Client) cachedGet(path string, characterID *int, params map[string]any,
 	if cached != nil && cached.Fresh() {
 		return Result{Data: cached.Data(), FromCache: true, AgeSeconds: cached.AgeSeconds(), ExpiresAt: cached.ExpiresUnix(), Pages: cached.Pages}, nil
 	}
-	h, err := c.headers(characterID)
+	h, err := c.headers(ctx, characterID)
 	if err != nil {
 		return Result{}, err
 	}
 	if cached != nil && cached.ETag != "" {
 		h.Set("If-None-Match", cached.ETag)
 	}
-	resp, err := c.request(http.MethodGet, path, params, h, nil, 0)
+	resp, err := c.request(ctx, http.MethodGet, path, params, h, nil, 0)
 	if err != nil {
 		return Result{}, err
 	}
@@ -405,18 +404,18 @@ func (c *Client) cachedGet(path string, characterID *int, params map[string]any,
 	return Result{Data: decoded, FromCache: false, AgeSeconds: 0, ExpiresAt: expires, Pages: pages}, nil
 }
 
-func (c *Client) write(method, path string, characterID *int, params map[string]any, jsonBody any) (any, error) {
+func (c *Client) write(ctx context.Context, method, path string, characterID *int, params map[string]any, jsonBody any) (any, error) {
 	if params == nil {
 		params = map[string]any{}
 	}
-	h, err := c.headers(characterID)
+	h, err := c.headers(ctx, characterID)
 	if err != nil {
 		return nil, err
 	}
 	if jsonBody != nil {
 		h.Set("Content-Type", "application/json")
 	}
-	resp, err := c.request(method, path, params, h, jsonBody, 0)
+	resp, err := c.request(ctx, method, path, params, h, jsonBody, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -429,7 +428,7 @@ func (c *Client) write(method, path string, characterID *int, params map[string]
 	return decode(resp.StatusCode, bodyBytes), nil
 }
 
-func (c *Client) request(method, path string, params map[string]any, headers http.Header, jsonBody any, attempt int) (*http.Response, error) {
+func (c *Client) request(ctx context.Context, method, path string, params map[string]any, headers http.Header, jsonBody any, attempt int) (*http.Response, error) {
 	if err := c.awaitErrorBudget(); err != nil {
 		return nil, err
 	}
@@ -448,7 +447,7 @@ func (c *Client) request(method, path string, params map[string]any, headers htt
 		}
 		body = bytes.NewReader(raw)
 	}
-	req, err := http.NewRequestWithContext(context.Background(), method, u, body)
+	req, err := http.NewRequestWithContext(ctx, method, u, body)
 	if err != nil {
 		return nil, err
 	}
@@ -460,7 +459,7 @@ func (c *Client) request(method, path string, params map[string]any, headers htt
 		if attempt < 2 && safeToRetry(method, err) {
 			time.Sleep(backoff(attempt))
 
-			return c.request(method, path, params, headers, jsonBody, attempt+1)
+			return c.request(ctx, method, path, params, headers, jsonBody, attempt+1)
 		}
 		if method != http.MethodGet {
 			return nil, Error{Msg: fmt.Sprintf("Network error calling %s: %v. The request may or may not have reached EVE — check the current state with the matching read tool before trying again, because repeating it could apply the change twice.", path, err)}
@@ -477,7 +476,7 @@ func (c *Client) request(method, path string, params map[string]any, headers htt
 			resp.Body.Close()
 			time.Sleep(wait)
 
-			return c.request(method, path, params, headers, jsonBody, attempt+1)
+			return c.request(ctx, method, path, params, headers, jsonBody, attempt+1)
 		}
 		err := limitError(resp, path)
 		io.Copy(io.Discard, resp.Body)
@@ -490,7 +489,7 @@ func (c *Client) request(method, path string, params map[string]any, headers htt
 		resp.Body.Close()
 		time.Sleep(backoff(attempt))
 
-		return c.request(method, path, params, headers, jsonBody, attempt+1)
+		return c.request(ctx, method, path, params, headers, jsonBody, attempt+1)
 	}
 
 	return resp, nil

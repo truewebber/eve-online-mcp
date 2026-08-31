@@ -53,11 +53,11 @@ func registerWaypoint(s *mcp.Server) {
 		Description: "Set an autopilot waypoint in the running game client.\n\nThis only moves the route marker on the map. It never undocks, flies or activates autopilot. Default clear_other_waypoints=true wipes a route the player may have spent time building.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in in) (*mcp.CallToolResult, any, error) {
 		return Call(ctx, func(a *session.Session) (any, error) {
-			token, err := a.ResolveCharacter(in.Character)
+			token, err := a.ResolveCharacter(ctx, in.Character)
 			if err != nil {
 				return nil, err
 			}
-			target, err := resolveDestination(a, in.Destination, token.CharacterID)
+			target, err := resolveDestination(ctx, a, in.Destination, token.CharacterID)
 			if err != nil {
 				return nil, err
 			}
@@ -90,7 +90,7 @@ func registerWaypoint(s *mcp.Server) {
 			if blocked.Required != nil {
 				return blocked.Required, nil
 			}
-			if _, err := a.ESI.Post("/ui/autopilot/waypoint", &token.CharacterID, map[string]any{
+			if _, err := a.ESI.Post(ctx, "/ui/autopilot/waypoint", &token.CharacterID, map[string]any{
 				"destination_id": target["id"], "clear_other_waypoints": clearOthers, "add_to_beginning": add,
 			}, nil); err != nil {
 				return nil, err
@@ -114,12 +114,12 @@ func registerOpenWindow(s *mcp.Server) {
 		Description: "Open a window in the running game client.\n\nGood for handing something off to the player. Changes nothing in game and costs nothing.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in in) (*mcp.CallToolResult, any, error) {
 		return Call(ctx, func(a *session.Session) (any, error) {
-			token, err := a.ResolveCharacter(in.Character)
+			token, err := a.ResolveCharacter(ctx, in.Character)
 			if err != nil {
 				return nil, err
 			}
 			kind := strings.ToLower(strings.TrimSpace(in.Window))
-			plan, err := planOpenWindow(a, kind, in.Target, token.CharacterID)
+			plan, err := planOpenWindow(ctx, a, kind, in.Target, token.CharacterID)
 			if err != nil {
 				return nil, err
 			}
@@ -144,7 +144,7 @@ func registerOpenWindow(s *mcp.Server) {
 			if blocked.Required != nil {
 				return blocked.Required, nil
 			}
-			if _, err := a.ESI.Post(path, &token.CharacterID, params, nil); err != nil {
+			if _, err := a.ESI.Post(ctx, path, &token.CharacterID, params, nil); err != nil {
 				return nil, err
 			}
 			a.Guard.Record(ctx, "eve_ui_open_window", "openwindow", args, "ok")
@@ -194,11 +194,11 @@ func registerWriteFittings(s *mcp.Server) {
 }
 
 func eveFittingSave(ctx context.Context, a *session.Session, in fittingSaveIn) (any, error) {
-	token, err := a.ResolveCharacter(in.Character)
+	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
-	resolved, err := resolveFittingModules(a, in.Ship, in.Modules)
+	resolved, err := resolveFittingModules(ctx, a, in.Ship, in.Modules)
 	if err != nil {
 		return nil, err
 	}
@@ -226,7 +226,7 @@ func eveFittingSave(ctx context.Context, a *session.Session, in fittingSaveIn) (
 	if blocked.Required != nil {
 		return blocked.Required, nil
 	}
-	result, err := a.ESI.Post(fmt.Sprintf("/characters/%d/fittings", token.CharacterID), &token.CharacterID, nil, body)
+	result, err := a.ESI.Post(ctx, fmt.Sprintf("/characters/%d/fittings", token.CharacterID), &token.CharacterID, nil, body)
 	if err != nil {
 		return nil, err
 	}
@@ -235,13 +235,13 @@ func eveFittingSave(ctx context.Context, a *session.Session, in fittingSaveIn) (
 	return map[string]any{"status": "done", "fitting_id": j.Map(result)["fitting_id"], "name": name}, nil
 }
 
-func resolveFittingModules(a *session.Session, ship string, modules []fittingModule) (fittingResolved, error) {
+func resolveFittingModules(ctx context.Context, a *session.Session, ship string, modules []fittingModule) (fittingResolved, error) {
 	wanted := make([]string, 0, 1+len(modules))
 	wanted = append(wanted, ship)
 	for _, m := range modules {
 		wanted = append(wanted, m.Name)
 	}
-	resolutions, err := a.Resolver.ResolveNames(wanted, nil, []string{"inventory_types"})
+	resolutions, err := a.Resolver.ResolveNames(ctx, wanted, nil, []string{"inventory_types"})
 	if err != nil {
 		return fittingResolved{}, err
 	}
@@ -285,11 +285,11 @@ func resolveFittingModules(a *session.Session, ship string, modules []fittingMod
 }
 
 func eveFittingDelete(ctx context.Context, a *session.Session, in fittingDeleteIn) (any, error) {
-	token, err := a.ResolveCharacter(in.Character)
+	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
-	existing, err := a.ESI.Get(fmt.Sprintf("/characters/%d/fittings", token.CharacterID), &token.CharacterID, nil, nil)
+	existing, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/fittings", token.CharacterID), &token.CharacterID, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -316,7 +316,7 @@ func eveFittingDelete(ctx context.Context, a *session.Session, in fittingDeleteI
 	if blocked.Required != nil {
 		return blocked.Required, nil
 	}
-	if _, err := a.ESI.Delete(fmt.Sprintf("/characters/%d/fittings/%d", token.CharacterID, in.FittingID), &token.CharacterID, nil, nil); err != nil {
+	if _, err := a.ESI.Delete(ctx, fmt.Sprintf("/characters/%d/fittings/%d", token.CharacterID, in.FittingID), &token.CharacterID, nil, nil); err != nil {
 		return nil, err
 	}
 	a.Guard.Record(ctx, "eve_fitting_delete", "fittings", args, "ok")
@@ -336,7 +336,7 @@ func registerMailOrganize(s *mcp.Server) {
 		Description: "Change the read flag on one mail. This does not return the mail's contents — use eve_mail_read for that. Needs a confirm_token in confirm mode.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in markIn) (*mcp.CallToolResult, any, error) {
 		return Call(ctx, func(a *session.Session) (any, error) {
-			token, err := a.ResolveCharacter(in.Character)
+			token, err := a.ResolveCharacter(ctx, in.Character)
 			if err != nil {
 				return nil, err
 			}
@@ -354,7 +354,7 @@ func registerMailOrganize(s *mcp.Server) {
 			if blocked.Required != nil {
 				return blocked.Required, nil
 			}
-			if _, err := a.ESI.Put(fmt.Sprintf("/characters/%d/mail/%d", token.CharacterID, in.MailID), &token.CharacterID, nil, map[string]any{"read": read}); err != nil {
+			if _, err := a.ESI.Put(ctx, fmt.Sprintf("/characters/%d/mail/%d", token.CharacterID, in.MailID), &token.CharacterID, nil, map[string]any{"read": read}); err != nil {
 				return nil, err
 			}
 			a.Guard.Record(ctx, "eve_mail_mark", "mail_organize", args, "ok")
@@ -373,16 +373,16 @@ func registerMailOrganize(s *mcp.Server) {
 		Description: "Delete one mail. Permanent — deleted EVE mail cannot be recovered. The preview shows sender, subject and date so the user can confirm.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in delIn) (*mcp.CallToolResult, any, error) {
 		return Call(ctx, func(a *session.Session) (any, error) {
-			token, err := a.ResolveCharacter(in.Character)
+			token, err := a.ResolveCharacter(ctx, in.Character)
 			if err != nil {
 				return nil, err
 			}
-			header, err := a.ESI.Get(fmt.Sprintf("/characters/%d/mail/%d", token.CharacterID, in.MailID), &token.CharacterID, nil, nil)
+			header, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/mail/%d", token.CharacterID, in.MailID), &token.CharacterID, nil, nil)
 			if err != nil {
 				return nil, err
 			}
 			mail := j.Map(header.Data)
-			sender, _ := a.Resolver.Name(j.Int(mail["from"]), nil)
+			sender, _ := a.Resolver.Name(ctx, j.Int(mail["from"]), nil)
 			args := map[string]any{"mail_id": in.MailID, "character_id": token.CharacterID}
 			preview := map[string]any{
 				"action": "Permanently delete a mail", "character": token.CharacterName,
@@ -395,7 +395,7 @@ func registerMailOrganize(s *mcp.Server) {
 			if blocked.Required != nil {
 				return blocked.Required, nil
 			}
-			if _, err := a.ESI.Delete(fmt.Sprintf("/characters/%d/mail/%d", token.CharacterID, in.MailID), &token.CharacterID, nil, nil); err != nil {
+			if _, err := a.ESI.Delete(ctx, fmt.Sprintf("/characters/%d/mail/%d", token.CharacterID, in.MailID), &token.CharacterID, nil, nil); err != nil {
 				return nil, err
 			}
 			a.Guard.Record(ctx, "eve_mail_delete", "mail_organize", args, "ok")
@@ -428,14 +428,14 @@ func registerMailSend(s *mcp.Server) {
 }
 
 func eveMailSend(ctx context.Context, a *session.Session, in mailSendIn) (any, error) {
-	token, err := a.ResolveCharacter(in.Character)
+	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
 	if len(in.To) > 20 {
 		return map[string]any{"error": fmt.Sprintf("Refusing to mail %d recipients at once; the cap is 20. Send in smaller batches.", len(in.To))}, nil
 	}
-	resolved, err := resolveMailRecipients(a, in.To)
+	resolved, err := resolveMailRecipients(ctx, a, in.To)
 	if err != nil {
 		return nil, err
 	}
@@ -463,7 +463,7 @@ func eveMailSend(ctx context.Context, a *session.Session, in mailSendIn) (any, e
 	if blocked.Required != nil {
 		return blocked.Required, nil
 	}
-	mailID, err := a.ESI.Post(fmt.Sprintf("/characters/%d/mail", token.CharacterID), &token.CharacterID, nil, payload)
+	mailID, err := a.ESI.Post(ctx, fmt.Sprintf("/characters/%d/mail", token.CharacterID), &token.CharacterID, nil, payload)
 	if err != nil {
 		return nil, err
 	}
@@ -472,9 +472,9 @@ func eveMailSend(ctx context.Context, a *session.Session, in mailSendIn) (any, e
 	return map[string]any{"status": "sent", "mail_id": mailID, "to": resolved.resolvedNames}, nil
 }
 
-func resolveMailRecipients(a *session.Session, to []string) (mailRecipients, error) {
+func resolveMailRecipients(ctx context.Context, a *session.Session, to []string) (mailRecipients, error) {
 	only := []string{"characters", "corporations", "alliances"}
-	resolutions, err := a.Resolver.ResolveNames(to, nil, only)
+	resolutions, err := a.Resolver.ResolveNames(ctx, to, nil, only)
 	if err != nil {
 		return mailRecipients{}, err
 	}
@@ -550,11 +550,11 @@ func registerContacts(s *mcp.Server) {
 }
 
 func eveContactsSet(ctx context.Context, a *session.Session, in contactsSetIn) (any, error) {
-	token, err := a.ResolveCharacter(in.Character)
+	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
-	matches, failure, err := resolveContacts(a, in.Names)
+	matches, failure, err := resolveContacts(ctx, a, in.Names)
 	if err != nil {
 		return nil, err
 	}
@@ -572,7 +572,7 @@ func eveContactsSet(ctx context.Context, a *session.Session, in contactsSetIn) (
 			watchable[m.ID] = struct{}{}
 		}
 	}
-	existing, err := a.ESI.GetAllPages(fmt.Sprintf("/characters/%d/contacts", token.CharacterID), &token.CharacterID, nil, 40)
+	existing, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/contacts", token.CharacterID), &token.CharacterID, nil, 40)
 	if err != nil {
 		return nil, err
 	}
@@ -678,13 +678,13 @@ func applyContactOps(ctx context.Context, a *session.Session, characterID int, s
 }
 
 func runContactOp(ctx context.Context, a *session.Session, characterID int, path string, standing float64, op contactOp) error {
-	var call func(string, *int, map[string]any, any) (any, error)
+	var call func(context.Context, string, *int, map[string]any, any) (any, error)
 	if op.verb == "update" {
 		call = a.ESI.Put
 	} else {
 		call = a.ESI.Post
 	}
-	if _, err := call(path, &characterID, map[string]any{"standing": standing, "watched": op.flag}, op.ids); err != nil {
+	if _, err := call(ctx, path, &characterID, map[string]any{"standing": standing, "watched": op.flag}, op.ids); err != nil {
 		return err
 	}
 	a.Guard.Record(ctx, "eve_contacts_set", "contacts", map[string]any{"contact_ids": op.ids, "standing": standing, "watched": op.flag, "character_id": characterID, "phase": op.verb}, "ok")
@@ -693,11 +693,11 @@ func runContactOp(ctx context.Context, a *session.Session, characterID int, path
 }
 
 func eveContactsDelete(ctx context.Context, a *session.Session, in contactsDeleteIn) (any, error) {
-	token, err := a.ResolveCharacter(in.Character)
+	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
-	matches, failure, err := resolveContacts(a, in.Names)
+	matches, failure, err := resolveContacts(ctx, a, in.Names)
 	if err != nil {
 		return nil, err
 	}
@@ -719,7 +719,7 @@ func eveContactsDelete(ctx context.Context, a *session.Session, in contactsDelet
 	if blocked.Required != nil {
 		return blocked.Required, nil
 	}
-	if _, err := a.ESI.Delete(fmt.Sprintf("/characters/%d/contacts", token.CharacterID), &token.CharacterID, map[string]any{"contact_ids": ids}, nil); err != nil {
+	if _, err := a.ESI.Delete(ctx, fmt.Sprintf("/characters/%d/contacts", token.CharacterID), &token.CharacterID, map[string]any{"contact_ids": ids}, nil); err != nil {
 		return nil, err
 	}
 	a.Guard.Record(ctx, "eve_contacts_delete", "contacts", args, "ok")
@@ -739,11 +739,11 @@ func registerCalendar(s *mcp.Server) {
 		Description: "Respond to a calendar event invitation on this character.\n\nThe organiser and other invitees see accepted, declined or tentative in-game. This only RSVPs; it does not create, edit or delete events. Confirm before sending an answer the player will have to live with.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in in) (*mcp.CallToolResult, any, error) {
 		return Call(ctx, func(a *session.Session) (any, error) {
-			token, err := a.ResolveCharacter(in.Character)
+			token, err := a.ResolveCharacter(ctx, in.Character)
 			if err != nil {
 				return nil, err
 			}
-			detail, err := a.ESI.Get(fmt.Sprintf("/characters/%d/calendar/%d", token.CharacterID, in.EventID), &token.CharacterID, nil, nil)
+			detail, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/calendar/%d", token.CharacterID, in.EventID), &token.CharacterID, nil, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -761,7 +761,7 @@ func registerCalendar(s *mcp.Server) {
 			if blocked.Required != nil {
 				return blocked.Required, nil
 			}
-			if _, err := a.ESI.Put(fmt.Sprintf("/characters/%d/calendar/%d", token.CharacterID, in.EventID), &token.CharacterID, nil, map[string]any{"response": in.Response}); err != nil {
+			if _, err := a.ESI.Put(ctx, fmt.Sprintf("/characters/%d/calendar/%d", token.CharacterID, in.EventID), &token.CharacterID, nil, map[string]any{"response": in.Response}); err != nil {
 				return nil, err
 			}
 			a.Guard.Record(ctx, "eve_calendar_respond", "calendar", args, "ok")
@@ -771,9 +771,9 @@ func registerCalendar(s *mcp.Server) {
 	})
 }
 
-func resolveContacts(a *session.Session, namesIn []string) ([]names.NameMatch, map[string]any, error) {
+func resolveContacts(ctx context.Context, a *session.Session, namesIn []string) ([]names.NameMatch, map[string]any, error) {
 	only := []string{"characters", "corporations", "alliances"}
-	resolutions, err := a.Resolver.ResolveNames(namesIn, nil, only)
+	resolutions, err := a.Resolver.ResolveNames(ctx, namesIn, nil, only)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -807,9 +807,9 @@ func resolveContacts(a *session.Session, namesIn []string) ([]names.NameMatch, m
 	return matches, nil, nil
 }
 
-func resolveDestination(a *session.Session, name string, characterID int) (map[string]any, error) {
+func resolveDestination(ctx context.Context, a *session.Session, name string, characterID int) (map[string]any, error) {
 	order := []string{"stations", "systems"}
-	resolved, err := a.Resolver.ResolveNames([]string{name}, order, order)
+	resolved, err := a.Resolver.ResolveNames(ctx, []string{name}, order, order)
 	if err != nil {
 		return nil, err
 	}
@@ -822,7 +822,7 @@ func resolveDestination(a *session.Session, name string, characterID int) (map[s
 
 		return out, nil
 	}
-	search, err := a.ESI.Get(fmt.Sprintf("/characters/%d/search", characterID), &characterID, map[string]any{
+	search, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/search", characterID), &characterID, map[string]any{
 		"categories": []string{"structure"}, "search": name, "strict": false,
 	}, nil)
 	if err != nil {
@@ -831,7 +831,7 @@ func resolveDestination(a *session.Session, name string, characterID int) (map[s
 	structures := j.Slice(j.Map(search.Data)["structure"])
 	if len(structures) > 0 {
 		sid := j.Int(structures[0])
-		sname, _ := a.Resolver.Name(sid, &characterID)
+		sname, _ := a.Resolver.Name(ctx, sid, &characterID)
 
 		return map[string]any{"id": sid, "name": sname, "kind": "structure"}, nil
 	}
@@ -839,10 +839,10 @@ func resolveDestination(a *session.Session, name string, characterID int) (map[s
 	return map[string]any{"error": fmt.Sprintf("No system, station or visible structure is named exactly %q. Check the spelling with eve_universe_search.", name)}, nil
 }
 
-func resolveEntity(a *session.Session, name string, characterID int, kind string) (map[string]any, error) {
+func resolveEntity(ctx context.Context, a *session.Session, name string, characterID int, kind string) (map[string]any, error) {
 	if _, err := strconv.Atoi(strings.TrimSpace(name)); err == nil {
 		id := j.Int(name)
-		n, _ := a.Resolver.Name(id, &characterID)
+		n, _ := a.Resolver.Name(ctx, id, &characterID)
 
 		return map[string]any{"id": id, "name": n, "kind": "id"}, nil
 	}
@@ -853,7 +853,7 @@ func resolveEntity(a *session.Session, name string, characterID int, kind string
 	} else {
 		prefer = []string{"characters", "corporations", "alliances", "inventory_types", "systems", "stations"}
 	}
-	resolved, err := a.Resolver.ResolveNames([]string{name}, prefer, only)
+	resolved, err := a.Resolver.ResolveNames(ctx, []string{name}, prefer, only)
 	if err != nil {
 		return nil, err
 	}
@@ -878,7 +878,7 @@ type windowPlan struct {
 	refuse   map[string]any
 }
 
-func planOpenWindow(a *session.Session, kind, target string, characterID int) (windowPlan, error) {
+func planOpenWindow(ctx context.Context, a *session.Session, kind, target string, characterID int) (windowPlan, error) {
 	if kind == "contract" {
 		id, ok := parseContractID(target)
 		if !ok {
@@ -891,7 +891,7 @@ func planOpenWindow(a *session.Session, kind, target string, characterID int) (w
 			label:  "contract #" + strings.TrimSpace(target),
 		}, nil
 	}
-	resolved, err := resolveEntity(a, target, characterID, kind)
+	resolved, err := resolveEntity(ctx, a, target, characterID, kind)
 	if err != nil {
 		return windowPlan{}, err
 	}

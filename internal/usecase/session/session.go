@@ -158,8 +158,8 @@ func (s *Session) DomainToken(tok *sso.CharacterToken) *character.Token {
 	}
 }
 
-func (s *Session) ResolveCharacter(spec string) (*sso.CharacterToken, error) {
-	tokens := s.SSO.Store.All()
+func (s *Session) ResolveCharacter(ctx context.Context, spec string) (*sso.CharacterToken, error) {
+	tokens := s.SSO.Store.All(ctx)
 	if len(tokens) == 0 {
 		return nil, character.NotFoundError{Msg: "No characters are authorized yet. Call eve_auth_login_url and open the link in a browser to authorize one."}
 	}
@@ -176,14 +176,14 @@ func (s *Session) ResolveCharacter(spec string) (*sso.CharacterToken, error) {
 		return nil, character.NotFoundError{Msg: "Several characters are authorized, so 'character' is required. Available: " + strings.Join(names, ", ")}
 	}
 	if id, err := strconv.Atoi(spec); err == nil {
-		token := s.SSO.Store.Get(id)
+		token := s.SSO.Store.Get(ctx, id)
 		if token == nil {
 			return nil, character.NotFoundError{Msg: fmt.Sprintf("Character id %s is not authorized.", spec)}
 		}
 
 		return token, nil
 	}
-	token := s.SSO.Store.FindByName(spec)
+	token := s.SSO.Store.FindByName(ctx, spec)
 	if token == nil {
 		var have []string
 		for _, t := range tokens {
@@ -220,12 +220,12 @@ func (s *Session) HasGranted(scopes []string, scope string) bool {
 	return slices.Contains(scopes, scope)
 }
 
-func (s *Session) ResolveCorporation(spec string) (*character.Corporation, error) {
-	token, err := s.ResolveCharacter(spec)
+func (s *Session) ResolveCorporation(ctx context.Context, spec string) (*character.Corporation, error) {
+	token, err := s.ResolveCharacter(ctx, spec)
 	if err != nil {
 		return nil, err
 	}
-	sheet, err := s.ESI.Get(fmt.Sprintf("/characters/%d", token.CharacterID), nil, nil, nil)
+	sheet, err := s.ESI.Get(ctx, fmt.Sprintf("/characters/%d", token.CharacterID), nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +234,7 @@ func (s *Session) ResolveCorporation(spec string) (*character.Corporation, error
 	if corpID == 0 {
 		return nil, sso.Err(token.CharacterName + " has no corporation_id from ESI. Try again shortly.")
 	}
-	publicRes, err := s.ESI.Get(fmt.Sprintf("/corporations/%d", corpID), nil, nil, nil)
+	publicRes, err := s.ESI.Get(ctx, fmt.Sprintf("/corporations/%d", corpID), nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +242,7 @@ func (s *Session) ResolveCorporation(spec string) (*character.Corporation, error
 	roles := map[string]struct{}{}
 	hq, base, other := map[string]struct{}{}, map[string]struct{}{}, map[string]struct{}{}
 	if s.HasScope(token, "esi-characters.read_corporation_roles.v1") {
-		granted, err := s.ESI.Get(fmt.Sprintf("/characters/%d/roles", token.CharacterID), &token.CharacterID, nil, nil)
+		granted, err := s.ESI.Get(ctx, fmt.Sprintf("/characters/%d/roles", token.CharacterID), &token.CharacterID, nil, nil)
 		if err != nil {
 			log.Printf("could not read corporation roles for %s: %v", token.CharacterName, err)
 		} else {

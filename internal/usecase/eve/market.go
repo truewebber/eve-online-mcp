@@ -50,31 +50,31 @@ func registerMarket(s *mcp.Server) {
 	}, sessionTool(eveMarketContracts))
 }
 
-func eveMarketPrice(_ context.Context, a *session.Session, in marketPriceIn) (any, error) {
+func eveMarketPrice(ctx context.Context, a *session.Session, in marketPriceIn) (any, error) {
 	if strings.TrimSpace(in.Item) == "" {
 		return map[string]any{"error": "item is required"}, nil
 	}
-	match, err := resolveNamed(a, in.Item, []string{"inventory_types"})
+	match, err := resolveNamed(ctx, a, in.Item, []string{"inventory_types"})
 	if err != nil {
 		return nil, err
 	}
 	if match.Chosen == nil {
 		return map[string]any{"error": fmt.Sprintf("No item type is named exactly %q. EVE names are exact — call eve_universe_search with this text to find the real spelling.", in.Item)}, nil
 	}
-	place, err := marketPlace(a, in)
+	place, err := marketPlace(ctx, a, in)
 	if err != nil {
 		return nil, err
 	}
 	if place.err != "" {
 		return map[string]any{"error": place.err}, nil
 	}
-	quotes, err := a.Resolver.HubQuotes(match.Chosen.ID, place.regionID, place.station)
+	quotes, err := a.Resolver.HubQuotes(ctx, match.Chosen.ID, place.regionID, place.station)
 	if err != nil {
 		return nil, err
 	}
-	out := marketQuoteView(a, match, quotes, place, in.Item)
+	out := marketQuoteView(ctx, a, match, quotes, place, in.Item)
 	if in.HistoryDays > 0 {
-		h, histErr := marketHistory(a, match.Chosen.ID, place.regionID, in.HistoryDays)
+		h, histErr := marketHistory(ctx, a, match.Chosen.ID, place.regionID, in.HistoryDays)
 		if histErr == nil {
 			out["history"] = h
 		}
@@ -83,8 +83,8 @@ func eveMarketPrice(_ context.Context, a *session.Session, in marketPriceIn) (an
 	return out, nil
 }
 
-func resolveNamed(a *session.Session, name string, only []string) (names.NameResolution, error) {
-	resolved, err := a.Resolver.ResolveNames([]string{name}, nil, only)
+func resolveNamed(ctx context.Context, a *session.Session, name string, only []string) (names.NameResolution, error) {
+	resolved, err := a.Resolver.ResolveNames(ctx, []string{name}, nil, only)
 	if err != nil {
 		return names.NameResolution{}, err
 	}
@@ -99,10 +99,10 @@ type marketPlaceResult struct {
 	err        string
 }
 
-func marketPlace(a *session.Session, in marketPriceIn) (marketPlaceResult, error) {
+func marketPlace(ctx context.Context, a *session.Session, in marketPriceIn) (marketPlaceResult, error) {
 	out := marketPlaceResult{regionID: universe.TheForgeRegionID, regionName: "The Forge"}
 	if strings.TrimSpace(in.Region) != "" {
-		r, err := resolveNamed(a, in.Region, []string{"regions"})
+		r, err := resolveNamed(ctx, a, in.Region, []string{"regions"})
 		if err != nil {
 			return marketPlaceResult{}, err
 		}
@@ -118,10 +118,10 @@ func marketPlace(a *session.Session, in marketPriceIn) (marketPlaceResult, error
 	return out, nil
 }
 
-func marketQuoteView(a *session.Session, match names.NameResolution, quotes map[string]any, place marketPlaceResult, item string) map[string]any {
+func marketQuoteView(ctx context.Context, a *session.Session, match names.NameResolution, quotes map[string]any, place marketPlaceResult, item string) map[string]any {
 	typeID := match.Chosen.ID
-	average := a.Resolver.ReferencePrice(typeID)
-	info, _ := a.Resolver.TypeInfo(typeID)
+	average := a.Resolver.ReferencePrice(ctx, typeID)
+	info, _ := a.Resolver.TypeInfo(ctx, typeID)
 	priced := "all of " + place.regionName
 	if place.station != nil {
 		priced = "Jita IV-4"
@@ -164,8 +164,8 @@ func marketSpread(quotes map[string]any) any {
 	return mathRound(100*(bs-bb)/bs, 2)
 }
 
-func eveMarketOrders(_ context.Context, a *session.Session, in marketOrdersIn) (any, error) {
-	token, err := a.ResolveCharacter(in.Character)
+func eveMarketOrders(ctx context.Context, a *session.Session, in marketOrdersIn) (any, error) {
+	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
@@ -173,16 +173,16 @@ func eveMarketOrders(_ context.Context, a *session.Session, in marketOrdersIn) (
 		return nil, err
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.Get(fmt.Sprintf("/characters/%d/orders", cid), &cid, nil, nil)
+	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/orders", cid), &cid, nil, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	return formatOrders(a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, 25), concise(in.ResponseFormat), nil), nil
+	return formatOrders(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, 25), concise(in.ResponseFormat), nil), nil
 }
 
-func eveMarketContracts(_ context.Context, a *session.Session, in marketContractsIn) (any, error) {
-	token, err := a.ResolveCharacter(in.Character)
+func eveMarketContracts(ctx context.Context, a *session.Session, in marketContractsIn) (any, error) {
+	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
@@ -190,16 +190,16 @@ func eveMarketContracts(_ context.Context, a *session.Session, in marketContract
 		return nil, err
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.GetAllPages(fmt.Sprintf("/characters/%d/contracts", cid), &cid, nil, 40)
+	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/contracts", cid), &cid, nil, 40)
 	if err != nil {
 		return nil, err
 	}
 
-	return formatContracts(a, token.CharacterName, cid, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), limitOr(in.Limit, 15), concise(in.ResponseFormat), false), nil
+	return formatContracts(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), limitOr(in.Limit, 15), concise(in.ResponseFormat), false), nil
 }
 
-func marketHistory(a *session.Session, typeID, regionID, days int) (map[string]any, error) {
-	result, err := a.ESI.Get(fmt.Sprintf("/markets/%d/history", regionID), nil, map[string]any{"type_id": typeID}, nil)
+func marketHistory(ctx context.Context, a *session.Session, typeID, regionID, days int) (map[string]any, error) {
+	result, err := a.ESI.Get(ctx, fmt.Sprintf("/markets/%d/history", regionID), nil, map[string]any{"type_id": typeID}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -238,7 +238,7 @@ func marketHistory(a *session.Session, typeID, regionID, days int) (map[string]a
 	}, nil
 }
 
-func formatOrders(a *session.Session, character string, cid int, data any, stale string, limit int, conciseMode bool, walletNames map[int]string) map[string]any {
+func formatOrders(ctx context.Context, a *session.Session, character string, cid int, data any, stale string, limit int, conciseMode bool, walletNames map[int]string) map[string]any {
 	orders := j.Maps(data)
 	if len(orders) == 0 {
 		return map[string]any{"character": character, "orders": []any{}, "note": "No open market orders."}
@@ -248,8 +248,8 @@ func formatOrders(a *session.Session, character string, cid int, data any, stale
 		typeSet[j.Int(o["type_id"])] = struct{}{}
 		placeSet[j.Int(o["location_id"])] = struct{}{}
 	}
-	names, _ := a.Resolver.Names(setToList(typeSet), nil)
-	places, _ := a.Resolver.Names(setToList(placeSet), &cid)
+	names, _ := a.Resolver.Names(ctx, setToList(typeSet), nil)
+	places, _ := a.Resolver.Names(ctx, setToList(placeSet), &cid)
 	now := time.Now().UTC()
 	var rows []map[string]any
 	var sellValue, buyEscrow float64
@@ -309,7 +309,7 @@ func formatOrders(a *session.Session, character string, cid int, data any, stale
 	}, meta)
 }
 
-func formatContracts(a *session.Session, character string, cid int, data any, stale string, outstandingOnly bool, limit int, conciseMode, corp bool) map[string]any {
+func formatContracts(ctx context.Context, a *session.Session, character string, cid int, data any, stale string, outstandingOnly bool, limit int, conciseMode, corp bool) map[string]any {
 	contracts := j.Maps(data)
 	if outstandingOnly {
 		var filtered []map[string]any
@@ -339,7 +339,7 @@ func formatContracts(a *session.Session, character string, cid int, data any, st
 			}
 		}
 	}
-	names, _ := a.Resolver.Names(setToList(idSet), &cid)
+	names, _ := a.Resolver.Names(ctx, setToList(idSet), &cid)
 	sort.Slice(contracts, func(i, k int) bool { return j.Str(contracts[i]["date_issued"]) > j.Str(contracts[k]["date_issued"]) })
 	var rows []map[string]any
 	outstanding := 0

@@ -55,8 +55,8 @@ func registerAssets(s *mcp.Server) {
 	}, sessionTool(eveAssetsBlueprints))
 }
 
-func eveAssetsList(_ context.Context, a *session.Session, in assetsListIn) (any, error) {
-	token, err := a.ResolveCharacter(in.Character)
+func eveAssetsList(ctx context.Context, a *session.Session, in assetsListIn) (any, error) {
+	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func eveAssetsList(_ context.Context, a *session.Session, in assetsListIn) (any,
 		return nil, err
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.GetAllPages(fmt.Sprintf("/characters/%d/assets", cid), &cid, nil, 40)
+	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/assets", cid), &cid, nil, 40)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func eveAssetsList(_ context.Context, a *session.Session, in assetsListIn) (any,
 		return map[string]any{"character": token.CharacterName, "locations": []any{}, "note": "This character holds no personal assets (corp hangars are separate)."}, nil
 	}
 	roots := rootLocations(assets)
-	prices, err := a.Resolver.ReferencePrices()
+	prices, err := a.Resolver.ReferencePrices(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -81,8 +81,8 @@ func eveAssetsList(_ context.Context, a *session.Session, in assetsListIn) (any,
 	for _, i := range assets {
 		typeIDs = append(typeIDs, j.Int(i["type_id"]))
 	}
-	typeNames, _ := a.Resolver.Names(typeIDs, nil)
-	placeNames, _ := a.Resolver.Names(valuesOf(roots), &cid)
+	typeNames, _ := a.Resolver.Names(ctx, typeIDs, nil)
+	placeNames, _ := a.Resolver.Names(ctx, valuesOf(roots), &cid)
 	buckets := assetBuckets(assets, roots, prices)
 	rows := assetLocationRows(buckets, placeNames, typeNames, prices, in.Location, in.MinValue, limitOr(in.Items, 5))
 	sort.Slice(rows, func(i, k int) bool { return j.Float(rows[i]["value_isk"]) > j.Float(rows[k]["value_isk"]) })
@@ -169,11 +169,11 @@ func topItemLines(types map[int]int, typeNames map[int]string, prices map[int]ma
 	return topItems
 }
 
-func eveAssetsFind(_ context.Context, a *session.Session, in assetsFindIn) (any, error) {
+func eveAssetsFind(ctx context.Context, a *session.Session, in assetsFindIn) (any, error) {
 	if strings.TrimSpace(in.Name) == "" {
 		return map[string]any{"error": "name is required"}, nil
 	}
-	token, err := a.ResolveCharacter(in.Character)
+	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +181,7 @@ func eveAssetsFind(_ context.Context, a *session.Session, in assetsFindIn) (any,
 		return nil, err
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.GetAllPages(fmt.Sprintf("/characters/%d/assets", cid), &cid, nil, 40)
+	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/assets", cid), &cid, nil, 40)
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +190,7 @@ func eveAssetsFind(_ context.Context, a *session.Session, in assetsFindIn) (any,
 	for _, i := range items {
 		typeIDs = append(typeIDs, j.Int(i["type_id"]))
 	}
-	typeNames, _ := a.Resolver.Names(typeIDs, nil)
+	typeNames, _ := a.Resolver.Names(ctx, typeIDs, nil)
 	matches := assetFindMatches(items, typeNames, in.Name)
 	if len(matches) == 0 {
 		return map[string]any{
@@ -209,8 +209,8 @@ func eveAssetsFind(_ context.Context, a *session.Session, in assetsFindIn) (any,
 			placeSet[r] = struct{}{}
 		}
 	}
-	placeNames, _ := a.Resolver.Names(setToList(placeSet), &cid)
-	prices, _ := a.Resolver.ReferencePrices()
+	placeNames, _ := a.Resolver.Names(ctx, setToList(placeSet), &cid)
+	prices, _ := a.Resolver.ReferencePrices(ctx)
 	rows := assetFindRows(matches, roots, byID, typeNames, placeNames, prices)
 	sort.Slice(rows, func(i, k int) bool { return j.Int(rows[i]["quantity"]) > j.Int(rows[k]["quantity"]) })
 	visible, meta := page(rows, limitOr(in.Limit, 20), "")
@@ -262,8 +262,8 @@ func assetFindRows(matches []map[string]any, roots map[int]int, byID map[int]map
 	return rows
 }
 
-func eveAssetsBlueprints(_ context.Context, a *session.Session, in assetsBlueprintsIn) (any, error) {
-	token, err := a.ResolveCharacter(in.Character)
+func eveAssetsBlueprints(ctx context.Context, a *session.Session, in assetsBlueprintsIn) (any, error) {
+	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
@@ -271,7 +271,7 @@ func eveAssetsBlueprints(_ context.Context, a *session.Session, in assetsBluepri
 		return nil, err
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.GetAllPages(fmt.Sprintf("/characters/%d/blueprints", cid), &cid, nil, 40)
+	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/blueprints", cid), &cid, nil, 40)
 	if err != nil {
 		return nil, err
 	}
@@ -284,8 +284,8 @@ func eveAssetsBlueprints(_ context.Context, a *session.Session, in assetsBluepri
 		typeIDs = append(typeIDs, j.Int(b["type_id"]))
 		placeIDs = append(placeIDs, j.Int(b["location_id"]))
 	}
-	typeNames, _ := a.Resolver.Names(typeIDs, nil)
-	placeNames, _ := a.Resolver.Names(placeIDs, &cid)
+	typeNames, _ := a.Resolver.Names(ctx, typeIDs, nil)
+	placeNames, _ := a.Resolver.Names(ctx, placeIDs, &cid)
 	var rows []map[string]any
 	orig, copies := 0, 0
 	for _, b := range bps {

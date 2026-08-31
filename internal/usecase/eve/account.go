@@ -36,8 +36,8 @@ func registerAccount(s *mcp.Server) {
 	}, sessionTool(eveCharacterOverview))
 }
 
-func eveServerStatus(_ context.Context, a *session.Session, _ empty) (any, error) {
-	result, err := a.ESI.Get("/status", nil, nil, nil)
+func eveServerStatus(ctx context.Context, a *session.Session, _ empty) (any, error) {
+	result, err := a.ESI.Get(ctx, "/status", nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func eveServerStatus(_ context.Context, a *session.Session, _ empty) (any, error
 }
 
 func eveAuthStatus(ctx context.Context, a *session.Session, _ empty) (any, error) {
-	tokens := a.SSO.Store.All()
+	tokens := a.SSO.Store.All(ctx)
 	policy := a.Guard.Status(ctx)
 	var outward []string
 	for name, cap := range write.Capabilities() {
@@ -104,12 +104,12 @@ type logoutIn struct {
 	Character string `json:"character" jsonschema:"Character name or numeric id to log out."`
 }
 
-func eveAuthLogout(_ context.Context, a *session.Session, in logoutIn) (any, error) {
-	token, err := a.ResolveCharacter(in.Character)
+func eveAuthLogout(ctx context.Context, a *session.Session, in logoutIn) (any, error) {
+	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
-	a.SSO.Revoke(token.CharacterID)
+	a.SSO.Revoke(ctx, token.CharacterID)
 
 	return map[string]any{"removed": token.CharacterName, "character_id": token.CharacterID}, nil
 }
@@ -123,20 +123,20 @@ type overviewBox struct {
 	err error
 }
 
-func eveCharacterOverview(_ context.Context, a *session.Session, in overviewIn) (any, error) {
-	token, err := a.ResolveCharacter(in.Character)
+func eveCharacterOverview(ctx context.Context, a *session.Session, in overviewIn) (any, error) {
+	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
 	cid := token.CharacterID
-	got := fetchOverview(a, cid)
+	got := fetchOverview(ctx, a, cid)
 	out := map[string]any{"character_id": cid, "name": token.CharacterName}
-	applyOverviewPublic(a, got.public, out)
+	applyOverviewPublic(ctx, a, got.public, out)
 	applyOverviewWallet(got.wallet, out)
 	applyOverviewOnline(got.online, out)
-	applyOverviewLocation(a, cid, got.location, out)
-	applyOverviewShip(a, got.ship, out)
-	applyOverviewQueue(a, got.queue, out)
+	applyOverviewLocation(ctx, a, cid, got.location, out)
+	applyOverviewShip(ctx, a, got.ship, out)
+	applyOverviewQueue(ctx, a, got.queue, out)
 	if got.attributes.err == nil {
 		out["remaps_available"] = j.Map(got.attributes.r.Data)["bonus_remaps"]
 	}
@@ -148,13 +148,13 @@ type overviewFetch struct {
 	public, wallet, location, ship, online, queue, attributes overviewBox
 }
 
-func fetchOverview(a *session.Session, cid int) overviewFetch {
+func fetchOverview(ctx context.Context, a *session.Session, cid int) overviewFetch {
 	get := func(path string, auth bool) overviewBox {
 		var id *int
 		if auth {
 			id = &cid
 		}
-		r, err := a.ESI.Get(path, id, nil, nil)
+		r, err := a.ESI.Get(ctx, path, id, nil, nil)
 
 		return overviewBox{r, err}
 	}
@@ -170,13 +170,13 @@ func fetchOverview(a *session.Session, cid int) overviewFetch {
 	return overviewFetch{<-ch, <-ch, <-ch, <-ch, <-ch, <-ch, <-ch}
 }
 
-func applyOverviewPublic(a *session.Session, public overviewBox, out map[string]any) {
+func applyOverviewPublic(ctx context.Context, a *session.Session, public overviewBox, out map[string]any) {
 	if public.err != nil {
 		return
 	}
 	info := j.Map(public.r.Data)
 	ids := idsFrom(info["corporation_id"], info["alliance_id"])
-	n, _ := a.Resolver.Names(ids, nil)
+	n, _ := a.Resolver.Names(ctx, ids, nil)
 	out["corporation"] = n[j.Int(info["corporation_id"])]
 	if j.Int(info["alliance_id"]) != 0 {
 		out["alliance"] = n[j.Int(info["alliance_id"])]
@@ -202,13 +202,13 @@ func applyOverviewOnline(online overviewBox, out map[string]any) {
 	out["last_login"] = o["last_login"]
 }
 
-func applyOverviewLocation(a *session.Session, cid int, location overviewBox, out map[string]any) {
+func applyOverviewLocation(ctx context.Context, a *session.Session, cid int, location overviewBox, out map[string]any) {
 	if location.err != nil {
 		return
 	}
 	loc := j.Map(location.r.Data)
 	placeIDs := idsFrom(loc["solar_system_id"], loc["station_id"], loc["structure_id"])
-	n, _ := a.Resolver.Names(placeIDs, &cid)
+	n, _ := a.Resolver.Names(ctx, placeIDs, &cid)
 	out["solar_system"] = n[j.Int(loc["solar_system_id"])]
 	docked := j.Int(loc["station_id"])
 	if docked == 0 {
@@ -222,19 +222,19 @@ func applyOverviewLocation(a *session.Session, cid int, location overviewBox, ou
 	out["location_age"] = location.r.StaleNote()
 }
 
-func applyOverviewShip(a *session.Session, ship overviewBox, out map[string]any) {
+func applyOverviewShip(ctx context.Context, a *session.Session, ship overviewBox, out map[string]any) {
 	if ship.err != nil {
 		return
 	}
 	sh := j.Map(ship.r.Data)
-	name, _ := a.Resolver.Name(j.Int(sh["ship_type_id"]), nil)
+	name, _ := a.Resolver.Name(ctx, j.Int(sh["ship_type_id"]), nil)
 	out["ship_type"] = name
 	if sn := j.Str(sh["ship_name"]); sn != "" && sn != name {
 		out["ship_name"] = sn
 	}
 }
 
-func applyOverviewQueue(a *session.Session, queue overviewBox, out map[string]any) {
+func applyOverviewQueue(ctx context.Context, a *session.Session, queue overviewBox, out map[string]any) {
 	if queue.err != nil {
 		return
 	}
@@ -250,7 +250,7 @@ func applyOverviewQueue(a *session.Session, queue overviewBox, out map[string]an
 		return
 	}
 	first := entries[0]
-	skill, _ := a.Resolver.Name(j.Int(first["skill_id"]), nil)
+	skill, _ := a.Resolver.Name(ctx, j.Int(first["skill_id"]), nil)
 	out["training_now"] = skill + " " + roman(j.Int(first["finished_level"]))
 	out["training_finishes"] = first["finish_date"]
 	out["queue_length"] = len(entries)

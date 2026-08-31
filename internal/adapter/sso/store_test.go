@@ -53,30 +53,30 @@ func TestTokenStorePersistsRefreshNotAccess(t *testing.T) {
 		AccessToken:     "at-mem",
 		AccessExpiresAt: time.Now().Add(time.Hour),
 	}
-	if err := ts.Upsert(tok); err != nil {
+	if err := ts.Upsert(ctx, tok); err != nil {
 		t.Fatal(err)
 	}
-	got := ts.Get(tok.CharacterID)
+	got := ts.Get(ctx, tok.CharacterID)
 	if got == nil || got.RefreshToken != "rt-1" || got.AccessToken != "at-mem" {
 		t.Fatalf("same process got %+v", got)
 	}
 
 	fresh := newTokenStore(db, u.ID)
-	got = fresh.Get(tok.CharacterID)
+	got = fresh.Get(ctx, tok.CharacterID)
 	if got == nil || got.RefreshToken != "rt-1" {
 		t.Fatalf("reload %+v", got)
 	}
 	if got.AccessToken != "" {
 		t.Fatalf("access token must not be durable, got %q", got.AccessToken)
 	}
-	all := fresh.All()
+	all := fresh.All(ctx)
 	if len(all) != 1 || all[0].CharacterName != "Jane Doe" {
 		t.Fatalf("all %v", all)
 	}
-	if !fresh.Remove(tok.CharacterID) {
+	if !fresh.Remove(ctx, tok.CharacterID) {
 		t.Fatal("remove")
 	}
-	if fresh.Get(tok.CharacterID) != nil {
+	if fresh.Get(ctx, tok.CharacterID) != nil {
 		t.Fatal("still there")
 	}
 }
@@ -96,14 +96,14 @@ func TestTokenStoreRejectsOtherOwner(t *testing.T) {
 	tok := &CharacterToken{
 		CharacterID: 99, CharacterName: "Lock", RefreshToken: "rt",
 	}
-	if err := newTokenStore(db, a.ID).Upsert(tok); err != nil {
+	if err := newTokenStore(db, a.ID).Upsert(ctx, tok); err != nil {
 		t.Fatal(err)
 	}
-	err = newTokenStore(db, b.ID).Upsert(tok)
+	err = newTokenStore(db, b.ID).Upsert(ctx, tok)
 	if !errors.Is(err, store.ErrOwned) {
 		t.Fatalf("want ErrOwned, got %v", err)
 	}
-	if newTokenStore(db, b.ID).Get(99) != nil {
+	if newTokenStore(db, b.ID).Get(ctx, 99) != nil {
 		t.Fatal("other user must not see the character")
 	}
 }
@@ -111,16 +111,17 @@ func TestTokenStoreRejectsOtherOwner(t *testing.T) {
 func TestBrokerStoreStaysInMemory(t *testing.T) {
 	t.Parallel()
 	db := openStore(t)
+	ctx := context.Background()
 	broker := newTokenStore(db, "")
 	tok := &CharacterToken{CharacterID: 7, CharacterName: "Broker", RefreshToken: "rt"}
-	if err := broker.Upsert(tok); err != nil {
+	if err := broker.Upsert(ctx, tok); err != nil {
 		t.Fatal(err)
 	}
 	_, ok, err := db.OwnerOf(context.Background(), 7)
 	if err != nil || ok {
 		t.Fatalf("broker must not persist, ok=%v err=%v", ok, err)
 	}
-	if broker.Get(7) == nil {
+	if broker.Get(ctx, 7) == nil {
 		t.Fatal("broker memory miss")
 	}
 }

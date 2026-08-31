@@ -23,10 +23,11 @@ func (s *Store) HoldTestLock(ctx context.Context) (func(), error) {
 		return nil, fmt.Errorf("store: test lock: %w", err)
 	}
 	var once sync.Once
+	unlockCtx := context.WithoutCancel(ctx)
 
 	return func() {
 		once.Do(func() {
-			_, _ = conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, testAdvisoryKey)
+			_, _ = conn.Exec(unlockCtx, `SELECT pg_advisory_unlock($1)`, testAdvisoryKey)
 			conn.Release()
 		})
 	}, nil

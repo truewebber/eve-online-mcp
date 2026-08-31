@@ -289,7 +289,7 @@ func (s *Server) CompleteCallback(ctx context.Context, code, eveState string) (C
 	if !ok {
 		return Callback{}, ErrUnknownLogin
 	}
-	token, err := s.login.ExchangeCode(code, st.PKCEVerifier)
+	token, err := s.login.ExchangeCode(ctx, code, st.PKCEVerifier)
 	if err != nil {
 		return Callback{}, err
 	}
@@ -384,7 +384,7 @@ func (s *Server) finishMCP(ctx context.Context, p *store.LoginState, token *sso.
 		}
 		userID = u.ID
 	}
-	if err := s.SessionFor(userID).SSO.Store.Upsert(token); err != nil {
+	if err := s.SessionFor(userID).SSO.Store.Upsert(ctx, token); err != nil {
 		return "", err
 	}
 
@@ -425,7 +425,7 @@ func (s *Server) finishAlt(ctx context.Context, st *store.LoginState, token *sso
 	if owner != "" && owner != st.UserID {
 		return CharacterOwnedError{CharacterName: token.CharacterName}
 	}
-	if err := s.SessionFor(st.UserID).SSO.Store.Upsert(token); err != nil {
+	if err := s.SessionFor(st.UserID).SSO.Store.Upsert(ctx, token); err != nil {
 		if errors.Is(err, store.ErrOwned) {
 			return CharacterOwnedError{CharacterName: token.CharacterName}
 		}

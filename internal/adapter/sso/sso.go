@@ -137,7 +137,7 @@ func (c *Client) PrepareLogin(scopes []string) (*PreparedLogin, error) {
 
 // ExchangeCode trades an EVE authorization code for tokens. The PKCE
 // verifier comes from the persisted login_states row, not process memory.
-func (c *Client) ExchangeCode(code, verifier string) (*CharacterToken, error) {
+func (c *Client) ExchangeCode(ctx context.Context, code, verifier string) (*CharacterToken, error) {
 	data := url.Values{
 		"grant_type":    {"authorization_code"},
 		"code":          {code},
@@ -145,16 +145,16 @@ func (c *Client) ExchangeCode(code, verifier string) (*CharacterToken, error) {
 		"code_verifier": {verifier},
 		"redirect_uri":  {c.opts.CallbackURL},
 	}
-	payload, err := c.tokenRequest(data, c.opts.ClientID, c.opts.ClientSecret)
+	payload, err := c.tokenRequest(ctx, data, c.opts.ClientID, c.opts.ClientSecret)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.tokenFromPayload(payload, nil)
+	return c.tokenFromPayload(ctx, payload, nil)
 }
 
-func (c *Client) AccessToken(characterID int) (*CharacterToken, error) {
-	token := c.Store.Get(characterID)
+func (c *Client) AccessToken(ctx context.Context, characterID int) (*CharacterToken, error) {
+	token := c.Store.Get(ctx, characterID)
 	if token == nil {
 		return nil, Err(fmt.Sprintf("Character %d is not authorized. Run the login flow first.", characterID))
 	}
@@ -165,7 +165,7 @@ func (c *Client) AccessToken(characterID int) (*CharacterToken, error) {
 	lock := lockI.(*sync.Mutex)
 	lock.Lock()
 	defer lock.Unlock()
-	token = c.Store.Get(characterID)
+	token = c.Store.Get(ctx, characterID)
 	if token == nil {
 		return nil, Err(fmt.Sprintf("Character %d was removed during refresh.", characterID))
 	}
@@ -173,11 +173,11 @@ func (c *Client) AccessToken(characterID int) (*CharacterToken, error) {
 		return token, nil
 	}
 
-	return c.refresh(token)
+	return c.refresh(ctx, token)
 }
 
-func (c *Client) Revoke(characterID int) {
-	token := c.Store.Get(characterID)
+func (c *Client) Revoke(ctx context.Context, characterID int) {
+	token := c.Store.Get(ctx, characterID)
 	if token == nil {
 		return
 	}
@@ -186,10 +186,10 @@ func (c *Client) Revoke(characterID int) {
 		"token":           {token.RefreshToken},
 		"client_id":       {c.opts.ClientID},
 	}
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, RevokeURL, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, RevokeURL, strings.NewReader(data.Encode()))
 	if err != nil {
 		log.Printf("revoke request for %d: %v", characterID, err)
-		c.Store.Remove(characterID)
+		c.Store.Remove(ctx, characterID)
 
 		return
 	}
@@ -204,21 +204,21 @@ func (c *Client) Revoke(characterID int) {
 	} else {
 		resp.Body.Close()
 	}
-	c.Store.Remove(characterID)
+	c.Store.Remove(ctx, characterID)
 }
 
-func (c *Client) refresh(token *CharacterToken) (*CharacterToken, error) {
+func (c *Client) refresh(ctx context.Context, token *CharacterToken) (*CharacterToken, error) {
 	if c.Store.durable() {
-		return c.refreshLocked(token)
+		return c.refreshLocked(ctx, token)
 	}
 
-	return c.refreshMemory(token)
+	return c.refreshMemory(ctx, token)
 }
 
-func (c *Client) refreshLocked(token *CharacterToken) (*CharacterToken, error) {
+func (c *Client) refreshLocked(ctx context.Context, token *CharacterToken) (*CharacterToken, error) {
 	var out *CharacterToken
-	err := c.Store.db.WithCharacterForUpdate(context.Background(), int64(token.CharacterID), func(refreshToken string) (string, error) {
-		refreshed, err := c.exchangeRefresh(refreshToken, token)
+	err := c.Store.db.WithCharacterForUpdate(ctx, int64(token.CharacterID), func(refreshToken string) (string, error) {
+		refreshed, err := c.exchangeRefresh(ctx, refreshToken, token)
 		if err != nil {
 			return "", err
 		}
@@ -228,7 +228,7 @@ func (c *Client) refreshLocked(token *CharacterToken) (*CharacterToken, error) {
 	})
 	if err != nil {
 		if strings.Contains(err.Error(), "invalid_grant") {
-			c.Store.Remove(token.CharacterID)
+			c.Store.Remove(ctx, token.CharacterID)
 
 			return nil, Err(fmt.Sprintf("Refresh token for %s was revoked or expired. Log this character in again.", token.CharacterName))
 		}
@@ -243,43 +243,43 @@ func (c *Client) refreshLocked(token *CharacterToken) (*CharacterToken, error) {
 	return out, nil
 }
 
-func (c *Client) refreshMemory(token *CharacterToken) (*CharacterToken, error) {
-	refreshed, err := c.exchangeRefresh(token.RefreshToken, token)
+func (c *Client) refreshMemory(ctx context.Context, token *CharacterToken) (*CharacterToken, error) {
+	refreshed, err := c.exchangeRefresh(ctx, token.RefreshToken, token)
 	if err != nil {
 		if strings.Contains(err.Error(), "invalid_grant") {
-			c.Store.Remove(token.CharacterID)
+			c.Store.Remove(ctx, token.CharacterID)
 
 			return nil, Err(fmt.Sprintf("Refresh token for %s was revoked or expired. Log this character in again.", token.CharacterName))
 		}
 
 		return nil, err
 	}
-	if err := c.Store.Upsert(refreshed); err != nil {
+	if err := c.Store.Upsert(ctx, refreshed); err != nil {
 		return nil, err
 	}
 
 	return refreshed, nil
 }
 
-func (c *Client) exchangeRefresh(refreshToken string, fallback *CharacterToken) (*CharacterToken, error) {
+func (c *Client) exchangeRefresh(ctx context.Context, refreshToken string, fallback *CharacterToken) (*CharacterToken, error) {
 	data := url.Values{
 		"grant_type":    {"refresh_token"},
 		"refresh_token": {refreshToken},
 		"client_id":     {c.opts.ClientID},
 	}
-	payload, err := c.tokenRequest(data, c.opts.ClientID, c.opts.ClientSecret)
+	payload, err := c.tokenRequest(ctx, data, c.opts.ClientID, c.opts.ClientSecret)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.tokenFromPayload(payload, fallback)
+	return c.tokenFromPayload(ctx, payload, fallback)
 }
 
-func (c *Client) tokenRequest(data url.Values, clientID, secret string) (map[string]any, error) {
+func (c *Client) tokenRequest(ctx context.Context, data url.Values, clientID, secret string) (map[string]any, error) {
 	if secret != "" {
 		data.Del("client_id")
 	}
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, TokenURL, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, TokenURL, strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, err
 	}
@@ -306,7 +306,7 @@ func (c *Client) tokenRequest(data url.Values, clientID, secret string) (map[str
 	return payload, nil
 }
 
-func (c *Client) tokenFromPayload(payload map[string]any, fallback *CharacterToken) (*CharacterToken, error) {
+func (c *Client) tokenFromPayload(ctx context.Context, payload map[string]any, fallback *CharacterToken) (*CharacterToken, error) {
 	access, _ := payload["access_token"].(string)
 	refresh, _ := payload["refresh_token"].(string)
 	if refresh == "" && fallback != nil {
@@ -315,7 +315,7 @@ func (c *Client) tokenFromPayload(payload map[string]any, fallback *CharacterTok
 	if access == "" || refresh == "" {
 		return nil, Err("SSO response was missing access_token or refresh_token.")
 	}
-	claims, err := c.decode(access)
+	claims, err := c.decode(ctx, access)
 	if err != nil {
 		return nil, err
 	}
@@ -362,9 +362,9 @@ func (c *Client) tokenFromPayload(payload map[string]any, fallback *CharacterTok
 	}, nil
 }
 
-func (c *Client) decode(accessToken string) (jwt.MapClaims, error) {
+func (c *Client) decode(ctx context.Context, accessToken string) (jwt.MapClaims, error) {
 	parser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256", "ES256"}), jwt.WithAudience(TokenAudience), jwt.WithLeeway(30*time.Second))
-	key, err := c.signingKey(accessToken)
+	key, err := c.signingKey(ctx, accessToken)
 	if err != nil {
 		log.Printf("JWKS unavailable (%v); accepting SSO token on TLS alone", err)
 		tok, _, err := jwt.NewParser(jwt.WithoutClaimsValidation()).ParseUnverified(accessToken, jwt.MapClaims{})
@@ -393,7 +393,7 @@ func (c *Client) checkIssuer(claims jwt.MapClaims) (jwt.MapClaims, error) {
 	return nil, Err(fmt.Sprintf("Unexpected token issuer: %q", iss))
 }
 
-func (c *Client) signingKey(accessToken string) (any, error) {
+func (c *Client) signingKey(ctx context.Context, accessToken string) (any, error) {
 	tok, _, err := jwt.NewParser().ParseUnverified(accessToken, jwt.MapClaims{})
 	if err != nil {
 		return nil, err
@@ -402,7 +402,7 @@ func (c *Client) signingKey(accessToken string) (any, error) {
 	c.jwksMu.Lock()
 	defer c.jwksMu.Unlock()
 	if c.jwks == nil || time.Since(c.jwksAt) > time.Hour {
-		keys, err := fetchJWKS(c.http)
+		keys, err := fetchJWKS(ctx, c.http)
 		if err != nil {
 			return nil, err
 		}
@@ -417,8 +417,8 @@ func (c *Client) signingKey(accessToken string) (any, error) {
 	return key, nil
 }
 
-func fetchJWKS(httpClient *http.Client) (map[string]any, error) {
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, JWKSURL, nil)
+func fetchJWKS(ctx context.Context, httpClient *http.Client) (map[string]any, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, JWKSURL, nil)
 	if err != nil {
 		return nil, err
 	}

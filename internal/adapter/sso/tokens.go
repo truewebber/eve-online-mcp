@@ -42,7 +42,7 @@ func newTokenStore(db *store.Store, userID string) *TokenStore {
 	}
 }
 
-func (s *TokenStore) Upsert(token *CharacterToken) error {
+func (s *TokenStore) Upsert(ctx context.Context, token *CharacterToken) error {
 	if token == nil || token.CharacterID == 0 {
 		return ErrMissingCharacterID
 	}
@@ -59,7 +59,7 @@ func (s *TokenStore) Upsert(token *CharacterToken) error {
 	if token.AddedAt != 0 {
 		row.AddedAt = time.Unix(int64(token.AddedAt), 0).UTC()
 	}
-	err := s.db.UpsertCharacter(context.Background(), s.userID, row)
+	err := s.db.UpsertCharacter(ctx, s.userID, row)
 	if err != nil {
 		return err
 	}
@@ -75,7 +75,7 @@ func (s *TokenStore) Upsert(token *CharacterToken) error {
 	return nil
 }
 
-func (s *TokenStore) Remove(id int) bool {
+func (s *TokenStore) Remove(ctx context.Context, id int) bool {
 	if !s.durable() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -86,11 +86,11 @@ func (s *TokenStore) Remove(id int) bool {
 
 		return true
 	}
-	row, err := s.db.GetCharacter(context.Background(), int64(id))
+	row, err := s.db.GetCharacter(ctx, int64(id))
 	if err != nil || row.UserID != s.userID {
 		return false
 	}
-	if err := s.db.DeleteCharacter(context.Background(), int64(id)); err != nil {
+	if err := s.db.DeleteCharacter(ctx, int64(id)); err != nil {
 		return false
 	}
 	s.mu.Lock()
@@ -100,14 +100,14 @@ func (s *TokenStore) Remove(id int) bool {
 	return true
 }
 
-func (s *TokenStore) Get(id int) *CharacterToken {
+func (s *TokenStore) Get(ctx context.Context, id int) *CharacterToken {
 	if !s.durable() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 
 		return s.tokens[id]
 	}
-	row, err := s.db.GetCharacter(context.Background(), int64(id))
+	row, err := s.db.GetCharacter(ctx, int64(id))
 	if err != nil || row.UserID != s.userID {
 		return nil
 	}
@@ -118,7 +118,7 @@ func (s *TokenStore) Get(id int) *CharacterToken {
 	return tokenFromRow(row, acc)
 }
 
-func (s *TokenStore) All() []*CharacterToken {
+func (s *TokenStore) All(ctx context.Context) []*CharacterToken {
 	if !s.durable() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -130,7 +130,7 @@ func (s *TokenStore) All() []*CharacterToken {
 
 		return out
 	}
-	rows, err := s.db.ListCharacters(context.Background(), s.userID)
+	rows, err := s.db.ListCharacters(ctx, s.userID)
 	if err != nil {
 		log.Printf("sso: list characters: %v", err)
 
@@ -149,9 +149,9 @@ func (s *TokenStore) All() []*CharacterToken {
 	return out
 }
 
-func (s *TokenStore) FindByName(name string) *CharacterToken {
+func (s *TokenStore) FindByName(ctx context.Context, name string) *CharacterToken {
 	lowered := strings.ToLower(strings.TrimSpace(name))
-	tokens := s.All()
+	tokens := s.All(ctx)
 	for _, t := range tokens {
 		if strings.ToLower(t.CharacterName) == lowered {
 			return t

@@ -27,8 +27,8 @@ func registerWallet(s *mcp.Server) {
 	}, sessionTool(walletHistory))
 }
 
-func walletHistory(_ context.Context, a *session.Session, in walletHistIn) (any, error) {
-	token, err := a.ResolveCharacter(in.Character)
+func walletHistory(ctx context.Context, a *session.Session, in walletHistIn) (any, error) {
+	token, err := a.ResolveCharacter(ctx, in.Character)
 	if err != nil {
 		return nil, err
 	}
@@ -42,14 +42,14 @@ func walletHistory(_ context.Context, a *session.Session, in walletHistIn) (any,
 	cid := token.CharacterID
 	out := map[string]any{"character": token.CharacterName, "period": "last ~30 days (ESI retention limit)"}
 	if kind == "journal" || kind == "both" {
-		sec, err := journalSection(a, cid, in.RefType, limitOr(in.Limit, 15), concise(in.ResponseFormat))
+		sec, err := journalSection(ctx, a, cid, in.RefType, limitOr(in.Limit, 15), concise(in.ResponseFormat))
 		if err != nil {
 			return nil, err
 		}
 		out["journal_section"] = sec
 	}
 	if kind == "transactions" || kind == "both" {
-		sec, err := transactionSection(a, fmt.Sprintf("/characters/%d/wallet/transactions", cid), cid, limitOr(in.Limit, 15), concise(in.ResponseFormat))
+		sec, err := transactionSection(ctx, a, fmt.Sprintf("/characters/%d/wallet/transactions", cid), cid, limitOr(in.Limit, 15), concise(in.ResponseFormat))
 		if err != nil {
 			return nil, err
 		}
@@ -71,8 +71,8 @@ func walletHistory(_ context.Context, a *session.Session, in walletHistIn) (any,
 	return out, nil
 }
 
-func journalSection(a *session.Session, cid int, refType string, limit int, conciseMode bool) (map[string]any, error) {
-	result, err := a.ESI.GetAllPages(fmt.Sprintf("/characters/%d/wallet/journal", cid), &cid, nil, 10)
+func journalSection(ctx context.Context, a *session.Session, cid int, refType string, limit int, conciseMode bool) (map[string]any, error) {
+	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/wallet/journal", cid), &cid, nil, 10)
 	if err != nil {
 		return nil, err
 	}
@@ -204,16 +204,16 @@ func journalRows(entries []map[string]any) []map[string]any {
 	return rows
 }
 
-func transactionSection(a *session.Session, path string, cid int, limit int, conciseMode bool) (map[string]any, error) {
-	result, err := a.ESI.GetCursorPages(path, &cid, nil, "from_id", "transaction_id", 2500, 4)
+func transactionSection(ctx context.Context, a *session.Session, path string, cid int, limit int, conciseMode bool) (map[string]any, error) {
+	result, err := a.ESI.GetCursorPages(ctx, path, &cid, nil, "from_id", "transaction_id", 2500, 4)
 	if err != nil {
 		return nil, err
 	}
 
-	return summarizeTransactions(a, cid, result.Data, result.StaleNote(), result.Truncated, limit, conciseMode)
+	return summarizeTransactions(ctx, a, cid, result.Data, result.StaleNote(), result.Truncated, limit, conciseMode)
 }
 
-func summarizeTransactions(a *session.Session, cid int, data any, stale string, truncated bool, limit int, conciseMode bool) (map[string]any, error) {
+func summarizeTransactions(ctx context.Context, a *session.Session, cid int, data any, stale string, truncated bool, limit int, conciseMode bool) (map[string]any, error) {
 	entries := j.Maps(data)
 	if len(entries) == 0 {
 		return map[string]any{"transactions": []any{}, "note": "No market trades in the retained window."}, nil
@@ -223,8 +223,8 @@ func summarizeTransactions(a *session.Session, cid int, data any, stale string, 
 		typeSet[j.Int(t["type_id"])] = struct{}{}
 		placeSet[j.Int(t["location_id"])] = struct{}{}
 	}
-	typeNames, _ := a.Resolver.Names(setToList(typeSet), nil)
-	placeNames, _ := a.Resolver.Names(setToList(placeSet), &cid)
+	typeNames, _ := a.Resolver.Names(ctx, setToList(typeSet), nil)
+	placeNames, _ := a.Resolver.Names(ctx, setToList(placeSet), &cid)
 	var bought, sold float64
 	for _, t := range entries {
 		total := j.Float(t["unit_price"]) * j.Float(t["quantity"])
