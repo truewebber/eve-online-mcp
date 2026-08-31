@@ -13,20 +13,17 @@ import (
 )
 
 type industryJobsIn struct {
-	Character        string `json:"character,omitempty"         jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	IncludeCompleted *bool  `json:"include_completed,omitempty" jsonschema:"Also return jobs that already delivered. Default false."`
 	Limit            int    `json:"limit,omitempty"             jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat   string `json:"response_format,omitempty"   jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
 type industryPlanetsIn struct {
-	Character string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-	Detail    *bool  `json:"detail,omitempty"    jsonschema:"Fetch each colony's layout to report extractor expiry and stored output. Default false."`
+	Detail *bool `json:"detail,omitempty" jsonschema:"Fetch each colony's layout to report extractor expiry and stored output. Default false."`
 }
 
 type industryMiningIn struct {
-	Character string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-	Limit     int    `json:"limit,omitempty"     jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+	Limit int `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 }
 
 func registerIndustry(s *mcp.Server) {
@@ -45,7 +42,7 @@ func registerIndustry(s *mcp.Server) {
 }
 
 func eveIndustryJobs(ctx context.Context, a *session.Session, in industryJobsIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveIndustryJobs", err)
 	}
@@ -62,7 +59,7 @@ func eveIndustryJobs(ctx context.Context, a *session.Session, in industryJobsIn)
 }
 
 func eveIndustryPlanets(ctx context.Context, a *session.Session, in industryPlanetsIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveIndustryPlanets", err)
 	}
@@ -106,7 +103,7 @@ func eveIndustryPlanets(ctx context.Context, a *session.Session, in industryPlan
 }
 
 func eveIndustryMining(ctx context.Context, a *session.Session, in industryMiningIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveIndustryMining", err)
 	}

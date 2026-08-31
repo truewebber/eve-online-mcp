@@ -14,21 +14,21 @@ import (
 
 const (
 	putSQL = `
-		INSERT INTO confirm_tokens (token, user_id, tool, args_digest, created_at)
+		INSERT INTO confirm_tokens (token, character_id, tool, args_digest, created_at)
 		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (token) DO UPDATE SET
-			user_id = EXCLUDED.user_id,
+			character_id = EXCLUDED.character_id,
 			tool = EXCLUDED.tool,
 			args_digest = EXCLUDED.args_digest,
 			created_at = EXCLUDED.created_at`
 	getSQL = `
-		SELECT token, user_id, tool, args_digest, created_at
+		SELECT token, character_id, tool, args_digest, created_at
 		FROM confirm_tokens WHERE token = $1`
 	takeSQL = `
 		DELETE FROM confirm_tokens WHERE token = $1
-		RETURNING token, user_id, tool, args_digest, created_at`
+		RETURNING token, character_id, tool, args_digest, created_at`
 	deleteSQL        = `DELETE FROM confirm_tokens WHERE token = $1`
-	countSQL         = `SELECT COUNT(*) FROM confirm_tokens WHERE user_id = $1 AND created_at > now() - interval '300 seconds'`
+	countSQL         = `SELECT COUNT(*) FROM confirm_tokens WHERE character_id = $1 AND created_at > now() - interval '300 seconds'`
 	deleteExpiredSQL = `DELETE FROM confirm_tokens WHERE created_at < now() - interval '300 seconds'`
 )
 
@@ -44,7 +44,7 @@ func (r *Repo) Put(ctx context.Context, c confirm.Confirm) error {
 	if c.CreatedAt.IsZero() {
 		c.CreatedAt = time.Now().UTC()
 	}
-	_, err := r.pool.Exec(ctx, putSQL, c.Value, c.UserID, c.Tool, c.ArgsDigest, c.CreatedAt)
+	_, err := r.pool.Exec(ctx, putSQL, c.Value, c.CharacterID, c.Tool, c.ArgsDigest, c.CreatedAt)
 
 	return wrap("Put", err)
 }
@@ -79,9 +79,9 @@ func (r *Repo) Delete(ctx context.Context, value string) error {
 	return wrap("Delete", err)
 }
 
-func (r *Repo) Count(ctx context.Context, userID string) (int, error) {
+func (r *Repo) Count(ctx context.Context, characterID int64) (int, error) {
 	var n int
-	err := r.pool.QueryRow(ctx, countSQL, userID).Scan(&n)
+	err := r.pool.QueryRow(ctx, countSQL, characterID).Scan(&n)
 
 	return n, wrap("Count", err)
 }
@@ -101,7 +101,7 @@ type scanner interface {
 
 func scan(row scanner) (*confirm.Confirm, error) {
 	var t confirm.Confirm
-	err := row.Scan(&t.Value, &t.UserID, &t.Tool, &t.ArgsDigest, &t.CreatedAt)
+	err := row.Scan(&t.Value, &t.CharacterID, &t.Tool, &t.ArgsDigest, &t.CreatedAt)
 	if err != nil {
 		return nil, wrap("scan", err)
 	}

@@ -38,7 +38,6 @@ type universeSearchIn struct {
 	Query      string `json:"query"                jsonschema:"At least 3 characters. Prefix match by default, so 'Trit' finds 'Tritanium'."`
 	Categories string `json:"categories,omitempty" jsonschema:"Comma-separated subset of: agent, alliance, character, constellation, corporation, faction, inventory_type, region, solar_system, station, structure."`
 	Strict     *bool  `json:"strict,omitempty"     jsonschema:"Exact-match instead of prefix match."`
-	Character  string `json:"character,omitempty"  jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	Limit      int    `json:"limit,omitempty"      jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 }
 
@@ -93,7 +92,7 @@ func eveUniverseSearch(ctx context.Context, a *session.Session, in universeSearc
 	if invalid := universeSearchInvalid(wanted); len(invalid) > 0 {
 		return map[string]any{fError: fmt.Sprintf("Unknown categories %v. Valid values: %s", invalid, strings.Join(searchCategories(), ", "))}, nil
 	}
-	token, err := a.ResolveCharacter(ctx, in.Character)
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveUniverseSearch", err)
 	}

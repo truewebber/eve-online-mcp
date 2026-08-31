@@ -52,6 +52,37 @@ func TestLintDescriptionIndent(t *testing.T) {
 	}
 }
 
+func TestLintNoCharacterParameter(t *testing.T) {
+	t.Parallel()
+	bad := lintTool(map[string]any{
+		fieldName:        "eve_with_character",
+		fieldDescription: strings.Repeat("x", minDescriptionChars),
+		fieldInputSchema: map[string]any{
+			fieldProperties: map[string]any{"character": map[string]any{
+				fieldDescription: "who",
+				fieldType:        "string",
+			}},
+		},
+	})
+	if !hasFailure(bad, "character parameter") {
+		t.Fatalf("want character-parameter failure, got %v", bad)
+	}
+	for _, tool := range liveTools(t) {
+		if fails := lintTool(tool); hasFailure(fails, "character parameter") {
+			t.Fatalf("%s: %v", j.Str(tool[fieldName]), fails)
+		}
+	}
+}
+
+func TestToolCountAfterIdentityRewrite(t *testing.T) {
+	t.Parallel()
+	const want = 50
+	tools := liveTools(t)
+	if len(tools) != want {
+		t.Fatalf("tools/list %d, want %d", len(tools), want)
+	}
+}
+
 func TestLintParamDescriptions(t *testing.T) {
 	t.Parallel()
 	bad := lintTool(map[string]any{

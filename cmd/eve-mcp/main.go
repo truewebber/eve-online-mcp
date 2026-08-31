@@ -95,7 +95,7 @@ func start(logger log.Logger) error {
 		MCPPath:     "/mcp",
 		CallbackURL: cfg.CallbackURL,
 	}
-	oauthServer, err := oauth.Open(host, runtime, db, oauth.Options{HMACKey: cfg.hmacKey}, logger)
+	oauthServer, err := oauth.Open(host, runtime, oauth.Options{HMACKey: cfg.hmacKey}, logger)
 	if err != nil {
 		return fmt.Errorf("open oauth: %w", err)
 	}

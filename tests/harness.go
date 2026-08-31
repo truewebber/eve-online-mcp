@@ -46,6 +46,7 @@ const (
 type env struct {
 	server *httptest.Server
 	client *mcp.ClientSession
+	token  string
 }
 
 func openEnv(t *testing.T) *env {
@@ -65,8 +66,8 @@ func openEnv(t *testing.T) *env {
 		CallbackURL: base + "/auth/callback",
 	}
 	runtime, oauthServer := wire(t, db, host, httpClient, logger)
-	userID := seedCharacter(t, db, runtime, oauthServer)
-	token, err := oauthServer.IssueAccess(userID)
+	characterID := seedCharacter(t, runtime, oauthServer)
+	token, err := oauthServer.IssueAccess(characterID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +76,7 @@ func openEnv(t *testing.T) *env {
 	t.Cleanup(hs.Close)
 	sess := connect(t, hs.URL+"/mcp", token)
 
-	return &env{server: hs, client: sess}
+	return &env{server: hs, client: sess, token: token}
 }
 
 func openThrowaway(t *testing.T, logger log.Logger) *store.Store {
@@ -128,7 +129,7 @@ func wire(
 	if err != nil {
 		t.Fatal(err)
 	}
-	oauthServer, err := oauth.Open(host, runtime, db, oauth.Options{HMACKey: []byte(testHMACKey)}, logger)
+	oauthServer, err := oauth.Open(host, runtime, oauth.Options{HMACKey: []byte(testHMACKey)}, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,25 +137,21 @@ func wire(
 	return runtime, oauthServer
 }
 
-func seedCharacter(t *testing.T, db *store.Store, runtime *session.Session, oauthServer *oauth.Server) string {
+func seedCharacter(t *testing.T, runtime *session.Session, oauthServer *oauth.Server) int {
 	t.Helper()
 	ctx := t.Context()
-	user, err := db.CreateUser(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	id := esitest.FixtureCharacterID
 	if err := runtime.Characters.Upsert(ctx, character.Character{
-		ID:           int64(esitest.FixtureCharacterID),
-		UserID:       user.ID,
+		ID:           int64(id),
 		Name:         fixtureName,
 		RefreshToken: "fixture-refresh",
 		Scopes:       write.RequestedScopes(),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	sess := oauthServer.SessionFor(user.ID)
+	sess := oauthServer.SessionFor(id)
 	if err := sess.SSO.Upsert(ctx, &sso.CharacterToken{
-		CharacterID:     esitest.FixtureCharacterID,
+		CharacterID:     id,
 		CharacterName:   fixtureName,
 		RefreshToken:    "fixture-refresh",
 		Scopes:          write.RequestedScopes(),
@@ -164,7 +161,7 @@ func seedCharacter(t *testing.T, db *store.Store, runtime *session.Session, oaut
 		t.Fatal(err)
 	}
 
-	return user.ID
+	return id
 }
 
 func mcpMux(oauthServer *oauth.Server, host oauth.Host) nhttp.Handler {

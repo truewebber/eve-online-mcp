@@ -100,18 +100,18 @@ func (mr *MockSSOClientMockRecorder) FindByName(ctx, name any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByName", reflect.TypeOf((*MockSSOClient)(nil).FindByName), ctx, name)
 }
 
-// ForUser mocks base method.
-func (m *MockSSOClient) ForUser(userID string, chars character.Repository) sso.Client {
+// ForCharacter mocks base method.
+func (m *MockSSOClient) ForCharacter(characterID int, chars character.Repository) sso.Client {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ForUser", userID, chars)
+	ret := m.ctrl.Call(m, "ForCharacter", characterID, chars)
 	ret0, _ := ret[0].(sso.Client)
 	return ret0
 }
 
-// ForUser indicates an expected call of ForUser.
-func (mr *MockSSOClientMockRecorder) ForUser(userID, chars any) *gomock.Call {
+// ForCharacter indicates an expected call of ForCharacter.
+func (mr *MockSSOClientMockRecorder) ForCharacter(characterID, chars any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ForUser", reflect.TypeOf((*MockSSOClient)(nil).ForUser), userID, chars)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ForCharacter", reflect.TypeOf((*MockSSOClient)(nil).ForCharacter), characterID, chars)
 }
 
 // Get mocks base method.

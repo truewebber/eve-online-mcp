@@ -13,7 +13,6 @@ import (
 )
 
 type assetsListIn struct {
-	Character      string  `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	Location       string  `json:"location,omitempty"        jsonschema:"Case-insensitive substring of a station or structure name, e.g. 'Jita' or 'Amarr VIII'. Empty means every location."`
 	MinValue       float64 `json:"min_value,omitempty"       jsonschema:"Hide locations holding less than this many ISK.,minimum=0"`
 	Limit          int     `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
@@ -23,13 +22,11 @@ type assetsListIn struct {
 
 type assetsFindIn struct {
 	Name           string `json:"name"                      jsonschema:"Case-insensitive substring of the item type name, e.g. 'Drake' or 'Tritanium'."`
-	Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
 type assetsBlueprintsIn struct {
-	Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
@@ -56,7 +53,7 @@ func registerAssets(s *mcp.Server) {
 }
 
 func eveAssetsList(ctx context.Context, a *session.Session, in assetsListIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveAssetsList", err)
 	}
@@ -179,7 +176,7 @@ func eveAssetsFind(ctx context.Context, a *session.Session, in assetsFindIn) (an
 	if strings.TrimSpace(in.Name) == "" {
 		return map[string]any{fError: "name is required"}, nil
 	}
-	token, err := a.ResolveCharacter(ctx, in.Character)
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveAssetsFind", err)
 	}
@@ -278,7 +275,7 @@ func assetFindRows(matches []map[string]any, roots map[int]int, byID map[int]map
 }
 
 func eveAssetsBlueprints(ctx context.Context, a *session.Session, in assetsBlueprintsIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveAssetsBlueprints", err)
 	}

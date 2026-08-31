@@ -56,5 +56,5 @@ type Client interface {
 	Get(ctx context.Context, id int) *CharacterToken
 	All(ctx context.Context) []*CharacterToken
 	FindByName(ctx context.Context, name string) *CharacterToken
-	ForUser(userID string, chars character.Repository) Client
+	ForCharacter(characterID int, chars character.Repository) Client
 }

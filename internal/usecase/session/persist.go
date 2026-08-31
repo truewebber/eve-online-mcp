@@ -17,7 +17,7 @@ type guardPersist struct {
 
 func (p guardPersist) PutConfirm(ctx context.Context, c write.Confirm) error {
 	return wrap("PutConfirm", p.confirms.Put(ctx, confirm.Confirm{
-		Value: c.Token, UserID: c.UserID, Tool: c.Tool,
+		Value: c.Token, CharacterID: c.CharacterID, Tool: c.Tool,
 		ArgsDigest: c.ArgsDigest, CreatedAt: c.CreatedAt,
 	}))
 }
@@ -32,7 +32,7 @@ func (p guardPersist) GetConfirm(ctx context.Context, token string) (*write.Conf
 	}
 
 	return &write.Confirm{
-		Token: row.Value, UserID: row.UserID, Tool: row.Tool,
+		Token: row.Value, CharacterID: row.CharacterID, Tool: row.Tool,
 		ArgsDigest: row.ArgsDigest, CreatedAt: row.CreatedAt,
 	}, true, nil
 }
@@ -41,18 +41,18 @@ func (p guardPersist) DeleteConfirm(ctx context.Context, token string) error {
 	return wrap("DeleteConfirm", p.confirms.Delete(ctx, token))
 }
 
-func (p guardPersist) CountConfirm(ctx context.Context, userID string) (int, error) {
-	n, err := p.confirms.Count(ctx, userID)
+func (p guardPersist) CountConfirm(ctx context.Context, characterID int64) (int, error) {
+	n, err := p.confirms.Count(ctx, characterID)
 
 	return n, wrap("CountConfirm", err)
 }
 
-func (p guardPersist) CountMailSince(ctx context.Context, userID string, since time.Time) (int, error) {
-	n, err := p.db.CountMailSince(ctx, userID, since)
+func (p guardPersist) CountMailSince(ctx context.Context, characterID int64, since time.Time) (int, error) {
+	n, err := p.db.CountMailSince(ctx, characterID, since)
 
 	return n, wrap("CountMailSince", err)
 }
 
-func (p guardPersist) InsertMail(ctx context.Context, userID string, at time.Time) error {
-	return wrap("InsertMail", p.db.InsertMail(ctx, userID, at))
+func (p guardPersist) InsertMail(ctx context.Context, characterID int64, at time.Time) error {
+	return wrap("InsertMail", p.db.InsertMail(ctx, characterID, at))
 }

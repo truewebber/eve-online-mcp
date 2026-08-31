@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -49,20 +48,20 @@ type Options struct {
 }
 
 type Session struct {
-	Opts       Options
-	HTTP       *http.Client
-	Store      *store.Store
-	Characters character.Repository
-	Clients    oauthclient.Repository
-	Logins     loginstate.Repository
-	Codes      authcode.Repository
-	Confirms   confirm.Repository
-	UserID     string
-	SSO        sso.Client
-	ESI        esi.Client
-	Resolver   *esi.Resolver
-	Guard      *write.Guard
-	Logger     log.Logger
+	Opts        Options
+	HTTP        *http.Client
+	Store       *store.Store
+	Characters  character.Repository
+	Clients     oauthclient.Repository
+	Logins      loginstate.Repository
+	Codes       authcode.Repository
+	Confirms    confirm.Repository
+	CharacterID int
+	SSO         sso.Client
+	ESI         esi.Client
+	Resolver    *esi.Resolver
+	Guard       *write.Guard
+	Logger      log.Logger
 }
 
 func Open(opts Options) (*Session, error) {
@@ -80,7 +79,7 @@ func Open(opts Options) (*Session, error) {
 		opts.HTTP = NewHTTPClient(opts)
 	}
 	purgeExpired(context.Background(), opts)
-	ssoClient := opts.SSO.ForUser("", opts.Characters)
+	ssoClient := opts.SSO.ForCharacter(0, opts.Characters)
 	esiClient := opts.ESI.ForUser(ssoTokens{sso: ssoClient})
 	persist := guardPersist{db: opts.Store, confirms: opts.Confirms}
 
@@ -96,7 +95,7 @@ func Open(opts Options) (*Session, error) {
 		SSO:        ssoClient,
 		ESI:        esiClient,
 		Resolver:   esi.NewResolver(esiClient, opts.Logger),
-		Guard:      write.NewGuard(persist, "", opts.Logger),
+		Guard:      write.NewGuard(persist, 0, opts.Logger),
 		Logger:     opts.Logger,
 	}, nil
 }
@@ -170,61 +169,35 @@ func With(ctx context.Context, s *Session) context.Context {
 func From(ctx context.Context) (*Session, error) {
 	s, ok := ctx.Value(ctxKey{}).(*Session)
 	if !ok || s == nil {
-		return nil, character.NotFoundError{Msg: "This request is not tied to an EVE login. Re-authenticate the MCP server (Authentication required) and try again."}
+		return nil, wrap("From", sso.Err("This request is not tied to an EVE login. Re-authenticate the MCP server (Authentication required) and try again."))
 	}
 
 	return s, nil
 }
 
-// ForUser keeps the process EVE application and the shared HTTP cache;
-// only character tokens are bound to this user.
-func (s *Session) ForUser(userID string) *Session {
+// ForCharacter keeps the process EVE application and the shared HTTP cache;
+// the grant is bound to this one character.
+func (s *Session) ForCharacter(characterID int) *Session {
 	opts := s.Opts
-	ssoClient := s.Opts.SSO.ForUser(userID, s.Characters)
+	ssoClient := s.Opts.SSO.ForCharacter(characterID, s.Characters)
 	esiClient := s.Opts.ESI.ForUser(ssoTokens{sso: ssoClient})
 
 	return &Session{
-		Opts:       opts,
-		HTTP:       s.HTTP,
-		Store:      s.Store,
-		Characters: s.Characters,
-		Clients:    s.Clients,
-		Logins:     s.Logins,
-		Codes:      s.Codes,
-		Confirms:   s.Confirms,
-		UserID:     userID,
-		SSO:        ssoClient,
-		ESI:        esiClient,
-		Resolver:   s.Resolver.ForUser(esiClient),
-		Guard:      write.NewGuard(guardPersist{db: s.Store, confirms: s.Confirms}, userID, s.Logger),
-		Logger:     s.Logger,
+		Opts:        opts,
+		HTTP:        s.HTTP,
+		Store:       s.Store,
+		Characters:  s.Characters,
+		Clients:     s.Clients,
+		Logins:      s.Logins,
+		Codes:       s.Codes,
+		Confirms:    s.Confirms,
+		CharacterID: characterID,
+		SSO:         ssoClient,
+		ESI:         esiClient,
+		Resolver:    s.Resolver.ForUser(esiClient),
+		Guard:       write.NewGuard(guardPersist{db: s.Store, confirms: s.Confirms}, int64(characterID), s.Logger),
+		Logger:      s.Logger,
 	}
-}
-
-type AltLogin struct {
-	URL   string
-	State string
-}
-
-func (s *Session) StartAltLogin(ctx context.Context) (AltLogin, error) {
-	if s.UserID == "" {
-		return AltLogin{}, wrap("StartAltLogin", sso.Err("This request is not tied to an EVE login. Re-authenticate the MCP server (Authentication required) and try again."))
-	}
-	prep, err := s.SSO.PrepareLogin(nil)
-	if err != nil {
-		return AltLogin{}, wrap("StartAltLogin", err)
-	}
-	if err := s.Logins.Put(ctx, loginstate.Login{
-		State:        prep.State,
-		PKCEVerifier: prep.Verifier,
-		Scopes:       prep.Scopes,
-		Kind:         loginstate.KindAlt,
-		UserID:       s.UserID,
-	}); err != nil {
-		return AltLogin{}, wrap("StartAltLogin", err)
-	}
-
-	return AltLogin{URL: prep.URL, State: prep.State}, nil
 }
 
 func (s *Session) DomainToken(tok *sso.CharacterToken) *character.Token {
@@ -238,39 +211,13 @@ func (s *Session) DomainToken(tok *sso.CharacterToken) *character.Token {
 	}
 }
 
-func (s *Session) ResolveCharacter(ctx context.Context, spec string) (*sso.CharacterToken, error) {
-	tokens := s.SSO.All(ctx)
-	if len(tokens) == 0 {
-		return nil, character.NotFoundError{Msg: "No characters are authorized yet. Call eve_auth_login_url and open the link in a browser to authorize one."}
+func (s *Session) Character(ctx context.Context) (*sso.CharacterToken, error) {
+	if s.CharacterID == 0 {
+		return nil, wrap("Character", sso.Err("This request is not tied to an EVE login. Re-authenticate the MCP server (Authentication required) and try again."))
 	}
-	spec = strings.TrimSpace(spec)
-	if spec == "" {
-		if len(tokens) == 1 {
-			return tokens[0], nil
-		}
-		var names []string
-		for _, t := range tokens {
-			names = append(names, fmt.Sprintf("%s (%d)", t.CharacterName, t.CharacterID))
-		}
-
-		return nil, character.NotFoundError{Msg: "Several characters are authorized, so 'character' is required. Available: " + strings.Join(names, ", ")}
-	}
-	if id, err := strconv.Atoi(spec); err == nil {
-		token := s.SSO.Get(ctx, id)
-		if token == nil {
-			return nil, character.NotFoundError{Msg: fmt.Sprintf("Character id %s is not authorized.", spec)}
-		}
-
-		return token, nil
-	}
-	token := s.SSO.FindByName(ctx, spec)
+	token := s.SSO.Get(ctx, s.CharacterID)
 	if token == nil {
-		var have []string
-		for _, t := range tokens {
-			have = append(have, t.CharacterName)
-		}
-
-		return nil, character.NotFoundError{Msg: fmt.Sprintf("No authorized character matches %q. Have: %s", spec, strings.Join(have, ", "))}
+		return nil, wrap("Character", sso.Err("This connection's character is no longer authorized. Re-authenticate the MCP server (Authentication required) and try again."))
 	}
 
 	return token, nil
@@ -286,7 +233,7 @@ func (s *Session) RequireGranted(characterName string, scopes []string, scope, w
 	}
 	extra := ""
 	if slices.Contains(write.CorpReadScopes(), scope) {
-		extra = " That is a corporation scope: add the matching permissions on the EVE developer application and re-authorize this character with eve_auth_login_url."
+		extra = " That is a corporation scope: add the matching permissions on the EVE developer application and re-authenticate the MCP server."
 	}
 
 	return wrap("RequireScope", sso.Err(fmt.Sprintf("%s was not authorized with '%s', which is required to read %s. Re-run the login for this character.%s", characterName, scope, what, extra)))
@@ -300,8 +247,8 @@ func (s *Session) HasGranted(scopes []string, scope string) bool {
 	return slices.Contains(scopes, scope)
 }
 
-func (s *Session) ResolveCorporation(ctx context.Context, spec string) (*character.Corporation, error) {
-	token, err := s.ResolveCharacter(ctx, spec)
+func (s *Session) ResolveCorporation(ctx context.Context) (*character.Corporation, error) {
+	token, err := s.Character(ctx)
 	if err != nil {
 		return nil, err
 	}

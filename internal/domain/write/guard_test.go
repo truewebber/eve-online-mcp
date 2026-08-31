@@ -21,8 +21,8 @@ type confirmBox struct {
 }
 
 type mailAt struct {
-	userID string
-	at     time.Time
+	characterID int64
+	at          time.Time
 }
 
 func testGuard(t *testing.T) (*write.Guard, *confirmBox) {
@@ -36,7 +36,7 @@ func testGuard(t *testing.T) (*write.Guard, *confirmBox) {
 	persist.EXPECT().CountConfirm(gomock.Any(), gomock.Any()).DoAndReturn(box.countConfirm).AnyTimes()
 	persist.EXPECT().CountMailSince(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(box.countMail).AnyTimes()
 	persist.EXPECT().InsertMail(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(box.insertMail).AnyTimes()
-	g := write.NewGuard(persist, "user-1", mocks.QuietLogger(ctrl))
+	g := write.NewGuard(persist, 1, mocks.QuietLogger(ctrl))
 
 	return g, box
 }
@@ -63,10 +63,10 @@ func (b *confirmBox) drop(_ context.Context, token string) error {
 	return nil
 }
 
-func (b *confirmBox) countConfirm(_ context.Context, userID string) (int, error) {
+func (b *confirmBox) countConfirm(_ context.Context, characterID int64) (int, error) {
 	n := 0
 	for _, c := range b.tokens {
-		if c.UserID == userID {
+		if c.CharacterID == characterID {
 			n++
 		}
 	}
@@ -74,10 +74,10 @@ func (b *confirmBox) countConfirm(_ context.Context, userID string) (int, error)
 	return n, nil
 }
 
-func (b *confirmBox) countMail(_ context.Context, userID string, since time.Time) (int, error) {
+func (b *confirmBox) countMail(_ context.Context, characterID int64, since time.Time) (int, error) {
 	n := 0
 	for _, row := range b.mail {
-		if row.userID == userID && !row.at.Before(since) {
+		if row.characterID == characterID && !row.at.Before(since) {
 			n++
 		}
 	}
@@ -85,8 +85,8 @@ func (b *confirmBox) countMail(_ context.Context, userID string, since time.Time
 	return n, nil
 }
 
-func (b *confirmBox) insertMail(_ context.Context, userID string, at time.Time) error {
-	b.mail = append(b.mail, mailAt{userID: userID, at: at})
+func (b *confirmBox) insertMail(_ context.Context, characterID int64, at time.Time) error {
+	b.mail = append(b.mail, mailAt{characterID: characterID, at: at})
 
 	return nil
 }

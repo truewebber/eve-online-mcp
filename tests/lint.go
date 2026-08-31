@@ -59,6 +59,8 @@ func lintProps(name string, props map[string]any) ([]string, []string) {
 			}
 		}
 		switch param {
+		case "character":
+			failures = append(failures, name+"."+param+": a connection is one character; tools do not take a character parameter")
 		case "user", "id", "target_id", "data", "input":
 			warnings = append(warnings, name+"."+param+": ambiguous parameter name")
 		}

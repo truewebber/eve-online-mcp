@@ -70,21 +70,6 @@ func (mr *MockCharacterRepositoryMockRecorder) Get(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockCharacterRepository)(nil).Get), ctx, id)
 }
 
-// ListByUser mocks base method.
-func (m *MockCharacterRepository) ListByUser(ctx context.Context, userID string) ([]character.Character, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListByUser", ctx, userID)
-	ret0, _ := ret[0].([]character.Character)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListByUser indicates an expected call of ListByUser.
-func (mr *MockCharacterRepositoryMockRecorder) ListByUser(ctx, userID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByUser", reflect.TypeOf((*MockCharacterRepository)(nil).ListByUser), ctx, userID)
-}
-
 // UpdateRefresh mocks base method.
 func (m *MockCharacterRepository) UpdateRefresh(ctx context.Context, id int64, fn func(string) (string, error)) error {
 	m.ctrl.T.Helper()

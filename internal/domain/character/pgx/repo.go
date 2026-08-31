@@ -17,22 +17,22 @@ import (
 const (
 	upsertSQL = `
 		INSERT INTO characters (
-			character_id, user_id, name, owner_hash, refresh_token, scopes, added_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+			character_id, name, owner_hash, refresh_token, scopes, added_at, deleted_at
+		) VALUES ($1, $2, $3, $4, $5, $6, NULL)
 		ON CONFLICT (character_id) DO UPDATE SET
 			name = EXCLUDED.name,
 			owner_hash = EXCLUDED.owner_hash,
 			refresh_token = EXCLUDED.refresh_token,
-			scopes = EXCLUDED.scopes
-		WHERE characters.user_id = EXCLUDED.user_id`
+			scopes = EXCLUDED.scopes,
+			deleted_at = NULL`
 	getSQL = `
-		SELECT character_id, user_id, name, owner_hash, refresh_token, scopes, added_at
+		SELECT character_id, name, owner_hash, refresh_token, scopes, added_at, deleted_at
 		FROM characters WHERE character_id = $1`
-	listByUserSQL = `
-		SELECT character_id, user_id, name, owner_hash, refresh_token, scopes, added_at
-		FROM characters WHERE user_id = $1 ORDER BY added_at`
-	deleteSQL       = `DELETE FROM characters WHERE character_id = $1`
-	lockRefreshSQL  = `SELECT refresh_token FROM characters WHERE character_id = $1 FOR UPDATE`
+	deleteSQL = `
+		UPDATE characters
+		SET deleted_at = now(), refresh_token = ''
+		WHERE character_id = $1 AND deleted_at IS NULL`
+	lockRefreshSQL  = `SELECT refresh_token FROM characters WHERE character_id = $1 AND deleted_at IS NULL FOR UPDATE`
 	writeRefreshSQL = `UPDATE characters SET refresh_token = $2 WHERE character_id = $1`
 )
 
@@ -52,14 +52,11 @@ func (r *Repo) Upsert(ctx context.Context, c character.Character) error {
 	if c.CreatedAt.IsZero() {
 		c.CreatedAt = time.Now().UTC()
 	}
-	tag, err := r.pool.Exec(ctx, upsertSQL,
-		c.ID, c.UserID, c.Name, c.OwnerHash, c.RefreshToken, c.Scopes, c.CreatedAt,
+	_, err := r.pool.Exec(ctx, upsertSQL,
+		c.ID, c.Name, c.OwnerHash, c.RefreshToken, c.Scopes, c.CreatedAt,
 	)
 	if err != nil {
 		return wrap("Upsert", err)
-	}
-	if tag.RowsAffected() == 0 {
-		return character.ErrOwned
 	}
 
 	return nil
@@ -72,24 +69,6 @@ func (r *Repo) Get(ctx context.Context, id int64) (*character.Character, error) 
 	}
 
 	return row, err
-}
-
-func (r *Repo) ListByUser(ctx context.Context, userID string) ([]character.Character, error) {
-	rows, err := r.pool.Query(ctx, listByUserSQL, userID)
-	if err != nil {
-		return nil, wrap("ListByUser", err)
-	}
-	defer rows.Close()
-	var out []character.Character
-	for rows.Next() {
-		row, err := scan(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, *row)
-	}
-
-	return out, wrap("ListByUser", rows.Err())
 }
 
 func (r *Repo) Delete(ctx context.Context, id int64) error {
@@ -142,7 +121,7 @@ type scanner interface {
 
 func scan(row scanner) (*character.Character, error) {
 	var c character.Character
-	err := row.Scan(&c.ID, &c.UserID, &c.Name, &c.OwnerHash, &c.RefreshToken, &c.Scopes, &c.CreatedAt)
+	err := row.Scan(&c.ID, &c.Name, &c.OwnerHash, &c.RefreshToken, &c.Scopes, &c.CreatedAt, &c.DeletedAt)
 	if err != nil {
 		return nil, wrap("scan", err)
 	}

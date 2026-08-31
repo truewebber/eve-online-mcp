@@ -19,31 +19,26 @@ var (
 )
 
 type mailListIn struct {
-	Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	UnreadOnly     *bool  `json:"unread_only,omitempty"     jsonschema:"Only list mail that has not been read yet."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
 type mailReadIn struct {
-	MailID    int    `json:"mail_id"             jsonschema:"Mail id from eve_mail_list.,minimum=1"`
-	Character string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
+	MailID int `json:"mail_id" jsonschema:"Mail id from eve_mail_list.,minimum=1"`
 }
 
 type notesIn struct {
-	Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
 type kmIn struct {
-	Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
 type fitIn struct {
-	Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
@@ -72,7 +67,7 @@ func registerSocial(s *mcp.Server) {
 }
 
 func eveMailList(ctx context.Context, a *session.Session, in mailListIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveMailList", err)
 	}
@@ -134,7 +129,7 @@ func eveMailList(ctx context.Context, a *session.Session, in mailListIn) (any, e
 }
 
 func eveMailRead(ctx context.Context, a *session.Session, in mailReadIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveMailRead", err)
 	}
@@ -173,7 +168,7 @@ func eveMailRead(ctx context.Context, a *session.Session, in mailReadIn) (any, e
 }
 
 func eveSocialNotifications(ctx context.Context, a *session.Session, in notesIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveSocialNotifications", err)
 	}
@@ -233,7 +228,7 @@ func eveSocialNotifications(ctx context.Context, a *session.Session, in notesIn)
 }
 
 func eveSocialKillmails(ctx context.Context, a *session.Session, in kmIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveSocialKillmails", err)
 	}
@@ -245,7 +240,7 @@ func eveSocialKillmails(ctx context.Context, a *session.Session, in kmIn) (any, 
 }
 
 func eveFittingList(ctx context.Context, a *session.Session, in fitIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveFittingList", err)
 	}

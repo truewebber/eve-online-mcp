@@ -9,38 +9,30 @@ import (
 
 	"go.uber.org/mock/gomock"
 
-	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store/storetest"
 
 	"github.com/truewebber/eve-online-mcp/internal/domain/character"
 	"github.com/truewebber/eve-online-mcp/internal/mocks"
 )
 
-func openRepo(t *testing.T) (*store.Store, *Repo) {
+const testRefreshTwo = "rt-2"
+
+func openRepo(t *testing.T) *Repo {
 	t.Helper()
 	logger := mocks.QuietLogger(gomock.NewController(t))
 	db := storetest.Open(t, logger)
 
-	return db, New(db.Pool(), logger)
+	return New(db.Pool(), logger)
 }
 
-func TestOwnership(t *testing.T) {
+func TestUpsertAndOwnerHash(t *testing.T) {
 	t.Parallel()
-	db, repo := openRepo(t)
+	repo := openRepo(t)
 	ctx := context.Background()
-	a, err := db.CreateUser(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := db.CreateUser(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
 	row := character.Character{
 		ID:           2112625428,
-		UserID:       a.ID,
 		Name:         "Jane Doe",
-		OwnerHash:    "hash",
+		OwnerHash:    "hash-a",
 		RefreshToken: "rt-1",
 		Scopes:       []string{"esi-wallet.read_character_wallet.v1"},
 	}
@@ -51,10 +43,11 @@ func TestOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.UserID != a.ID || got.RefreshToken != "rt-1" {
+	if got.RefreshToken != "rt-1" || got.OwnerHash != "hash-a" || !got.Live() {
 		t.Fatalf("got %+v", got)
 	}
-	row.RefreshToken = "rt-2"
+	row.RefreshToken = testRefreshTwo
+	row.OwnerHash = "hash-b"
 	if err := repo.Upsert(ctx, row); err != nil {
 		t.Fatal(err)
 	}
@@ -62,39 +55,51 @@ func TestOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.RefreshToken != "rt-2" || got.UserID != a.ID {
+	if got.RefreshToken != testRefreshTwo || got.OwnerHash != "hash-b" {
 		t.Fatalf("got %+v", got)
-	}
-	row.UserID = b.ID
-	if err := repo.Upsert(ctx, row); !errors.Is(err, character.ErrOwned) {
-		t.Fatalf("want ErrOwned, got %v", err)
-	}
-	list, err := repo.ListByUser(ctx, a.ID)
-	if err != nil || len(list) != 1 {
-		t.Fatalf("list %v %v", list, err)
 	}
 	if _, err := repo.Get(ctx, 1); !errors.Is(err, character.ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
-	_, err = db.Pool().Exec(ctx, `
-		INSERT INTO characters (character_id, user_id, name, refresh_token)
-		VALUES ($1, $2, 'x', 'y')`, row.ID, b.ID)
-	if err == nil {
-		t.Fatal("duplicate character_id must fail at the database")
+}
+
+func TestConcurrentUpsert(t *testing.T) {
+	t.Parallel()
+	repo := openRepo(t)
+	ctx := context.Background()
+	id := int64(2112625429)
+	var wg sync.WaitGroup
+	errc := make(chan error, 2)
+	for i, tok := range []string{"rt-a", "rt-b"} {
+		wg.Add(1)
+		go func(name, refresh string) {
+			defer wg.Done()
+			errc <- repo.Upsert(ctx, character.Character{
+				ID: id, Name: name, OwnerHash: "h", RefreshToken: refresh,
+			})
+		}("pilot", tok)
+		_ = i
+	}
+	wg.Wait()
+	close(errc)
+	for err := range errc {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := repo.Get(ctx, id)
+	if err != nil || !got.Live() {
+		t.Fatalf("got %+v %v", got, err)
 	}
 }
 
 func TestUpdateRefreshSerializes(t *testing.T) {
 	t.Parallel()
-	db, repo := openRepo(t)
+	repo := openRepo(t)
 	ctx := context.Background()
-	u, err := db.CreateUser(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
 	id := int64(99)
 	if err := repo.Upsert(ctx, character.Character{
-		ID: id, UserID: u.ID, Name: "Lock", RefreshToken: "old",
+		ID: id, Name: "Lock", RefreshToken: "old",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -170,26 +175,32 @@ func TestUpdateRefreshSerializes(t *testing.T) {
 	}
 }
 
-func TestDelete(t *testing.T) {
+func TestDeleteSoft(t *testing.T) {
 	t.Parallel()
-	db, repo := openRepo(t)
+	repo := openRepo(t)
 	ctx := context.Background()
-	u, err := db.CreateUser(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := repo.Upsert(ctx, character.Character{
-		ID: 7, UserID: u.ID, Name: "X", RefreshToken: "rt",
+		ID: 7, Name: "X", RefreshToken: "rt",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.Delete(ctx, 7); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repo.Get(ctx, 7); !errors.Is(err, character.ErrNotFound) {
-		t.Fatalf("want ErrNotFound, got %v", err)
+	got, err := repo.Get(ctx, 7)
+	if err != nil || got.Live() || got.RefreshToken != "" {
+		t.Fatalf("want soft-deleted empty grant, got %+v %v", got, err)
 	}
 	if err := repo.Delete(ctx, 7); !errors.Is(err, character.ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+	if err := repo.Upsert(ctx, character.Character{
+		ID: 7, Name: "X", RefreshToken: testRefreshTwo, OwnerHash: "h",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = repo.Get(ctx, 7)
+	if err != nil || !got.Live() || got.RefreshToken != testRefreshTwo {
+		t.Fatalf("want revived, got %+v %v", got, err)
 	}
 }

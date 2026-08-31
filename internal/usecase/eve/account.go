@@ -19,15 +19,11 @@ func registerAccount(s *mcp.Server) {
 	}, sessionTool(eveServerStatus))
 	addTool(s, &mcp.Tool{
 		Name:        "eve_auth_status",
-		Description: "Who is authorized here, and which in-game changes the tools can make.\n\nCall this before anything else when you do not know the setup, and always before promising the user an in-game change. It lists authorized characters, every mutating capability (all of them are registered), remaining mail sends this hour, and how confirmation works.\n\nReturns: characters[], default_character, capabilities, capability_reference, outward_facing_capabilities, mails_last_hour, mails_remaining_this_hour, mail_cap_per_hour, pending_confirmations, confirm_ttl_seconds, confirm.",
+		Description: "Who is authorized here, and which in-game changes the tools can make.\n\nCall this before anything else when you do not know the setup, and always before promising the user an in-game change. It names the one character this connection acts as, every mutating capability (all of them are registered), remaining mail sends this hour, and how confirmation works.\n\nReturns: character, capabilities, capability_reference, outward_facing_capabilities, mails_last_hour, mails_remaining_this_hour, mail_cap_per_hour, pending_confirmations, confirm_ttl_seconds, confirm.",
 	}, sessionTool(eveAuthStatus))
 	addTool(s, &mcp.Tool{
-		Name:        "eve_auth_login_url",
-		Description: "Generate an EVE SSO link the user must open to authorize a character.\n\nYou cannot complete this yourself — hand the URL to the user. They log in with their EVE account, approve the scope list, and the server stores the resulting token. One-time per character; several characters can be authorized by repeating it. The link always requests the full read, corporation, and write scope set.\n\nReturns: login_url, scope_count, write_capabilities_requested, instructions.",
-	}, sessionTool(eveAuthLoginURL))
-	addTool(s, &mcp.Tool{
 		Name:        "eve_auth_logout",
-		Description: "Revoke this server's access to one character and delete its stored token.\n\nIrreversible in the sense that re-authorizing needs another browser login, but it destroys nothing in-game.\n\nReturns: removed, character_id.",
+		Description: "Revoke this connection's access to its character and soft-delete the identity row.\n\nIrreversible in the sense that re-authorizing needs another browser login, but it destroys nothing in-game. Takes no arguments: a connection is exactly one character.\n\nReturns: removed, character_id.",
 	}, sessionTool(eveAuthLogout))
 	addTool(s, &mcp.Tool{
 		Name:        "eve_character_overview",
@@ -47,7 +43,10 @@ func eveServerStatus(ctx context.Context, a *session.Session, _ empty) (any, err
 }
 
 func eveAuthStatus(ctx context.Context, a *session.Session, _ empty) (any, error) {
-	tokens := a.SSO.All(ctx)
+	token, err := a.Character(ctx)
+	if err != nil {
+		return nil, wrap("eveAuthStatus", err)
+	}
 	policy := a.Guard.Status(ctx)
 	var outward []string
 	for name, cap := range write.Capabilities() {
@@ -59,52 +58,19 @@ func eveAuthStatus(ctx context.Context, a *session.Session, _ empty) (any, error
 	policy["outward_facing_capabilities"] = outward
 	writes := write.AllWriteScopeSet()
 	corps := write.CorpScopeSet()
-	if len(tokens) == 0 {
-		return merge(map[string]any{
-			fCharacters: []any{},
-			"next_step": "Nobody is authorized. Call eve_auth_login_url and give the user the link to open in a browser.",
-		}, policy), nil
-	}
-	var chars []map[string]any
-	for _, t := range tokens {
-		chars = append(chars, map[string]any{
-			fName: t.CharacterName, fCharacterID: t.CharacterID,
-			"scope_count":        len(t.Scopes),
-			"write_scopes":       sortStrings(intersect(t.Scopes, writes)),
-			"corporation_scopes": sortStrings(intersect(t.Scopes, corps)),
-		})
-	}
-	var def any
-	if len(tokens) == 1 {
-		def = tokens[0].CharacterName
-	}
 
 	return merge(map[string]any{
-		fCharacters: chars, "default_character": def,
+		"character": map[string]any{
+			fName: token.CharacterName, fCharacterID: token.CharacterID,
+			"scope_count":        len(token.Scopes),
+			"write_scopes":       sortStrings(intersect(token.Scopes, writes)),
+			"corporation_scopes": sortStrings(intersect(token.Scopes, corps)),
+		},
 	}, policy), nil
 }
 
-func eveAuthLoginURL(ctx context.Context, a *session.Session, _ empty) (any, error) {
-	login, err := a.StartAltLogin(ctx)
-	if err != nil {
-		return nil, wrap("eveAuthLoginURL", err)
-	}
-	scopes := write.RequestedScopes()
-	writes := write.CapabilityNames()
-
-	return map[string]any{
-		"login_url": login.URL, fState: login.State, "scope_count": len(scopes),
-		"write_capabilities_requested": writes,
-		"instructions":                 "Open login_url in a browser, pick the character, approve. The link is valid for 15 minutes and works once.",
-	}, nil
-}
-
-type logoutIn struct {
-	Character string `json:"character" jsonschema:"Character name or numeric id to log out."`
-}
-
-func eveAuthLogout(ctx context.Context, a *session.Session, in logoutIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+func eveAuthLogout(ctx context.Context, a *session.Session, _ empty) (any, error) {
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveAuthLogout", err)
 	}
@@ -113,17 +79,13 @@ func eveAuthLogout(ctx context.Context, a *session.Session, in logoutIn) (any, e
 	return map[string]any{"removed": token.CharacterName, fCharacterID: token.CharacterID}, nil
 }
 
-type overviewIn struct {
-	Character string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-}
-
 type overviewBox struct {
 	r   esi.Result
 	err error
 }
 
-func eveCharacterOverview(ctx context.Context, a *session.Session, in overviewIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+func eveCharacterOverview(ctx context.Context, a *session.Session, _ empty) (any, error) {
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveCharacterOverview", err)
 	}

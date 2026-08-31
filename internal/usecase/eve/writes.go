@@ -42,7 +42,6 @@ func registerWrites(s *mcp.Server) {
 func registerWaypoint(s *mcp.Server) {
 	type in struct {
 		Destination         string `json:"destination"                     jsonschema:"Exact system, station or structure name."`
-		Character           string `json:"character,omitempty"             jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		ClearOtherWaypoints *bool  `json:"clear_other_waypoints,omitempty" jsonschema:"True replaces the whole existing route. Default true."`
 		AddToBeginning      *bool  `json:"add_to_beginning,omitempty"      jsonschema:"Insert as the very next hop rather than the final stop."`
 		ConfirmToken        string `json:"confirm_token,omitempty"         jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
@@ -52,7 +51,7 @@ func registerWaypoint(s *mcp.Server) {
 		Description: "Set an autopilot waypoint in the running game client.\n\nThis only moves the route marker on the map. It never undocks, flies or activates autopilot. Default clear_other_waypoints=true wipes a route the player may have spent time building.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in in) (*mcp.CallToolResult, any, error) {
 		return Call(ctx, func(a *session.Session) (any, error) {
-			token, err := a.ResolveCharacter(ctx, in.Character)
+			token, err := a.Character(ctx)
 			if err != nil {
 				return nil, wrap("registerWaypoint", err)
 			}
@@ -105,7 +104,6 @@ func registerOpenWindow(s *mcp.Server) {
 	type in struct {
 		Window       string `json:"window"                  jsonschema:"'market' opens market details for an item. 'info' opens Show Info. 'contract' opens one contract."`
 		Target       string `json:"target"                  jsonschema:"For market, an exact item name. For info, an exact name of any entity. For contract, the numeric contract_id."`
-		Character    string `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		ConfirmToken string `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
 	}
 	addTool(s, &mcp.Tool{
@@ -113,7 +111,7 @@ func registerOpenWindow(s *mcp.Server) {
 		Description: "Open a window in the running game client.\n\nGood for handing something off to the player. Changes nothing in game and costs nothing.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in in) (*mcp.CallToolResult, any, error) {
 		return Call(ctx, func(a *session.Session) (any, error) {
-			token, err := a.ResolveCharacter(ctx, in.Character)
+			token, err := a.Character(ctx)
 			if err != nil {
 				return nil, wrap("registerOpenWindow", err)
 			}
@@ -164,13 +162,11 @@ type fittingSaveIn struct {
 	Ship         string          `json:"ship"                    jsonschema:"Exact hull name, e.g. 'Rifter'."`
 	Modules      []fittingModule `json:"modules"                 jsonschema:"Modules as objects with name, flag, quantity."`
 	Description  string          `json:"description,omitempty"   jsonschema:"Optional note stored with the fitting."`
-	Character    string          `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	ConfirmToken string          `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
 }
 
 type fittingDeleteIn struct {
 	FittingID    int    `json:"fitting_id"              jsonschema:"Fitting id from eve_fitting_list.,minimum=1"`
-	Character    string `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	ConfirmToken string `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
 }
 
@@ -193,7 +189,7 @@ func registerWriteFittings(s *mcp.Server) {
 }
 
 func eveFittingSave(ctx context.Context, a *session.Session, in fittingSaveIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveFittingSave", err)
 	}
@@ -284,7 +280,7 @@ func resolveFittingModules(ctx context.Context, a *session.Session, ship string,
 }
 
 func eveFittingDelete(ctx context.Context, a *session.Session, in fittingDeleteIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveFittingDelete", err)
 	}
@@ -326,13 +322,11 @@ func eveFittingDelete(ctx context.Context, a *session.Session, in fittingDeleteI
 type mailMarkIn struct {
 	MailID       int    `json:"mail_id"                 jsonschema:"Mail id from eve_mail_list.,minimum=1"`
 	Read         *bool  `json:"read,omitempty"          jsonschema:"True marks it read, False marks it unread. Default true."`
-	Character    string `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	ConfirmToken string `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
 }
 
 type mailDeleteIn struct {
 	MailID       int    `json:"mail_id"                 jsonschema:"Mail id from eve_mail_list.,minimum=1"`
-	Character    string `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	ConfirmToken string `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
 }
 
@@ -348,7 +342,7 @@ func registerMailOrganize(s *mcp.Server) {
 }
 
 func eveMailMark(ctx context.Context, a *session.Session, in mailMarkIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveMailMark", err)
 	}
@@ -375,7 +369,7 @@ func eveMailMark(ctx context.Context, a *session.Session, in mailMarkIn) (any, e
 }
 
 func eveMailDelete(ctx context.Context, a *session.Session, in mailDeleteIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveMailDelete", err)
 	}
@@ -412,7 +406,6 @@ type mailSendIn struct {
 	To           []string `json:"to"                      jsonschema:"Exact character, corporation or alliance names."`
 	Subject      string   `json:"subject"                 jsonschema:"Mail subject."`
 	Body         string   `json:"body"                    jsonschema:"Mail body text."`
-	Character    string   `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	ApprovedCost int      `json:"approved_cost,omitempty" jsonschema:"ISK you accept paying for CSPA charges. 0 refuses to pay.,minimum=0"`
 	ConfirmToken string   `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
 }
@@ -431,7 +424,7 @@ func registerMailSend(s *mcp.Server) {
 }
 
 func eveMailSend(ctx context.Context, a *session.Session, in mailSendIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveMailSend", err)
 	}
@@ -519,13 +512,11 @@ type contactsSetIn struct {
 	Names        []string `json:"names"                   jsonschema:"Exact character, corporation or alliance names."`
 	Standing     float64  `json:"standing"                jsonschema:"-10.0 to 10.0.,minimum=-10,maximum=10"`
 	Watched      *bool    `json:"watched,omitempty"       jsonschema:"Add to the watch list. Characters only."`
-	Character    string   `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	ConfirmToken string   `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
 }
 
 type contactsDeleteIn struct {
 	Names        []string `json:"names"                   jsonschema:"Exact contact names to remove."`
-	Character    string   `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	ConfirmToken string   `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
 }
 
@@ -553,7 +544,7 @@ func registerContacts(s *mcp.Server) {
 }
 
 func eveContactsSet(ctx context.Context, a *session.Session, in contactsSetIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveContactsSet", err)
 	}
@@ -696,7 +687,7 @@ func runContactOp(ctx context.Context, a *session.Session, characterID int, path
 }
 
 func eveContactsDelete(ctx context.Context, a *session.Session, in contactsDeleteIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveContactsDelete", err)
 	}
@@ -734,7 +725,6 @@ func registerCalendar(s *mcp.Server) {
 	type in struct {
 		EventID      int    `json:"event_id"                jsonschema:"Event id from the in-game calendar.,minimum=1"`
 		Response     string `json:"response"                jsonschema:"accepted, declined, or tentative."`
-		Character    string `json:"character,omitempty"     jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 		ConfirmToken string `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
 	}
 	addTool(s, &mcp.Tool{
@@ -742,7 +732,7 @@ func registerCalendar(s *mcp.Server) {
 		Description: "Respond to a calendar event invitation on this character.\n\nThe organiser and other invitees see accepted, declined or tentative in-game. This only RSVPs; it does not create, edit or delete events. Confirm before sending an answer the player will have to live with.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in in) (*mcp.CallToolResult, any, error) {
 		return Call(ctx, func(a *session.Session) (any, error) {
-			token, err := a.ResolveCharacter(ctx, in.Character)
+			token, err := a.Character(ctx)
 			if err != nil {
 				return nil, wrap("registerCalendar", err)
 			}

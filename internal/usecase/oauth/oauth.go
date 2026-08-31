@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,7 +23,6 @@ import (
 	"github.com/truewebber/gopkg/log"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
-	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
 	"github.com/truewebber/eve-online-mcp/internal/domain/authcode"
 	"github.com/truewebber/eve-online-mcp/internal/domain/character"
 	"github.com/truewebber/eve-online-mcp/internal/domain/loginstate"
@@ -57,29 +57,14 @@ const (
 )
 
 var (
-	ErrUnknownLogin     = errors.New("unknown or expired login state")
-	ErrStoreRequired    = errors.New("oauth: postgres store is required")
-	ErrHMACTooShort     = errors.New("oauth: HMAC key is too short")
-	ErrUnknownLoginKind = errors.New("unknown login kind")
-	errAltMissingUser   = errors.New("alt login is missing user_id")
-	errBadAlg           = errors.New("alg")
-	errInvalidToken     = errors.New("invalid")
-	errNotRefresh       = errors.New("not refresh")
-	errNoSub            = errors.New("no sub")
+	ErrUnknownLogin = errors.New("unknown or expired login state")
+	ErrHMACTooShort = errors.New("oauth: HMAC key is too short")
+	errBadAlg       = errors.New("alg")
+	errInvalidToken = errors.New("invalid")
+	errNotRefresh   = errors.New("not refresh")
+	errNoSub        = errors.New("no sub")
+	errBadCharacter = errors.New("oauth: character id")
 )
-
-type CharacterOwnedError struct {
-	CharacterName string
-}
-
-func (e CharacterOwnedError) Error() string {
-	name := e.CharacterName
-	if name == "" {
-		name = "This character"
-	}
-
-	return name + " already belongs to another user on this server. Call eve_auth_logout on that other session first, or sign in from your MCP client as this character (Authentication required) to use that account."
-}
 
 type Host struct {
 	Listen      string
@@ -118,7 +103,6 @@ type Options struct {
 
 type Server struct {
 	pub      Host
-	db       *store.Store
 	runtime  *session.Session
 	clients  oauthclient.Repository
 	logins   loginstate.Repository
@@ -129,12 +113,9 @@ type Server struct {
 	logger   log.Logger
 }
 
-func Open(pub Host, runtime *session.Session, db *store.Store, opts Options, logger log.Logger) (*Server, error) {
+func Open(pub Host, runtime *session.Session, opts Options, logger log.Logger) (*Server, error) {
 	if pub.MCPPath == "" {
 		pub.MCPPath = "/mcp"
-	}
-	if db == nil {
-		return nil, ErrStoreRequired
 	}
 	if len(opts.HMACKey) < hmacMinBytes {
 		return nil, ErrHMACTooShort
@@ -142,19 +123,18 @@ func Open(pub Host, runtime *session.Session, db *store.Store, opts Options, log
 
 	return &Server{
 		pub:     pub,
-		db:      db,
 		runtime: runtime,
 		clients: runtime.Clients,
 		logins:  runtime.Logins,
 		codes:   runtime.Codes,
-		login:   runtime.Opts.SSO.ForUser("", nil),
+		login:   runtime.Opts.SSO.ForCharacter(0, nil),
 		hmacKey: opts.HMACKey,
 		logger:  logger,
 	}, nil
 }
 
-func (s *Server) IssueAccess(userID string) (string, error) {
-	return s.issueAccess(userID)
+func (s *Server) IssueAccess(characterID int) (string, error) {
+	return s.issueAccess(characterID)
 }
 
 func (s *Server) Base() string { return s.pub.BaseURL() }
@@ -293,7 +273,6 @@ func (s *Server) ServeAuthorize(w http.ResponseWriter, r *http.Request) {
 		State:         prep.State,
 		PKCEVerifier:  prep.Verifier,
 		Scopes:        prep.Scopes,
-		Kind:          loginstate.KindMCP,
 		MCPClientID:   mcpClient,
 		RedirectURI:   redirect,
 		MCPState:      state,
@@ -324,21 +303,9 @@ func (s *Server) CompleteCallback(ctx context.Context, code, eveState string) (C
 	if err != nil {
 		return Callback{}, wrap("CompleteCallback", err)
 	}
-	switch st.Kind {
-	case loginstate.KindMCP:
-		loc, err := s.finishMCP(ctx, st, token)
+	loc, err := s.finishMCP(ctx, st, token)
 
-		return Callback{Redirect: loc, Token: token}, err
-	case loginstate.KindAlt:
-		err := s.finishAlt(ctx, st, token)
-		if err != nil {
-			return Callback{Token: token}, err
-		}
-
-		return Callback{Token: token}, nil
-	default:
-		return Callback{Token: token}, fmt.Errorf("%w: %q", ErrUnknownLoginKind, st.Kind)
-	}
+	return Callback{Redirect: loc, Token: token}, err
 }
 
 func (s *Server) ServeToken(w http.ResponseWriter, r *http.Request) {
@@ -369,14 +336,15 @@ func (s *Server) VerifyAccess(_ context.Context, token string, _ *http.Request) 
 	return s.verifyAccess(token)
 }
 
-func (s *Server) SessionFor(userID string) *session.Session {
-	if v, ok := s.sessions.Load(userID); ok {
+func (s *Server) SessionFor(characterID int) *session.Session {
+	key := strconv.Itoa(characterID)
+	if v, ok := s.sessions.Load(key); ok {
 		if sess, ok := v.(*session.Session); ok {
 			return sess
 		}
 	}
-	sess := s.runtime.ForUser(userID)
-	s.sessions.Store(userID, sess)
+	sess := s.runtime.ForCharacter(characterID)
+	s.sessions.Store(key, sess)
 
 	return sess
 }
@@ -389,12 +357,19 @@ func (s *Server) ProtectMCP(next http.Handler) http.Handler {
 
 			return
 		}
-		if _, err := s.db.GetUser(r.Context(), ti.UserID); err != nil {
-			http.Error(w, "unknown user", http.StatusUnauthorized)
+		id, err := strconv.ParseInt(ti.UserID, 10, 64)
+		if err != nil || id == 0 {
+			http.Error(w, "unknown character", http.StatusUnauthorized)
 
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(session.With(r.Context(), s.SessionFor(ti.UserID))))
+		row, err := s.runtime.Characters.Get(r.Context(), id)
+		if err != nil || row == nil || !row.Live() {
+			http.Error(w, "unknown character", http.StatusUnauthorized)
+
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(session.With(r.Context(), s.SessionFor(int(id)))))
 	})
 
 	return mcpauth.RequireBearerToken(s.VerifyAccess, &mcpauth.RequireBearerTokenOptions{
@@ -405,25 +380,22 @@ func (s *Server) ProtectMCP(next http.Handler) http.Handler {
 }
 
 func (s *Server) finishMCP(ctx context.Context, p *loginstate.Login, token *sso.CharacterToken) (string, error) {
-	userID, err := s.ownerOf(ctx, token.CharacterID)
-	if err != nil {
-		return "", err
+	existing, err := s.runtime.Characters.Get(ctx, int64(token.CharacterID))
+	if err != nil && !errors.Is(err, character.ErrNotFound) {
+		return "", wrap("finishMCP", err)
 	}
-	if userID == "" {
-		u, err := s.db.CreateUser(ctx)
-		if err != nil {
-			return "", wrap("finishMCP", err)
-		}
-		userID = u.ID
+	sess := s.SessionFor(token.CharacterID)
+	if existing != nil && existing.Live() && existing.OwnerHash != "" && existing.OwnerHash != token.OwnerHash {
+		sess.SSO.Revoke(ctx, token.CharacterID)
 	}
-	if err := s.SessionFor(userID).SSO.Upsert(ctx, token); err != nil {
+	if err := sess.SSO.Upsert(ctx, token); err != nil {
 		return "", wrap("finishMCP", err)
 	}
 
 	code := randomID(authCodeBytes)
 	if err := s.codes.Put(ctx, authcode.Code{
 		Value:         code,
-		UserID:        userID,
+		CharacterID:   int64(token.CharacterID),
 		MCPClientID:   p.MCPClientID,
 		RedirectURI:   p.RedirectURI,
 		CodeChallenge: p.CodeChallenge,
@@ -441,47 +413,9 @@ func (s *Server) finishMCP(ctx context.Context, p *loginstate.Login, token *sso.
 		q.Set("state", p.MCPState)
 	}
 	u.RawQuery = q.Encode()
-	s.logger.Info("oauth: mcp authorized", "character", token.CharacterName, "user_id", userID)
+	s.logger.Info("oauth: mcp authorized", "character", token.CharacterName, "character_id", token.CharacterID)
 
 	return u.String(), nil
-}
-
-func (s *Server) finishAlt(ctx context.Context, st *loginstate.Login, token *sso.CharacterToken) error {
-	if st.UserID == "" {
-		return errAltMissingUser
-	}
-	owner, err := s.ownerOf(ctx, token.CharacterID)
-	if err != nil {
-		return err
-	}
-	if owner != "" && owner != st.UserID {
-		return CharacterOwnedError{CharacterName: token.CharacterName}
-	}
-	if err := s.SessionFor(st.UserID).SSO.Upsert(ctx, token); err != nil {
-		if errors.Is(err, character.ErrOwned) {
-			return CharacterOwnedError{CharacterName: token.CharacterName}
-		}
-
-		return wrap("finishAlt", err)
-	}
-	s.logger.Info("oauth: alt attached", "character", token.CharacterName, "user_id", st.UserID)
-
-	return nil
-}
-
-func (s *Server) ownerOf(ctx context.Context, characterID int) (string, error) {
-	if s.runtime.Characters == nil {
-		return "", nil
-	}
-	c, err := s.runtime.Characters.Get(ctx, int64(characterID))
-	if errors.Is(err, character.ErrNotFound) {
-		return "", nil
-	}
-	if err != nil {
-		return "", wrap("ownerOf", err)
-	}
-
-	return c.UserID, nil
 }
 
 func (s *Server) exchangeCode(w http.ResponseWriter, r *http.Request) {
@@ -509,33 +443,34 @@ func (s *Server) exchangeCode(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	s.writeTokens(w, ac.UserID)
+	s.writeTokens(w, int(ac.CharacterID))
 }
 
 func (s *Server) refresh(w http.ResponseWriter, r *http.Request) {
 	raw := r.Form.Get(grantRefresh)
-	userID, err := s.parseRefresh(raw)
+	characterID, err := s.parseRefresh(raw)
 	if err != nil {
 		http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
 
 		return
 	}
-	if _, err := s.db.GetUser(r.Context(), userID); err != nil {
+	row, err := s.runtime.Characters.Get(r.Context(), int64(characterID))
+	if err != nil || row == nil || !row.Live() {
 		http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
 
 		return
 	}
-	s.writeTokens(w, userID)
+	s.writeTokens(w, characterID)
 }
 
-func (s *Server) writeTokens(w http.ResponseWriter, userID string) {
-	access, err := s.issueAccess(userID)
+func (s *Server) writeTokens(w http.ResponseWriter, characterID int) {
+	access, err := s.issueAccess(characterID)
 	if err != nil {
 		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
 
 		return
 	}
-	refresh, err := s.issueRefresh(userID)
+	refresh, err := s.issueRefresh(characterID)
 	if err != nil {
 		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
 
@@ -554,10 +489,10 @@ func (s *Server) writeTokens(w http.ResponseWriter, userID string) {
 	}
 }
 
-func (s *Server) issueAccess(userID string) (string, error) {
+func (s *Server) issueAccess(characterID int) (string, error) {
 	now := time.Now()
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub":   userID,
+		"sub":   strconv.Itoa(characterID),
 		"aud":   s.ResourceURL(),
 		"iss":   s.Base(),
 		"iat":   now.Unix(),
@@ -570,10 +505,10 @@ func (s *Server) issueAccess(userID string) (string, error) {
 	return signed, wrap("issueAccess", err)
 }
 
-func (s *Server) issueRefresh(userID string) (string, error) {
+func (s *Server) issueRefresh(characterID int) (string, error) {
 	now := time.Now()
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": userID,
+		"sub": strconv.Itoa(characterID),
 		"typ": typRefresh,
 		"iss": s.Base(),
 		"iat": now.Unix(),
@@ -585,7 +520,7 @@ func (s *Server) issueRefresh(userID string) (string, error) {
 	return signed, wrap("issueRefresh", err)
 }
 
-func (s *Server) parseRefresh(raw string) (string, error) {
+func (s *Server) parseRefresh(raw string) (int, error) {
 	tok, err := jwt.Parse(raw, func(t *jwt.Token) (any, error) {
 		if t.Method != jwt.SigningMethodHS256 {
 			return nil, errBadAlg
@@ -594,21 +529,25 @@ func (s *Server) parseRefresh(raw string) (string, error) {
 		return s.hmacKey, nil
 	}, jwt.WithIssuer(s.Base()), jwt.WithLeeway(jwtLeeway))
 	if err != nil || !tok.Valid {
-		return "", errInvalidToken
+		return 0, errInvalidToken
 	}
 	claims, ok := tok.Claims.(jwt.MapClaims)
 	if !ok {
-		return "", errInvalidToken
+		return 0, errInvalidToken
 	}
 	if claims["typ"] != typRefresh {
-		return "", errNotRefresh
+		return 0, errNotRefresh
 	}
 	sub, ok := claims["sub"].(string)
 	if !ok || sub == "" {
-		return "", errNoSub
+		return 0, errNoSub
+	}
+	id, err := strconv.Atoi(sub)
+	if err != nil || id == 0 {
+		return 0, errBadCharacter
 	}
 
-	return sub, nil
+	return id, nil
 }
 
 func (s *Server) verifyAccess(token string) (*mcpauth.TokenInfo, error) {

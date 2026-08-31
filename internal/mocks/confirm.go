@@ -42,18 +42,18 @@ func (m *MockConfirmRepository) EXPECT() *MockConfirmRepositoryMockRecorder {
 }
 
 // Count mocks base method.
-func (m *MockConfirmRepository) Count(ctx context.Context, userID string) (int, error) {
+func (m *MockConfirmRepository) Count(ctx context.Context, characterID int64) (int, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Count", ctx, userID)
+	ret := m.ctrl.Call(m, "Count", ctx, characterID)
 	ret0, _ := ret[0].(int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Count indicates an expected call of Count.
-func (mr *MockConfirmRepositoryMockRecorder) Count(ctx, userID any) *gomock.Call {
+func (mr *MockConfirmRepositoryMockRecorder) Count(ctx, characterID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Count", reflect.TypeOf((*MockConfirmRepository)(nil).Count), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Count", reflect.TypeOf((*MockConfirmRepository)(nil).Count), ctx, characterID)
 }
 
 // Delete mocks base method.

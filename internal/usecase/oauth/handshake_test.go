@@ -11,15 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
-	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
 	"github.com/truewebber/eve-online-mcp/internal/domain/authcode"
-	"github.com/truewebber/eve-online-mcp/internal/domain/loginstate"
 )
 
 func TestOpenHMACTooShort(t *testing.T) {
 	t.Parallel()
-	_, err := Open(Host{}, nil, &store.Store{}, Options{HMACKey: make([]byte, 16)}, nil)
+	_, err := Open(Host{}, nil, Options{HMACKey: make([]byte, 16)}, nil)
 	if !errors.Is(err, ErrHMACTooShort) {
 		t.Fatalf("got %v", err)
 	}
@@ -30,42 +27,14 @@ func TestHMACStableAcrossOpen(t *testing.T) {
 	db := openDB(t)
 	s1 := testServer(t, db)
 	s2 := testServer(t, db)
-	u, err := db.CreateUser(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	tok, err := s1.issueAccess(u.ID)
+	const characterID = 2112625428
+	tok, err := s1.issueAccess(characterID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	info, err := s2.verifyAccess(tok)
-	if err != nil || info.UserID != u.ID {
+	if err != nil || info.UserID != "2112625428" {
 		t.Fatalf("cross-process jwt: %+v err %v", info, err)
-	}
-}
-
-func TestStartAltLoginRecordsUserID(t *testing.T) {
-	t.Parallel()
-	db := openDB(t)
-	ctx := context.Background()
-	u, err := db.CreateUser(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := testServer(t, db)
-	login, err := s.SessionFor(u.ID).StartAltLogin(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(login.URL, "login.eveonline.com") || login.State == "" {
-		t.Fatalf("url %s state %s", login.URL, login.State)
-	}
-	st, err := logins(db).Get(ctx, login.State)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if st.Kind != loginstate.KindAlt || st.UserID != u.ID || st.PKCEVerifier == "" {
-		t.Fatalf("login state %+v", st)
 	}
 }
 
@@ -99,7 +68,7 @@ func TestAuthorizePersistsMCPLoginState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Kind != loginstate.KindMCP || st.UserID != "" || st.MCPClientID != "mcp-client" ||
+	if st.MCPClientID != "mcp-client" ||
 		st.RedirectURI != redirect || st.MCPState != "mcp-state" ||
 		st.CodeChallenge == "" || st.PKCEVerifier == "" {
 		t.Fatalf("login state %+v", st)
@@ -115,25 +84,6 @@ func TestCompleteCallbackUnknownState(t *testing.T) {
 	}
 }
 
-func TestFinishAltUsesRecordedUser(t *testing.T) {
-	t.Parallel()
-	db := openDB(t)
-	ctx := context.Background()
-	u, err := db.CreateUser(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := testServer(t, db)
-	tok := &sso.CharacterToken{CharacterID: 7, CharacterName: altName, RefreshToken: "rt"}
-	if err := s.finishAlt(ctx, &loginstate.Login{UserID: u.ID}, tok); err != nil {
-		t.Fatal(err)
-	}
-	row, err := characters(t, db).Get(ctx, 7)
-	if err != nil || row.UserID != u.ID {
-		t.Fatalf("owner %v err %v", row, err)
-	}
-}
-
 func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 	t.Parallel()
 	const (
@@ -142,16 +92,13 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 	)
 	db := openDB(t)
 	ctx := context.Background()
-	u, err := db.CreateUser(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	const characterID int64 = 2112625428
 	s := testServer(t, db)
 
 	put := func(t *testing.T, code string, expires time.Time) {
 		t.Helper()
 		err := codes(db).Put(ctx, authcode.Code{
-			Value: code, UserID: u.ID, MCPClientID: "c",
+			Value: code, CharacterID: characterID, MCPClientID: "c",
 			RedirectURI: redirect, CodeChallenge: challenge, ExpiresAt: expires,
 		})
 		if err != nil {
@@ -198,7 +145,7 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 					t.Fatalf("access_token %+v", payload)
 				}
 				info, err := s.verifyAccess(raw)
-				if err != nil || info.UserID != u.ID {
+				if err != nil || info.UserID != "2112625428" {
 					t.Fatalf("jwt %+v err %v", info, err)
 				}
 			},

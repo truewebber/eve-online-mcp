@@ -2,7 +2,6 @@ package http
 
 import (
 	"context"
-	"maps"
 	"sort"
 	"strings"
 	"sync"
@@ -19,25 +18,25 @@ type accessMem struct {
 	AccessExpiresAt time.Time
 }
 
-// Refresh tokens live on the character row when bound to a userID; access
-// tokens stay in process memory (SPEC §3.4). An empty userID is the MCP
-// login broker: memory only, until FinishEVE upserts into a user store.
+// Refresh tokens live on the character row when bound to a characterID;
+// access tokens stay in process memory (SPEC §3.4). CharacterID 0 is the
+// MCP login broker: memory only, until the callback upserts the grant.
 type tokenStore struct {
-	chars  character.Repository
-	userID string
-	mu     sync.Mutex
-	logger log.Logger
-	tokens map[int]*sso.CharacterToken
-	access map[int]accessMem
+	chars       character.Repository
+	characterID int
+	mu          sync.Mutex
+	logger      log.Logger
+	tokens      map[int]*sso.CharacterToken
+	access      map[int]accessMem
 }
 
-func newTokenStore(chars character.Repository, userID string, logger log.Logger) *tokenStore {
+func newTokenStore(chars character.Repository, characterID int, logger log.Logger) *tokenStore {
 	return &tokenStore{
-		chars:  chars,
-		userID: userID,
-		logger: logger,
-		tokens: map[int]*sso.CharacterToken{},
-		access: map[int]accessMem{},
+		chars:       chars,
+		characterID: characterID,
+		logger:      logger,
+		tokens:      map[int]*sso.CharacterToken{},
+		access:      map[int]accessMem{},
 	}
 }
 
@@ -50,7 +49,6 @@ func (s *tokenStore) Upsert(ctx context.Context, token *sso.CharacterToken) erro
 	}
 	row := character.Character{
 		ID:           int64(token.CharacterID),
-		UserID:       s.userID,
 		Name:         token.CharacterName,
 		OwnerHash:    token.OwnerHash,
 		RefreshToken: token.RefreshToken,
@@ -87,7 +85,7 @@ func (s *tokenStore) Remove(ctx context.Context, id int) bool {
 		return true
 	}
 	row, err := s.chars.Get(ctx, int64(id))
-	if err != nil || row.UserID != s.userID {
+	if err != nil || !row.Live() || int(row.ID) != s.characterID {
 		return false
 	}
 	if err := s.chars.Delete(ctx, int64(id)); err != nil {
@@ -108,7 +106,7 @@ func (s *tokenStore) Get(ctx context.Context, id int) *sso.CharacterToken {
 		return s.tokens[id]
 	}
 	row, err := s.chars.Get(ctx, int64(id))
-	if err != nil || row.UserID != s.userID {
+	if err != nil || !row.Live() || int(row.ID) != s.characterID {
 		return nil
 	}
 	s.mu.Lock()
@@ -130,23 +128,12 @@ func (s *tokenStore) All(ctx context.Context) []*sso.CharacterToken {
 
 		return out
 	}
-	rows, err := s.chars.ListByUser(ctx, s.userID)
-	if err != nil {
-		s.logger.Error("sso: list characters", "err", err)
-
+	tok := s.Get(ctx, s.characterID)
+	if tok == nil {
 		return nil
 	}
-	s.mu.Lock()
-	access := make(map[int]accessMem, len(s.access))
-	maps.Copy(access, s.access)
-	s.mu.Unlock()
-	out := make([]*sso.CharacterToken, 0, len(rows))
-	for i := range rows {
-		out = append(out, tokenFromCharacter(&rows[i], access[int(rows[i].ID)]))
-	}
-	sortTokens(out)
 
-	return out
+	return []*sso.CharacterToken{tok}
 }
 
 func (s *tokenStore) FindByName(ctx context.Context, name string) *sso.CharacterToken {
@@ -167,7 +154,7 @@ func (s *tokenStore) FindByName(ctx context.Context, name string) *sso.Character
 }
 
 func (s *tokenStore) durable() bool {
-	return s != nil && s.chars != nil && s.userID != ""
+	return s != nil && s.chars != nil && s.characterID != 0
 }
 
 func (s *tokenStore) upsertMemory(token *sso.CharacterToken) error {

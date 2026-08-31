@@ -8,37 +8,33 @@ import (
 
 	"go.uber.org/mock/gomock"
 
-	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store/storetest"
 
 	"github.com/truewebber/eve-online-mcp/internal/domain/authcode"
 	"github.com/truewebber/eve-online-mcp/internal/mocks"
 )
 
-func openRepo(t *testing.T) (*store.Store, *Repo) {
+func openRepo(t *testing.T) *Repo {
 	t.Helper()
 	db := storetest.Open(t, mocks.QuietLogger(gomock.NewController(t)))
 
-	return db, New(db.Pool())
+	return New(db.Pool())
 }
 
 func TestTakeOnce(t *testing.T) {
 	t.Parallel()
-	db, repo := openRepo(t)
+	repo := openRepo(t)
 	ctx := context.Background()
-	u, err := db.CreateUser(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	const characterID int64 = 2112000001
 	if err := repo.Put(ctx, authcode.Code{
-		Value: "abc", UserID: u.ID, MCPClientID: "c",
+		Value: "abc", CharacterID: characterID, MCPClientID: "c",
 		RedirectURI: "http://localhost/cb", CodeChallenge: "ch",
 		ExpiresAt: time.Now().Add(2 * time.Minute),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := repo.Take(ctx, "abc")
-	if err != nil || got.UserID != u.ID {
+	if err != nil || got.CharacterID != characterID {
 		t.Fatalf("take %+v err %v", got, err)
 	}
 	if _, err := repo.Take(ctx, "abc"); !errors.Is(err, authcode.ErrNotFound) {
@@ -48,14 +44,10 @@ func TestTakeOnce(t *testing.T) {
 
 func TestTakeExpired(t *testing.T) {
 	t.Parallel()
-	db, repo := openRepo(t)
+	repo := openRepo(t)
 	ctx := context.Background()
-	u, err := db.CreateUser(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := repo.Put(ctx, authcode.Code{
-		Value: "old", UserID: u.ID, MCPClientID: "c",
+		Value: "old", CharacterID: 1, MCPClientID: "c",
 		RedirectURI: "r", CodeChallenge: "h",
 		ExpiresAt: time.Now().Add(-time.Minute),
 	}); err != nil {
@@ -68,14 +60,10 @@ func TestTakeExpired(t *testing.T) {
 
 func TestDeleteExpired(t *testing.T) {
 	t.Parallel()
-	db, repo := openRepo(t)
+	repo := openRepo(t)
 	ctx := context.Background()
-	u, err := db.CreateUser(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := repo.Put(ctx, authcode.Code{
-		Value: "oldc", UserID: u.ID, MCPClientID: "c", RedirectURI: "r", CodeChallenge: "h",
+		Value: "oldc", CharacterID: 1, MCPClientID: "c", RedirectURI: "r", CodeChallenge: "h",
 		ExpiresAt: time.Now().Add(-time.Minute),
 	}); err != nil {
 		t.Fatal(err)

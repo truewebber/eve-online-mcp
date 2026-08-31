@@ -10,7 +10,7 @@ var ErrNotFound = errors.New("authcode: not found")
 
 type Code struct {
 	Value         string
-	UserID        string
+	CharacterID   int64
 	MCPClientID   string
 	RedirectURI   string
 	CodeChallenge string

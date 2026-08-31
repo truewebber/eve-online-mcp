@@ -29,7 +29,7 @@ func TestPutGetDelete(t *testing.T) {
 	repo := openRepo(t)
 	ctx := context.Background()
 	if err := repo.Put(ctx, confirm.Confirm{
-		Value: "peek", UserID: "u", Tool: toolWaypoint, ArgsDigest: "ab",
+		Value: "peek", CharacterID: 1, Tool: toolWaypoint, ArgsDigest: "ab",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestTakeOnceAndExpiry(t *testing.T) {
 	repo := openRepo(t)
 	ctx := context.Background()
 	if err := repo.Put(ctx, confirm.Confirm{
-		Value: "fresh", UserID: "u", Tool: toolMail, ArgsDigest: "deadbeef",
+		Value: "fresh", CharacterID: 1, Tool: toolMail, ArgsDigest: "deadbeef",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestTakeOnceAndExpiry(t *testing.T) {
 		t.Fatalf("second take %v", err)
 	}
 	if err := repo.Put(ctx, confirm.Confirm{
-		Value: "old", UserID: "u", Tool: toolWaypoint, ArgsDigest: "x",
+		Value: "old", CharacterID: 1, Tool: toolWaypoint, ArgsDigest: "x",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -79,11 +79,11 @@ func TestCountAndDeleteExpired(t *testing.T) {
 	repo := openRepo(t)
 	ctx := context.Background()
 	if err := repo.Put(ctx, confirm.Confirm{
-		Value: "a", UserID: "u", Tool: "t", ArgsDigest: "d",
+		Value: "a", CharacterID: 1, Tool: "t", ArgsDigest: "d",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	n, err := repo.Count(ctx, "u")
+	n, err := repo.Count(ctx, 1)
 	if err != nil || n != 1 {
 		t.Fatalf("count %d %v", n, err)
 	}

@@ -43,33 +43,33 @@ func (m *MockWritePersist) EXPECT() *MockWritePersistMockRecorder {
 }
 
 // CountConfirm mocks base method.
-func (m *MockWritePersist) CountConfirm(ctx context.Context, userID string) (int, error) {
+func (m *MockWritePersist) CountConfirm(ctx context.Context, characterID int64) (int, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountConfirm", ctx, userID)
+	ret := m.ctrl.Call(m, "CountConfirm", ctx, characterID)
 	ret0, _ := ret[0].(int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CountConfirm indicates an expected call of CountConfirm.
-func (mr *MockWritePersistMockRecorder) CountConfirm(ctx, userID any) *gomock.Call {
+func (mr *MockWritePersistMockRecorder) CountConfirm(ctx, characterID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountConfirm", reflect.TypeOf((*MockWritePersist)(nil).CountConfirm), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountConfirm", reflect.TypeOf((*MockWritePersist)(nil).CountConfirm), ctx, characterID)
 }
 
 // CountMailSince mocks base method.
-func (m *MockWritePersist) CountMailSince(ctx context.Context, userID string, since time.Time) (int, error) {
+func (m *MockWritePersist) CountMailSince(ctx context.Context, characterID int64, since time.Time) (int, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountMailSince", ctx, userID, since)
+	ret := m.ctrl.Call(m, "CountMailSince", ctx, characterID, since)
 	ret0, _ := ret[0].(int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CountMailSince indicates an expected call of CountMailSince.
-func (mr *MockWritePersistMockRecorder) CountMailSince(ctx, userID, since any) *gomock.Call {
+func (mr *MockWritePersistMockRecorder) CountMailSince(ctx, characterID, since any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountMailSince", reflect.TypeOf((*MockWritePersist)(nil).CountMailSince), ctx, userID, since)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountMailSince", reflect.TypeOf((*MockWritePersist)(nil).CountMailSince), ctx, characterID, since)
 }
 
 // DeleteConfirm mocks base method.
@@ -103,17 +103,17 @@ func (mr *MockWritePersistMockRecorder) GetConfirm(ctx, token any) *gomock.Call 
 }
 
 // InsertMail mocks base method.
-func (m *MockWritePersist) InsertMail(ctx context.Context, userID string, at time.Time) error {
+func (m *MockWritePersist) InsertMail(ctx context.Context, characterID int64, at time.Time) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InsertMail", ctx, userID, at)
+	ret := m.ctrl.Call(m, "InsertMail", ctx, characterID, at)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // InsertMail indicates an expected call of InsertMail.
-func (mr *MockWritePersistMockRecorder) InsertMail(ctx, userID, at any) *gomock.Call {
+func (mr *MockWritePersistMockRecorder) InsertMail(ctx, characterID, at any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertMail", reflect.TypeOf((*MockWritePersist)(nil).InsertMail), ctx, userID, at)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertMail", reflect.TypeOf((*MockWritePersist)(nil).InsertMail), ctx, characterID, at)
 }
 
 // PutConfirm mocks base method.

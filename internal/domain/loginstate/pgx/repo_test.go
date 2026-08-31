@@ -7,44 +7,39 @@ import (
 
 	"go.uber.org/mock/gomock"
 
-	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/store/storetest"
 
 	"github.com/truewebber/eve-online-mcp/internal/domain/loginstate"
 	"github.com/truewebber/eve-online-mcp/internal/mocks"
 )
 
-func openRepo(t *testing.T) (*store.Store, *Repo) {
+func openRepo(t *testing.T) *Repo {
 	t.Helper()
 	db := storetest.Open(t, mocks.QuietLogger(gomock.NewController(t)))
 
-	return db, New(db.Pool())
+	return New(db.Pool())
 }
 
 func TestPutGetTake(t *testing.T) {
 	t.Parallel()
-	db, repo := openRepo(t)
+	repo := openRepo(t)
 	ctx := context.Background()
-	u, err := db.CreateUser(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := repo.Put(ctx, loginstate.Login{
-		State: "st", PKCEVerifier: "v", Kind: loginstate.KindAlt, UserID: u.ID, Scopes: []string{"s"},
+		State: "st", PKCEVerifier: "v", Scopes: []string{"s"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := repo.Get(ctx, "st")
-	if err != nil || got.Kind != loginstate.KindAlt || got.UserID != u.ID {
+	if err != nil || got.PKCEVerifier != "v" {
 		t.Fatalf("%+v err %v", got, err)
 	}
 	if err := repo.Put(ctx, loginstate.Login{
-		State: "once", PKCEVerifier: "v2", Kind: loginstate.KindMCP,
+		State: "once", PKCEVerifier: "v2",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	got, err = repo.Take(ctx, "once")
-	if err != nil || got.Kind != loginstate.KindMCP {
+	if err != nil || got.PKCEVerifier != "v2" {
 		t.Fatalf("take %+v err %v", got, err)
 	}
 	if _, err := repo.Take(ctx, "once"); !errors.Is(err, loginstate.ErrNotFound) {
@@ -57,10 +52,10 @@ func TestPutGetTake(t *testing.T) {
 
 func TestGetExpires(t *testing.T) {
 	t.Parallel()
-	_, repo := openRepo(t)
+	repo := openRepo(t)
 	ctx := context.Background()
 	if err := repo.Put(ctx, loginstate.Login{
-		State: "st", PKCEVerifier: "v", Kind: loginstate.KindMCP,
+		State: "st", PKCEVerifier: "v",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -75,10 +70,10 @@ func TestGetExpires(t *testing.T) {
 
 func TestDeleteExpired(t *testing.T) {
 	t.Parallel()
-	_, repo := openRepo(t)
+	repo := openRepo(t)
 	ctx := context.Background()
 	if err := repo.Put(ctx, loginstate.Login{
-		State: "old", PKCEVerifier: "v", Kind: loginstate.KindMCP,
+		State: "old", PKCEVerifier: "v",
 	}); err != nil {
 		t.Fatal(err)
 	}

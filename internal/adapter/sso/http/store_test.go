@@ -36,14 +36,11 @@ func TestTokenStorePersistsRefreshNotAccess(t *testing.T) {
 	db := openStore(t)
 	chars := openChars(t, db)
 	ctx := context.Background()
-	u, err := db.CreateUser(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	const id = 2112625428
 	base := New(sso.Options{}, nil, mocks.QuietLogger(gomock.NewController(t)))
-	ts := base.ForUser(u.ID, chars)
+	ts := base.ForCharacter(id, chars)
 	tok := &sso.CharacterToken{
-		CharacterID:     2112625428,
+		CharacterID:     id,
 		CharacterName:   "Jane Doe",
 		RefreshToken:    testRefreshToken,
 		Scopes:          []string{"publicData"},
@@ -59,7 +56,7 @@ func TestTokenStorePersistsRefreshNotAccess(t *testing.T) {
 		t.Fatalf("same process got %+v", got)
 	}
 
-	fresh := base.ForUser(u.ID, chars)
+	fresh := base.ForCharacter(id, chars)
 	got = fresh.Get(ctx, tok.CharacterID)
 	if got == nil || got.RefreshToken != testRefreshToken {
 		t.Fatalf("reload %+v", got)
@@ -79,32 +76,20 @@ func TestTokenStorePersistsRefreshNotAccess(t *testing.T) {
 	}
 }
 
-func TestTokenStoreRejectsOtherOwner(t *testing.T) {
+func TestTokenStoreIsOneCharacter(t *testing.T) {
 	t.Parallel()
 	db := openStore(t)
 	chars := openChars(t, db)
 	ctx := context.Background()
-	a, err := db.CreateUser(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := db.CreateUser(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
 	base := New(sso.Options{}, nil, mocks.QuietLogger(gomock.NewController(t)))
 	tok := &sso.CharacterToken{
 		CharacterID: 99, CharacterName: "Lock", RefreshToken: "rt",
 	}
-	if err := base.ForUser(a.ID, chars).Upsert(ctx, tok); err != nil {
+	if err := base.ForCharacter(99, chars).Upsert(ctx, tok); err != nil {
 		t.Fatal(err)
 	}
-	err = base.ForUser(b.ID, chars).Upsert(ctx, tok)
-	if !errors.Is(err, character.ErrOwned) {
-		t.Fatalf("want ErrOwned, got %v", err)
-	}
-	if base.ForUser(b.ID, chars).Get(ctx, 99) != nil {
-		t.Fatal("other user must not see the character")
+	if base.ForCharacter(100, chars).Get(ctx, 99) != nil {
+		t.Fatal("other character store must not see this grant")
 	}
 }
 
@@ -113,7 +98,7 @@ func TestBrokerStoreStaysInMemory(t *testing.T) {
 	db := openStore(t)
 	chars := openChars(t, db)
 	ctx := context.Background()
-	broker := New(sso.Options{}, nil, mocks.QuietLogger(gomock.NewController(t))).ForUser("", chars)
+	broker := New(sso.Options{}, nil, mocks.QuietLogger(gomock.NewController(t))).ForCharacter(0, chars)
 	tok := &sso.CharacterToken{CharacterID: 7, CharacterName: "Broker", RefreshToken: "rt"}
 	if err := broker.Upsert(ctx, tok); err != nil {
 		t.Fatal(err)

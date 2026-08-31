@@ -2,10 +2,8 @@ package oauth
 
 import (
 	"context"
-	"errors"
 	nhttp "net/http"
 	"net/url"
-	"strings"
 	"testing"
 
 	"go.uber.org/mock/gomock"
@@ -94,7 +92,7 @@ func testServer(t *testing.T, db *store.Store) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := Open(Host{Listen: "127.0.0.1:8765"}, runtime, db, Options{HMACKey: []byte(testHMACKey)}, logger)
+	s, err := Open(Host{Listen: "127.0.0.1:8765"}, runtime, Options{HMACKey: []byte(testHMACKey)}, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,18 +100,14 @@ func testServer(t *testing.T, db *store.Store) *Server {
 	return s
 }
 
-func TestFinishMCPAttachesExistingOwner(t *testing.T) {
+func TestFinishMCPUpsertsCharacter(t *testing.T) {
 	t.Parallel()
 	db := openDB(t)
 	ctx := context.Background()
-	u, err := db.CreateUser(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
 	const charID int64 = 2112625428
 	chars := characters(t, db)
 	if err := chars.Upsert(ctx, character.Character{
-		ID: charID, UserID: u.ID, Name: janeDoe, RefreshToken: "old-rt",
+		ID: charID, Name: janeDoe, RefreshToken: "old-rt", OwnerHash: "h1",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +116,7 @@ func TestFinishMCPAttachesExistingOwner(t *testing.T) {
 		MCPClientID: "c", RedirectURI: redirect,
 		MCPState: "mcp", CodeChallenge: "x",
 	}, &sso.CharacterToken{
-		CharacterID: int(charID), CharacterName: janeDoe, RefreshToken: newRT,
+		CharacterID: int(charID), CharacterName: janeDoe, RefreshToken: newRT, OwnerHash: "h1",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -132,18 +126,15 @@ func TestFinishMCPAttachesExistingOwner(t *testing.T) {
 		t.Fatalf("redirect %s err %v", loc, err)
 	}
 	row, err := chars.Get(ctx, charID)
-	if err != nil || row.UserID != u.ID {
-		t.Fatalf("owner %v err %v", row, err)
+	if err != nil || !row.Live() || row.RefreshToken != newRT {
+		t.Fatalf("row %+v err %v", row, err)
 	}
-	if row.RefreshToken != newRT {
-		t.Fatalf("refresh %s", row.RefreshToken)
-	}
-	if tok := s.SessionFor(u.ID).SSO.Get(ctx, int(charID)); tok == nil {
+	if tok := s.SessionFor(int(charID)).SSO.Get(ctx, int(charID)); tok == nil {
 		t.Fatal("session store miss")
 	}
 }
 
-func TestFinishMCPCreatesUser(t *testing.T) {
+func TestFinishMCPCreatesCharacter(t *testing.T) {
 	t.Parallel()
 	db := openDB(t)
 	s := testServer(t, db)
@@ -160,85 +151,101 @@ func TestFinishMCPCreatesUser(t *testing.T) {
 		t.Fatal("empty redirect")
 	}
 	row, err := characters(t, db).Get(context.Background(), charID)
-	if err != nil || row.UserID == "" {
-		t.Fatalf("owner %v err %v", row, err)
-	}
-	if _, err := db.GetUser(context.Background(), row.UserID); err != nil {
-		t.Fatal(err)
+	if err != nil || !row.Live() {
+		t.Fatalf("row %+v err %v", row, err)
 	}
 }
 
-func TestFinishAltRefusesOtherUser(t *testing.T) {
+func TestOwnerHashChangeReplacesGrant(t *testing.T) {
 	t.Parallel()
 	db := openDB(t)
 	ctx := context.Background()
-	a, err := db.CreateUser(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := db.CreateUser(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
 	const charID int64 = 2112625428
 	chars := characters(t, db)
 	if err := chars.Upsert(ctx, character.Character{
-		ID: charID, UserID: a.ID, Name: janeDoe, RefreshToken: "a-rt",
+		ID: charID, Name: janeDoe, RefreshToken: "old-rt", OwnerHash: "old-hash",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	s := testServer(t, db)
-	err = s.finishAlt(ctx, &loginstate.Login{UserID: b.ID}, &sso.CharacterToken{
-		CharacterID: int(charID), CharacterName: janeDoe, RefreshToken: "b-rt",
-	})
-	if !errors.As(err, new(CharacterOwnedError)) {
-		t.Fatalf("want CharacterOwnedError, got %v", err)
-	}
-	if !strings.Contains(err.Error(), "eve_auth_logout") {
-		t.Fatalf("want actionable message, got %q", err)
+	if _, err := s.finishMCP(ctx, &loginstate.Login{
+		MCPClientID: "c", RedirectURI: redirect,
+	}, &sso.CharacterToken{
+		CharacterID: int(charID), CharacterName: janeDoe, RefreshToken: newRT, OwnerHash: "new-hash",
+	}); err != nil {
+		t.Fatal(err)
 	}
 	row, err := chars.Get(ctx, charID)
-	if err != nil || row.UserID != a.ID {
-		t.Fatalf("owner %v err %v", row, err)
-	}
-	if row.RefreshToken != "a-rt" {
-		t.Fatalf("A must keep the token, got %s", row.RefreshToken)
-	}
-	if tok := s.SessionFor(b.ID).SSO.Get(ctx, int(charID)); tok != nil {
-		t.Fatal("B must not hold the character")
+	if err != nil || row.OwnerHash != "new-hash" || row.RefreshToken != newRT {
+		t.Fatalf("row %+v err %v", row, err)
 	}
 }
 
-func TestFinishAltRefreshesOwnCharacter(t *testing.T) {
+func TestLogoutSoftDeleteThenRelogin(t *testing.T) {
 	t.Parallel()
 	db := openDB(t)
 	ctx := context.Background()
-	u, err := db.CreateUser(ctx)
+	const charID int64 = 99
+	s := testServer(t, db)
+	if _, err := s.finishMCP(ctx, &loginstate.Login{
+		MCPClientID: "c", RedirectURI: redirect,
+	}, &sso.CharacterToken{
+		CharacterID: int(charID), CharacterName: altName, RefreshToken: "rt-1", OwnerHash: "h",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := characters(t, db).Delete(ctx, charID); err != nil {
+		t.Fatal(err)
+	}
+	row, err := characters(t, db).Get(ctx, charID)
+	if err != nil || row.Live() {
+		t.Fatalf("want soft-deleted, got %+v %v", row, err)
+	}
+	if _, err := s.finishMCP(ctx, &loginstate.Login{
+		MCPClientID: "c", RedirectURI: redirect,
+	}, &sso.CharacterToken{
+		CharacterID: int(charID), CharacterName: altName, RefreshToken: "rt-2", OwnerHash: "h",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	row, err = characters(t, db).Get(ctx, charID)
+	if err != nil || !row.Live() || row.RefreshToken != "rt-2" {
+		t.Fatalf("want revived, got %+v %v", row, err)
+	}
+	tok, err := s.IssueAccess(int(charID))
 	if err != nil {
 		t.Fatal(err)
 	}
-	const charID int64 = 99
-	chars := characters(t, db)
-	if err := chars.Upsert(ctx, character.Character{
-		ID: charID, UserID: u.ID, Name: altName, RefreshToken: "old-rt",
-	}); err != nil {
-		t.Fatal(err)
+	info, err := s.verifyAccess(tok)
+	if err != nil || info.UserID != "99" {
+		t.Fatalf("sub %+v err %v", info, err)
 	}
+}
+
+func TestConcurrentFinishMCP(t *testing.T) {
+	t.Parallel()
+	db := openDB(t)
+	ctx := context.Background()
+	const charID int64 = 77
 	s := testServer(t, db)
-	if err := s.finishAlt(ctx, &loginstate.Login{UserID: u.ID}, &sso.CharacterToken{
-		CharacterID: int(charID), CharacterName: altName, RefreshToken: newRT,
-	}); err != nil {
-		t.Fatal(err)
+	errc := make(chan error, 2)
+	for range 2 {
+		go func() {
+			_, err := s.finishMCP(ctx, &loginstate.Login{
+				MCPClientID: "c", RedirectURI: redirect,
+			}, &sso.CharacterToken{
+				CharacterID: int(charID), CharacterName: janeDoe, RefreshToken: "rt", OwnerHash: "h",
+			})
+			errc <- err
+		}()
 	}
-	row, err := chars.Get(ctx, charID)
-	if err != nil || row.UserID != u.ID {
-		t.Fatalf("owner %v err %v", row, err)
+	for range 2 {
+		if err := <-errc; err != nil {
+			t.Fatal(err)
+		}
 	}
-	if row.RefreshToken != newRT {
-		t.Fatalf("refresh %s", row.RefreshToken)
-	}
-	n, err := chars.ListByUser(ctx, u.ID)
-	if err != nil || len(n) != 1 {
-		t.Fatalf("rows %d err %v", len(n), err)
+	row, err := characters(t, db).Get(ctx, charID)
+	if err != nil || !row.Live() {
+		t.Fatalf("row %+v err %v", row, err)
 	}
 }

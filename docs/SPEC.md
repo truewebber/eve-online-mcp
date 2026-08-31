@@ -854,29 +854,18 @@ Done and holding: PostgreSQL as the durable store (T03–T07); write and
 corp tools always registered, confirm 300 s and mail cap 5/h as
 constants, no write budget (T08); per-character ESI token bucket 400 /
 2 per s with `UserRateLimited` (T09). The alt-add ownership refuse (T10)
-is superseded by item 1 below and goes away with it.
+went away with item 1.
 
 Landed since, ahead of the board: **item 5** in full — the ESI response
 cache, id→name cache and reference prices are bounded pod memory and the
 cache tables are dropped — and the half of item 4 that swaps the
-boot-time migrator for goose applied from outside the binary.
+boot-time migrator for goose applied from outside the binary; **item 0**
+(recorded ESI fixtures and a throwaway Postgres); and **item 1** — there
+is no `users` table, JWT `sub` is the character id, no tool takes a
+`character` parameter, and there is no alt-add path.
 
 Remaining, in dependency order:
 
-0. **Something to accept these against.** Recorded ESI fixtures at the
-   pinned compatibility date, and a throwaway Postgres for the store and
-   the goose migrations (`internal/adapter/store/testdb.go` is the seed).
-   Every item below changes an auth lifetime, a lock, or a response
-   shape, and hand-checking those against Tranquility with one live
-   character is how exactly one of them ships broken and nobody notices
-   for a month.
-1. **The character is the user** (§3.3): drop the `users` table and
-   `domain/user`; JWT `sub` = `character_id`; drop `eve_auth_login_url`
-   and every tool-started EVE login (`login_states.kind`, `SSOForState`,
-   the T10 refuse path); remove the `character` parameter from all
-   tools and character resolution from `usecase/session`;
-   `eve_auth_status` reports the one character; `eve_auth_logout` takes
-   no arguments; drop the `CharacterNotFound` error kind (§4).
 2. **Sessions own the EVE grant** (§3.1, §3.2, §8, DB.md): `sessions`
    table (BIGINT identity ids, a nullable `refresh_token` and `scopes`
    on the session, `valid_til` 30 d, creation-only metadata, partial

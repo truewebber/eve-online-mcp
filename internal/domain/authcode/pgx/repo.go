@@ -14,11 +14,11 @@ import (
 
 const (
 	putSQL = `
-		INSERT INTO auth_codes (code, user_id, mcp_client_id, redirect_uri, code_challenge, expires_at)
+		INSERT INTO auth_codes (code, character_id, mcp_client_id, redirect_uri, code_challenge, expires_at)
 		VALUES ($1, $2, $3, $4, $5, $6)`
 	takeSQL = `
 		DELETE FROM auth_codes WHERE code = $1
-		RETURNING code, user_id, mcp_client_id, redirect_uri, code_challenge, expires_at`
+		RETURNING code, character_id, mcp_client_id, redirect_uri, code_challenge, expires_at`
 	deleteExpiredSQL = `DELETE FROM auth_codes WHERE expires_at < now()`
 )
 
@@ -32,7 +32,7 @@ func New(pool *pgxpool.Pool) *Repo {
 
 func (r *Repo) Put(ctx context.Context, c authcode.Code) error {
 	_, err := r.pool.Exec(ctx, putSQL,
-		c.Value, c.UserID, c.MCPClientID, c.RedirectURI, c.CodeChallenge, c.ExpiresAt,
+		c.Value, c.CharacterID, c.MCPClientID, c.RedirectURI, c.CodeChallenge, c.ExpiresAt,
 	)
 
 	return wrap("Put", err)
@@ -41,7 +41,7 @@ func (r *Repo) Put(ctx context.Context, c authcode.Code) error {
 func (r *Repo) Take(ctx context.Context, value string) (*authcode.Code, error) {
 	var c authcode.Code
 	err := r.pool.QueryRow(ctx, takeSQL, value).Scan(
-		&c.Value, &c.UserID, &c.MCPClientID, &c.RedirectURI, &c.CodeChallenge, &c.ExpiresAt,
+		&c.Value, &c.CharacterID, &c.MCPClientID, &c.RedirectURI, &c.CodeChallenge, &c.ExpiresAt,
 	)
 	if errors.Is(err, jackpgx.ErrNoRows) {
 		return nil, authcode.ErrNotFound

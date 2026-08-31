@@ -85,17 +85,17 @@ func New(opts sso.Options, httpClient *nhttp.Client, logger log.Logger) *Client 
 	return &Client{
 		opts:   opts,
 		http:   httpClient,
-		tokens: newTokenStore(nil, "", logger),
+		tokens: newTokenStore(nil, 0, logger),
 		jwks:   &jwksState{},
 		logger: logger,
 	}
 }
 
-func (c *Client) ForUser(userID string, chars character.Repository) sso.Client {
+func (c *Client) ForCharacter(characterID int, chars character.Repository) sso.Client {
 	return &Client{
 		opts:   c.opts,
 		http:   c.http,
-		tokens: newTokenStore(chars, userID, c.logger),
+		tokens: newTokenStore(chars, characterID, c.logger),
 		jwks:   c.jwks,
 		logger: c.logger,
 	}

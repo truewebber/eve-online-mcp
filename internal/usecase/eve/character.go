@@ -14,24 +14,14 @@ import (
 )
 
 type characterSkillsIn struct {
-	Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	Search         string `json:"search,omitempty"          jsonschema:"Case-insensitive substring of the skill name, e.g. 'Gunnery' or 'Caldari'. Strongly recommended — a full skill list is hundreds of rows."`
 	TrainedOnly    *bool  `json:"trained_only,omitempty"    jsonschema:"Hide skills that are injected but sitting at level 0. Default true."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
-type characterSkillQueueIn struct {
-	Character string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-}
-
-type characterClonesIn struct {
-	Character string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-}
-
 type characterStandingsIn struct {
-	Character string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-	Limit     int    `json:"limit,omitempty"     jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+	Limit int `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 }
 
 func registerCharacter(s *mcp.Server) {
@@ -54,7 +44,7 @@ func registerCharacter(s *mcp.Server) {
 }
 
 func eveCharacterSkills(ctx context.Context, a *session.Session, in characterSkillsIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveCharacterSkills", err)
 	}
@@ -143,8 +133,8 @@ func keepCharacterSkill(name string, level int, needle string, trainedOnly bool)
 	return true
 }
 
-func eveCharacterSkillQueue(ctx context.Context, a *session.Session, in characterSkillQueueIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+func eveCharacterSkillQueue(ctx context.Context, a *session.Session, _ empty) (any, error) {
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveCharacterSkillQueue", err)
 	}
@@ -209,8 +199,8 @@ func formatSkillQueue(entries []map[string]any, names map[int]string, now time.T
 	return rows
 }
 
-func eveCharacterClones(ctx context.Context, a *session.Session, in characterClonesIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+func eveCharacterClones(ctx context.Context, a *session.Session, _ empty) (any, error) {
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveCharacterClones", err)
 	}
@@ -297,7 +287,7 @@ func formatJumpClones(jump []map[string]any, names map[int]string) []map[string]
 }
 
 func eveCharacterStandings(ctx context.Context, a *session.Session, in characterStandingsIn) (any, error) {
-	token, err := a.ResolveCharacter(ctx, in.Character)
+	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveCharacterStandings", err)
 	}

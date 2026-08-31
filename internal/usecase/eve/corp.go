@@ -87,12 +87,7 @@ func esiRole(name string) bool {
 	}
 }
 
-type corpCharIn struct {
-	Character string `json:"character,omitempty" jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
-}
-
 type corpAssetsListIn struct {
-	Character      string  `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	Location       string  `json:"location,omitempty"        jsonschema:"Case-insensitive substring of a station or structure name."`
 	MinValue       float64 `json:"min_value,omitempty"       jsonschema:"Hide locations holding less than this many ISK.,minimum=0"`
 	Limit          int     `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
@@ -102,19 +97,16 @@ type corpAssetsListIn struct {
 
 type corpAssetsFindIn struct {
 	Name           string `json:"name"                      jsonschema:"Case-insensitive substring of the item type name."`
-	Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
 type corpBlueprintsIn struct {
-	Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
 type corpWalletIn struct {
-	Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	Kind           string `json:"kind,omitempty"            jsonschema:"balances (default), journal, transactions, or both."`
 	Division       int    `json:"division,omitempty"        jsonschema:"Corporation wallet division, 1 through 7. Division 1 is the master wallet. Named divisions (if this character is a Director) come back from eve_corp_overview."`
 	RefType        string `json:"ref_type,omitempty"        jsonschema:"Journal only: keep just one reason code."`
@@ -123,45 +115,38 @@ type corpWalletIn struct {
 }
 
 type corpIndustryJobsIn struct {
-	Character        string `json:"character,omitempty"         jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	IncludeCompleted *bool  `json:"include_completed,omitempty" jsonschema:"Also return jobs that already delivered."`
 	Limit            int    `json:"limit,omitempty"             jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat   string `json:"response_format,omitempty"   jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
 type corpMiningIn struct {
-	Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
 type corpOrdersIn struct {
-	Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
 type corpContractsIn struct {
-	Character       string `json:"character,omitempty"        jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	OutstandingOnly *bool  `json:"outstanding_only,omitempty" jsonschema:"Only contracts still awaiting action. Default true."`
 	Limit           int    `json:"limit,omitempty"            jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat  string `json:"response_format,omitempty"  jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
 type corpKillmailsIn struct {
-	Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
 type corpStructuresIn struct {
-	Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
 type corpMembersIn struct {
-	Character      string `json:"character,omitempty"       jsonschema:"Character name (e.g. 'Jane Doe') or numeric character id. Leave empty to use the only authorized character; required when several are authorized — call eve_auth_status to list them."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
@@ -217,8 +202,8 @@ func registerCorp(s *mcp.Server) {
 	}, sessionTool(eveCorpMembers))
 }
 
-func eveCorpOverview(ctx context.Context, a *session.Session, in corpCharIn) (any, error) {
-	corp, err := a.ResolveCorporation(ctx, in.Character)
+func eveCorpOverview(ctx context.Context, a *session.Session, _ empty) (any, error) {
+	corp, err := a.ResolveCorporation(ctx)
 	if err != nil {
 		return nil, wrap("eveCorpOverview", err)
 	}
@@ -300,14 +285,14 @@ func corpOverviewNextStep(a *session.Session, corp *character.Corporation, out m
 		}
 	}
 	if len(missing) > 0 {
-		out["next_step"] = fmt.Sprintf("%s's token is missing %d corporation scopes. Add those permissions on the EVE developer application, then call eve_auth_login_url and re-authorize.", corp.CharacterName(), len(missing))
+		out["next_step"] = fmt.Sprintf("%s's token is missing %d corporation scopes. Add those permissions on the EVE developer application and re-authenticate the MCP server.", corp.CharacterName(), len(missing))
 	} else if len(j.Slice(out["available_tools"])) <= 1 {
 		out["next_step"] = "This character has no corp roles that ESI honours. Someone with Director / Accountant / Factory_Manager / Station_Manager granted everywhere has to authorize instead."
 	}
 }
 
 func eveCorpAssetsList(ctx context.Context, a *session.Session, in corpAssetsListIn) (any, error) {
-	corp, err := openCorp(ctx, a, in.Character, fAssets, fAssets, "corporation assets")
+	corp, err := openCorp(ctx, a, fAssets, fAssets, "corporation assets")
 	if err != nil {
 		return nil, err
 	}
@@ -425,7 +410,7 @@ func corpAssetBucketTotal(buckets map[int]*corpAssetBucket) float64 {
 }
 
 func eveCorpAssetsFind(ctx context.Context, a *session.Session, in corpAssetsFindIn) (any, error) {
-	corp, err := openCorp(ctx, a, in.Character, fAssets, fAssets, "corporation assets")
+	corp, err := openCorp(ctx, a, fAssets, fAssets, "corporation assets")
 	if err != nil {
 		return nil, err
 	}
@@ -533,7 +518,7 @@ func sumIntField(rows []map[string]any, key string) int {
 }
 
 func eveCorpBlueprints(ctx context.Context, a *session.Session, in corpBlueprintsIn) (any, error) {
-	corp, err := openCorp(ctx, a, in.Character, fBlueprints, fBlueprints, "corporation blueprints")
+	corp, err := openCorp(ctx, a, fBlueprints, fBlueprints, "corporation blueprints")
 	if err != nil {
 		return nil, err
 	}
@@ -619,7 +604,7 @@ func corpBlueprintRows(bps []map[string]any, typeNames, placeNames map[int]strin
 }
 
 func eveCorpWallet(ctx context.Context, a *session.Session, in corpWalletIn) (any, error) {
-	corp, err := openCorp(ctx, a, in.Character, fWallets, fWallets, "corporation wallets")
+	corp, err := openCorp(ctx, a, fWallets, fWallets, "corporation wallets")
 	if err != nil {
 		return nil, err
 	}
@@ -717,7 +702,7 @@ func corpWalletJournal(ctx context.Context, a *session.Session, corp *character.
 }
 
 func eveCorpIndustryJobs(ctx context.Context, a *session.Session, in corpIndustryJobsIn) (any, error) {
-	corp, err := openCorp(ctx, a, in.Character, fJobs, fJobs, "corporation industry jobs")
+	corp, err := openCorp(ctx, a, fJobs, fJobs, "corporation industry jobs")
 	if err != nil {
 		return nil, err
 	}
@@ -734,7 +719,7 @@ func eveCorpIndustryJobs(ctx context.Context, a *session.Session, in corpIndustr
 }
 
 func eveCorpMining(ctx context.Context, a *session.Session, in corpMiningIn) (any, error) {
-	corp, err := a.ResolveCorporation(ctx, in.Character)
+	corp, err := a.ResolveCorporation(ctx)
 	if err != nil {
 		return nil, wrap("eveCorpMining", err)
 	}
@@ -795,7 +780,7 @@ func corpMiningAttachLedger(ctx context.Context, a *session.Session, corp *chara
 }
 
 func eveCorpOrders(ctx context.Context, a *session.Session, in corpOrdersIn) (any, error) {
-	corp, err := openCorp(ctx, a, in.Character, fOrders, fOrders, "corporation market orders")
+	corp, err := openCorp(ctx, a, fOrders, fOrders, "corporation market orders")
 	if err != nil {
 		return nil, err
 	}
@@ -813,7 +798,7 @@ func eveCorpOrders(ctx context.Context, a *session.Session, in corpOrdersIn) (an
 }
 
 func eveCorpContracts(ctx context.Context, a *session.Session, in corpContractsIn) (any, error) {
-	corp, err := openCorp(ctx, a, in.Character, fContracts, "", "corporation contracts")
+	corp, err := openCorp(ctx, a, fContracts, "", "corporation contracts")
 	if err != nil {
 		return nil, err
 	}
@@ -830,7 +815,7 @@ func eveCorpContracts(ctx context.Context, a *session.Session, in corpContractsI
 }
 
 func eveCorpKillmails(ctx context.Context, a *session.Session, in corpKillmailsIn) (any, error) {
-	corp, err := openCorp(ctx, a, in.Character, fKillmails, fKillmails, "corporation killmails")
+	corp, err := openCorp(ctx, a, fKillmails, fKillmails, "corporation killmails")
 	if err != nil {
 		return nil, err
 	}
@@ -843,7 +828,7 @@ func eveCorpKillmails(ctx context.Context, a *session.Session, in corpKillmailsI
 }
 
 func eveCorpStructures(ctx context.Context, a *session.Session, in corpStructuresIn) (any, error) {
-	corp, err := openCorp(ctx, a, in.Character, fStructures, fStructures, "corporation structures")
+	corp, err := openCorp(ctx, a, fStructures, fStructures, "corporation structures")
 	if err != nil {
 		return nil, err
 	}
@@ -934,7 +919,7 @@ func structureServices(s map[string]any) any {
 }
 
 func eveCorpMembers(ctx context.Context, a *session.Session, in corpMembersIn) (any, error) {
-	corp, err := openCorp(ctx, a, in.Character, fMembers, "", "corporation membership")
+	corp, err := openCorp(ctx, a, fMembers, "", "corporation membership")
 	if err != nil {
 		return nil, err
 	}
@@ -1015,8 +1000,8 @@ func corpMemberRows(memberIDs []int, names map[int]string, roleMap map[int][]str
 	return rows
 }
 
-func openCorp(ctx context.Context, a *session.Session, character, scopeKey, roleKey, what string) (*character.Corporation, error) {
-	corp, err := a.ResolveCorporation(ctx, character)
+func openCorp(ctx context.Context, a *session.Session, scopeKey, roleKey, what string) (*character.Corporation, error) {
+	corp, err := a.ResolveCorporation(ctx)
 	if err != nil {
 		return nil, wrap("openCorp", err)
 	}

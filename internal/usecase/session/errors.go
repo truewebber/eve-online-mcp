@@ -6,7 +6,6 @@ import (
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
-	"github.com/truewebber/eve-online-mcp/internal/domain/character"
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 )
 
@@ -17,7 +16,6 @@ const (
 
 func MapError(err error) map[string]any {
 	var ae sso.Error
-	var nf character.NotFoundError
 	var wb write.BlockedError
 	var ul esi.UserLimitedError
 	var rl esi.RateLimitedError
@@ -25,8 +23,6 @@ func MapError(err error) map[string]any {
 	switch {
 	case errors.As(err, &ae):
 		return map[string]any{fieldError: ae.Error(), fieldKind: "AuthError"}
-	case errors.As(err, &nf):
-		return map[string]any{fieldError: nf.Error(), fieldKind: "CharacterNotFound"}
 	case errors.As(err, &wb):
 		return map[string]any{fieldError: wb.Error(), fieldKind: "WriteBlocked"}
 	case errors.As(err, &ul):

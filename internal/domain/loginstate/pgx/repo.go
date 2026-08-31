@@ -15,26 +15,24 @@ import (
 const (
 	putSQL = `
 		INSERT INTO login_states (
-			state, pkce_verifier, scopes, kind, user_id,
+			state, pkce_verifier, scopes,
 			mcp_client_id, redirect_uri, mcp_state, code_challenge, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (state) DO UPDATE SET
 			pkce_verifier = EXCLUDED.pkce_verifier,
 			scopes = EXCLUDED.scopes,
-			kind = EXCLUDED.kind,
-			user_id = EXCLUDED.user_id,
 			mcp_client_id = EXCLUDED.mcp_client_id,
 			redirect_uri = EXCLUDED.redirect_uri,
 			mcp_state = EXCLUDED.mcp_state,
 			code_challenge = EXCLUDED.code_challenge,
 			created_at = EXCLUDED.created_at`
 	getSQL = `
-		SELECT state, pkce_verifier, scopes, kind, user_id,
+		SELECT state, pkce_verifier, scopes,
 		       mcp_client_id, redirect_uri, mcp_state, code_challenge, created_at
 		FROM login_states WHERE state = $1`
 	takeSQL = `
 		DELETE FROM login_states WHERE state = $1
-		RETURNING state, pkce_verifier, scopes, kind, user_id,
+		RETURNING state, pkce_verifier, scopes,
 		          mcp_client_id, redirect_uri, mcp_state, code_challenge, created_at`
 	deleteSQL        = `DELETE FROM login_states WHERE state = $1`
 	deleteExpiredSQL = `DELETE FROM login_states WHERE created_at < now() - interval '15 minutes'`
@@ -55,12 +53,8 @@ func (r *Repo) Put(ctx context.Context, st loginstate.Login) error {
 	if st.CreatedAt.IsZero() {
 		st.CreatedAt = time.Now().UTC()
 	}
-	var userID any
-	if st.UserID != "" {
-		userID = st.UserID
-	}
 	_, err := r.pool.Exec(ctx, putSQL,
-		st.State, st.PKCEVerifier, st.Scopes, string(st.Kind), userID,
+		st.State, st.PKCEVerifier, st.Scopes,
 		st.MCPClientID, st.RedirectURI, st.MCPState, st.CodeChallenge, st.CreatedAt,
 	)
 
@@ -116,18 +110,12 @@ type scanner interface {
 
 func scan(row scanner) (*loginstate.Login, error) {
 	var st loginstate.Login
-	var kind string
-	var userID *string
 	err := row.Scan(
-		&st.State, &st.PKCEVerifier, &st.Scopes, &kind, &userID,
+		&st.State, &st.PKCEVerifier, &st.Scopes,
 		&st.MCPClientID, &st.RedirectURI, &st.MCPState, &st.CodeChallenge, &st.CreatedAt,
 	)
 	if err != nil {
 		return nil, wrap("scan", err)
-	}
-	st.Kind = loginstate.Kind(kind)
-	if userID != nil {
-		st.UserID = *userID
 	}
 	if st.Scopes == nil {
 		st.Scopes = []string{}

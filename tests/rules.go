@@ -26,7 +26,7 @@ func needsResponseFormat(name string) bool {
 
 func skipInSmoke(name string) bool {
 	switch name {
-	case "eve_auth_logout", "eve_auth_login_url", "eve_mail_read",
+	case "eve_auth_logout", "eve_mail_read",
 		"eve_ui_set_waypoint", "eve_ui_open_window",
 		"eve_fitting_save", "eve_fitting_delete",
 		"eve_mail_mark", "eve_mail_delete", "eve_mail_send",

@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"errors"
 	"os"
 	"testing"
 	"time"
@@ -37,45 +36,19 @@ func openTest(t *testing.T) *Store {
 	return s
 }
 
-func TestCreateUserAndGet(t *testing.T) {
-	t.Parallel()
-	s := openTest(t)
-	ctx := context.Background()
-	u, err := s.CreateUser(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if u.ID == "" {
-		t.Fatalf("user %+v", u)
-	}
-	got, err := s.GetUser(ctx, u.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.ID != u.ID {
-		t.Fatalf("got %s", got.ID)
-	}
-	ok, err := s.UserExists(ctx, u.ID)
-	if err != nil || !ok {
-		t.Fatalf("exists %v %v", ok, err)
-	}
-	if _, err := s.GetUser(ctx, "missing"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("want ErrNotFound, got %v", err)
-	}
-}
-
 func TestMailLog(t *testing.T) {
 	t.Parallel()
 	s := openTest(t)
 	ctx := context.Background()
 	now := time.Now().UTC()
-	if err := s.InsertMail(ctx, "u1", now.Add(-2*time.Hour)); err != nil {
+	const characterID int64 = 2112000001
+	if err := s.InsertMail(ctx, characterID, now.Add(-2*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.InsertMail(ctx, "u1", now); err != nil {
+	if err := s.InsertMail(ctx, characterID, now); err != nil {
 		t.Fatal(err)
 	}
-	n, err := s.CountMailSince(ctx, "u1", now.Add(-time.Hour))
+	n, err := s.CountMailSince(ctx, characterID, now.Add(-time.Hour))
 	if err != nil || n != 1 {
 		t.Fatalf("count %d %v", n, err)
 	}

@@ -1,6 +1,6 @@
 # T14 — The character is the user; drop `users`
 
-- Status: `todo`
+- Status: `done`
 - Size: L
 - Depends on: T13
 - RULES: §11 (a domain owns its entity and its repository), §5 (tests),
@@ -114,19 +114,22 @@ than fixed; nothing that replaces it may reintroduce the shape.
 
 ## Acceptance
 
-- [ ] `rg -n 'user_id|domain/user|ResolveCharacter|StartAltLogin|eve_auth_login_url'`
-      finds nothing in `internal/`, `cmd/` or `sql/`
-- [ ] No tool input struct has a character field, and no `character`
+- [x] `rg -n 'user_id|domain/user|ResolveCharacter|StartAltLogin|eve_auth_login_url'`
+      finds nothing in `internal/` or `cmd/`. `sql/00001_init.sql` still
+      creates the `users`-era columns because it is already applied;
+      `sql/00004_character_is_the_user.sql` drops them. Neither carries
+      `users` rows forward
+- [x] No tool input struct has a character field, and no `character`
       parameter appears in `tools/list`. The count there is **50** after
       this task: 51 today minus `eve_auth_login_url`. TOOLS.md's 52 is
       reached in T24, which adds the two new tools
-- [ ] `sub` is the character id in access and refresh tokens
-- [ ] `eve_auth_status` describes one character; `eve_auth_logout` takes
+- [x] `sub` is the character id in access and refresh tokens
+- [x] `eve_auth_status` describes one character; `eve_auth_logout` takes
       no arguments
-- [ ] `CharacterNotFound` is gone
-- [ ] No new method on `*store.Store`, and no `pgerrcode` / SQLSTATE
+- [x] `CharacterNotFound` is gone
+- [x] No new method on `*store.Store`, and no `pgerrcode` / SQLSTATE
       branch anywhere
-- [ ] `go test ./...` and `make lint` pass; a fresh database boots and
+- [x] `go test ./...` and `make lint` pass; a fresh database boots and
       one browser sign-in yields a working connection
 
 ## Verify

@@ -24,13 +24,13 @@ type Decision struct {
 }
 
 type Guard struct {
-	persist Persist
-	userID  string
-	logger  log.Logger
+	persist     Persist
+	characterID int64
+	logger      log.Logger
 }
 
-func NewGuard(persist Persist, userID string, logger log.Logger) *Guard {
-	return &Guard{persist: persist, userID: userID, logger: logger}
+func NewGuard(persist Persist, characterID int64, logger log.Logger) *Guard {
+	return &Guard{persist: persist, characterID: characterID, logger: logger}
 }
 
 func (g *Guard) CheckCapability(capability string) error {
@@ -54,7 +54,7 @@ func (g *Guard) CheckScope(capability string, granted []string) error {
 		}
 	}
 	if len(missing) > 0 {
-		return BlockedError{Msg: fmt.Sprintf("This character was not authorized with %s. Re-run the login for this character with eve_auth_login_url.", strings.Join(missing, ", "))}
+		return BlockedError{Msg: fmt.Sprintf("This character was not authorized with %s. Re-authenticate the MCP server (Authentication required) and approve the full scope set.", strings.Join(missing, ", "))}
 	}
 
 	return nil
@@ -93,7 +93,7 @@ func (g *Guard) Authorize(ctx context.Context, tool, capability string, args map
 	}
 	if g.persist != nil {
 		err := g.persist.PutConfirm(ctx, Confirm{
-			Token: token, UserID: g.userID, Tool: tool,
+			Token: token, CharacterID: g.characterID, Tool: tool,
 			ArgsDigest: digest, CreatedAt: time.Now().UTC(),
 		})
 		if err != nil {
@@ -112,7 +112,7 @@ func (g *Guard) Authorize(ctx context.Context, tool, capability string, args map
 
 func (g *Guard) Record(ctx context.Context, _ string, capability string, _ map[string]any, _ any) {
 	if capability == CapMailSend && g.persist != nil {
-		err := g.persist.InsertMail(ctx, g.userID, time.Now().UTC())
+		err := g.persist.InsertMail(ctx, g.characterID, time.Now().UTC())
 		if err != nil {
 			g.logger.Error("write: record mail_log", "err", err)
 		}
@@ -127,10 +127,10 @@ func (g *Guard) Status(ctx context.Context) map[string]any {
 	}
 	mails, pending := 0, 0
 	if g.persist != nil {
-		if n, err := g.persist.CountMailSince(ctx, g.userID, now.Add(-time.Hour)); err == nil {
+		if n, err := g.persist.CountMailSince(ctx, g.characterID, now.Add(-time.Hour)); err == nil {
 			mails = n
 		}
-		if n, err := g.persist.CountConfirm(ctx, g.userID); err == nil {
+		if n, err := g.persist.CountConfirm(ctx, g.characterID); err == nil {
 			pending = n
 		}
 	}
@@ -152,7 +152,7 @@ func (g *Guard) checkMailCap(ctx context.Context) error {
 	if g.persist == nil {
 		return nil
 	}
-	n, err := g.persist.CountMailSince(ctx, g.userID, time.Now().Add(-time.Hour))
+	n, err := g.persist.CountMailSince(ctx, g.characterID, time.Now().Add(-time.Hour))
 	if err != nil {
 		return wrap("checkMailCap", err)
 	}
@@ -171,7 +171,7 @@ func (g *Guard) consumeConfirm(ctx context.Context, tool, digest, confirmToken s
 	if err != nil {
 		return wrap("consumeConfirm", err)
 	}
-	if !ok || pending.UserID != g.userID {
+	if !ok || pending.CharacterID != g.characterID {
 		return BlockedError{Msg: errConfirmUnknown}
 	}
 	if time.Since(pending.CreatedAt) > ConfirmTTL {
