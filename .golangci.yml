@@ -123,8 +123,6 @@ linters:
     paths:
       - internal/service/http/api.gen.go
     rules:
-      - path: _test\.go
-        linters: [wrapcheck, maintidx, gocognit]
       # oapi-codegen writes a package godoc; godoclint counts the whole
       # package and reports the clash on handler.go, not on *.gen.go.
       - path: internal/service/http/
@@ -154,5 +152,3 @@ formatters:
   exclusions:
     generated: lax
     warn-unused: true
-    paths:
-      - internal/service/http/api.gen.go
