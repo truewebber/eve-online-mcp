@@ -80,7 +80,7 @@ func eveMailList(ctx context.Context, a *session.Session, in mailListIn) (any, e
 		return nil, wrap("eveMailList", err)
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/mail", cid), &cid, nil, nil)
+	result, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "mail"), &cid, nil, nil)
 	if err != nil {
 		return nil, wrap("eveMailList", err)
 	}
@@ -142,7 +142,7 @@ func eveMailRead(ctx context.Context, a *session.Session, in mailReadIn) (any, e
 		return nil, wrap("eveMailRead", err)
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/mail/%d", cid, in.MailID), &cid, nil, nil)
+	result, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "mail", esiID(in.MailID)), &cid, nil, nil)
 	if err != nil {
 		return nil, wrap("eveMailRead", err)
 	}
@@ -181,7 +181,7 @@ func eveSocialNotifications(ctx context.Context, a *session.Session, in notesIn)
 		return nil, wrap("eveSocialNotifications", err)
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/notifications", cid), &cid, nil, nil)
+	result, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "notifications"), &cid, nil, nil)
 	if err != nil {
 		return nil, wrap("eveSocialNotifications", err)
 	}
@@ -241,7 +241,7 @@ func eveSocialKillmails(ctx context.Context, a *session.Session, in kmIn) (any, 
 		return nil, wrap("eveSocialKillmails", err)
 	}
 
-	return formatKillmails(ctx, a, token.CharacterName, token.CharacterID, 0, fmt.Sprintf("/characters/%d/killmails/recent", token.CharacterID), limitOr(in.Limit, limitKillmails), concise(in.ResponseFormat))
+	return formatKillmails(ctx, a, token.CharacterName, token.CharacterID, 0, esiPath("characters", esiID(token.CharacterID), "killmails", "recent"), limitOr(in.Limit, limitKillmails), concise(in.ResponseFormat))
 }
 
 func eveFittingList(ctx context.Context, a *session.Session, in fitIn) (any, error) {
@@ -253,7 +253,7 @@ func eveFittingList(ctx context.Context, a *session.Session, in fitIn) (any, err
 		return nil, wrap("eveFittingList", err)
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/fittings", cid), &cid, nil, nil)
+	result, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "fittings"), &cid, nil, nil)
 	if err != nil {
 		return nil, wrap("eveFittingList", err)
 	}
@@ -362,7 +362,7 @@ func fetchKillmailBodies(ctx context.Context, a *session.Session, refs []map[str
 	ch := make(chan box, len(refs))
 	for _, ref := range refs {
 		go func(ref map[string]any) {
-			r, err := a.ESI.Get(ctx, fmt.Sprintf("/killmails/%d/%s", j.Int(ref["killmail_id"]), j.Str(ref["killmail_hash"])), nil, nil, nil)
+			r, err := a.ESI.Get(ctx, esiPath("killmails", esiID(j.Int(ref["killmail_id"])), j.Str(ref["killmail_hash"])), nil, nil, nil)
 			if err != nil {
 				ch <- box{ref["killmail_id"], nil, err}
 
@@ -433,7 +433,7 @@ func buildKillmailRows(ctx context.Context, a *session.Session, kills []map[stri
 			"victim": who, "ship_lost": names[j.Int(victim[fShipTypeID])],
 			"hull_value": isk(unitPrice(prices, j.Int(victim[fShipTypeID]))),
 			"attackers":  len(j.Slice(kill["attackers"])),
-			"zkill":      fmt.Sprintf("https://zkillboard.com/kill/%v/", kill["killmail_id"]),
+			"zkill":      zkillURL(j.Int(kill["killmail_id"])),
 		})
 	}
 

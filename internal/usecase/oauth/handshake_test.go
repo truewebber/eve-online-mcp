@@ -64,12 +64,15 @@ func TestAuthorizePersistsMCPLoginState(t *testing.T) {
 	db := openDB(t)
 	s := testServer(t, db)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/oauth/authorize?"+url.Values{
-		paramClientID:    {"mcp-client"},
-		paramRedirectURI: {redirect},
-		"state":          {"mcp-state"},
-		"code_challenge": {"E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"},
-	}.Encode(), nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, (&url.URL{
+		Path: "/oauth/authorize",
+		RawQuery: url.Values{
+			paramClientID:    {"mcp-client"},
+			paramRedirectURI: {redirect},
+			"state":          {"mcp-state"},
+			"code_challenge": {"E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"},
+		}.Encode(),
+	}).String(), nil)
 	s.ServeAuthorize(rec, req)
 	if rec.Code != http.StatusFound {
 		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())

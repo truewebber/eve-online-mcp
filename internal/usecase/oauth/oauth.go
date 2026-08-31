@@ -49,6 +49,7 @@ const (
 	paramRedirectURI  = "redirect_uri"
 	paramGrantType    = "grant_type"
 	typRefresh        = "refresh"
+	schemeHTTP        = "http"
 	schemeHTTPS       = "https"
 )
 
@@ -96,7 +97,16 @@ func (h Host) BaseURL() string {
 		host = "127.0.0.1"
 	}
 
-	return "http://" + net.JoinHostPort(host, port)
+	return (&url.URL{Scheme: schemeHTTP, Host: net.JoinHostPort(host, port)}).String()
+}
+
+func (h Host) URL(elem ...string) string {
+	u, err := url.Parse(h.BaseURL())
+	if err != nil {
+		return ""
+	}
+
+	return u.JoinPath(elem...).String()
 }
 
 type Server struct {
@@ -141,10 +151,12 @@ func Open(pub Host, runtime *session.Session, db *store.Store, logger log.Logger
 
 func (s *Server) Base() string { return s.pub.BaseURL() }
 
-func (s *Server) ResourceURL() string { return s.Base() + s.pub.MCPPath }
+func (s *Server) ResourceURL() string {
+	return s.pub.URL(strings.TrimPrefix(s.pub.MCPPath, "/"))
+}
 
 func (s *Server) MetadataURL() string {
-	return s.Base() + "/.well-known/oauth-protected-resource"
+	return s.pub.URL(".well-known", "oauth-protected-resource")
 }
 
 func (s *Server) ProtectedResource() *oauthex.ProtectedResourceMetadata {
@@ -158,13 +170,11 @@ func (s *Server) ProtectedResource() *oauthex.ProtectedResourceMetadata {
 }
 
 func (s *Server) AuthServerMeta() *oauthex.AuthServerMeta {
-	base := s.Base()
-
 	return &oauthex.AuthServerMeta{
-		Issuer:                            base,
-		AuthorizationEndpoint:             base + "/oauth/authorize",
-		TokenEndpoint:                     base + "/oauth/token",
-		RegistrationEndpoint:              base + "/oauth/register",
+		Issuer:                            s.Base(),
+		AuthorizationEndpoint:             s.pub.URL("oauth", "authorize"),
+		TokenEndpoint:                     s.pub.URL("oauth", "token"),
+		RegistrationEndpoint:              s.pub.URL("oauth", "register"),
 		ResponseTypesSupported:            []string{paramCode},
 		GrantTypesSupported:               []string{grantAuthCode, grantRefresh},
 		CodeChallengeMethodsSupported:     []string{"S256"},
@@ -656,7 +666,7 @@ func redirectOK(raw string) bool {
 	host := strings.ToLower(u.Hostname())
 	switch {
 	case host == "localhost" || host == "127.0.0.1" || host == "::1":
-		return u.Scheme == "http"
+		return u.Scheme == schemeHTTP
 	case host == "www.cursor.com" && strings.HasPrefix(u.Path, "/agents/mcp/oauth/callback"):
 		return u.Scheme == schemeHTTPS
 	case host == "cursor.com" && strings.HasPrefix(u.Path, "/agents/mcp/oauth/callback"):
@@ -665,7 +675,7 @@ func redirectOK(raw string) bool {
 		return u.Scheme == schemeHTTPS
 	default:
 		if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
-			return u.Scheme == "http"
+			return u.Scheme == schemeHTTP
 		}
 
 		return false

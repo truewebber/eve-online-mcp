@@ -62,7 +62,7 @@ func eveCharacterSkills(ctx context.Context, a *session.Session, in characterSki
 		return nil, wrap("eveCharacterSkills", err)
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/skills", cid), &cid, nil, nil)
+	result, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "skills"), &cid, nil, nil)
 	if err != nil {
 		return nil, wrap("eveCharacterSkills", err)
 	}
@@ -152,7 +152,7 @@ func eveCharacterSkillQueue(ctx context.Context, a *session.Session, in characte
 		return nil, wrap("eveCharacterSkillQueue", err)
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/skillqueue", cid), &cid, nil, nil)
+	result, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "skillqueue"), &cid, nil, nil)
 	if err != nil {
 		return nil, wrap("eveCharacterSkillQueue", err)
 	}
@@ -221,11 +221,11 @@ func eveCharacterClones(ctx context.Context, a *session.Session, in characterClo
 		return nil, wrap("eveCharacterClones", err)
 	}
 	cid := token.CharacterID
-	clonesRes, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/clones", cid), &cid, nil, nil)
+	clonesRes, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "clones"), &cid, nil, nil)
 	if err != nil {
 		return nil, wrap("eveCharacterClones", err)
 	}
-	implantsRes, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/implants", cid), &cid, nil, nil)
+	implantsRes, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "implants"), &cid, nil, nil)
 	if err != nil {
 		return nil, wrap("eveCharacterClones", err)
 	}
@@ -305,7 +305,7 @@ func eveCharacterStandings(ctx context.Context, a *session.Session, in character
 		return nil, wrap("eveCharacterStandings", err)
 	}
 	cid := token.CharacterID
-	standingsRes, standingsErr := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/standings", cid), &cid, nil, nil)
+	standingsRes, standingsErr := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "standings"), &cid, nil, nil)
 	lpScope := "esi-characters.read_loyalty.v1"
 	lpGranted := a.HasScope(token, lpScope)
 	lpData, lpErr := fetchCharacterLP(ctx, a, cid, lpGranted)
@@ -331,7 +331,7 @@ func fetchCharacterLP(ctx context.Context, a *session.Session, cid int, granted 
 	if !granted {
 		return nil, nil
 	}
-	lpRes, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/loyalty/points", cid), &cid, nil, nil)
+	lpRes, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "loyalty", "points"), &cid, nil, nil)
 	if err != nil {
 		return nil, wrap("fetchCharacterLP", err)
 	}

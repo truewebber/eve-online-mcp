@@ -229,7 +229,7 @@ func (s *Session) ResolveCorporation(ctx context.Context, spec string) (*charact
 	if err != nil {
 		return nil, err
 	}
-	sheet, err := s.ESI.Get(ctx, fmt.Sprintf("/characters/%d", token.CharacterID), nil, nil, nil)
+	sheet, err := s.ESI.Get(ctx, esi.Path("characters", esi.ID(token.CharacterID)), nil, nil, nil)
 	if err != nil {
 		return nil, wrap("ResolveCorporation", err)
 	}
@@ -238,7 +238,7 @@ func (s *Session) ResolveCorporation(ctx context.Context, spec string) (*charact
 	if corpID == 0 {
 		return nil, wrap("ResolveCorporation", sso.Err(token.CharacterName+" has no corporation_id from ESI. Try again shortly."))
 	}
-	publicRes, err := s.ESI.Get(ctx, fmt.Sprintf("/corporations/%d", corpID), nil, nil, nil)
+	publicRes, err := s.ESI.Get(ctx, esi.Path("corporations", esi.ID(corpID)), nil, nil, nil)
 	if err != nil {
 		return nil, wrap("ResolveCorporation", err)
 	}
@@ -246,7 +246,7 @@ func (s *Session) ResolveCorporation(ctx context.Context, spec string) (*charact
 	roles := map[string]struct{}{}
 	hq, base, other := map[string]struct{}{}, map[string]struct{}{}, map[string]struct{}{}
 	if s.HasScope(token, "esi-characters.read_corporation_roles.v1") {
-		granted, err := s.ESI.Get(ctx, fmt.Sprintf("/characters/%d/roles", token.CharacterID), &token.CharacterID, nil, nil)
+		granted, err := s.ESI.Get(ctx, esi.Path("characters", esi.ID(token.CharacterID), "roles"), &token.CharacterID, nil, nil)
 		if err != nil {
 			s.Logger.Error("session: corporation roles", "character", token.CharacterName, "err", err)
 		} else {

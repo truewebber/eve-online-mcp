@@ -280,7 +280,7 @@ func corpOverviewAttachWallets(ctx context.Context, a *session.Session, corp *ch
 	if !corpCan(corp, fWallets, fWallets) {
 		return
 	}
-	wallets, err := a.ESI.Get(ctx, fmt.Sprintf("/corporations/%d/wallets", corp.CorporationID), &corp.Token.CharacterID, nil, nil)
+	wallets, err := a.ESI.Get(ctx, esiPath("corporations", esiID(corp.CorporationID), "wallets"), &corp.Token.CharacterID, nil, nil)
 	if err != nil {
 		out["wallets_note"] = err.Error()
 
@@ -311,7 +311,7 @@ func eveCorpAssetsList(ctx context.Context, a *session.Session, in corpAssetsLis
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/assets", corp.CorporationID), &corp.Token.CharacterID, nil, pagesCorpAssets)
+	result, err := a.ESI.GetAllPages(ctx, esiPath("corporations", esiID(corp.CorporationID), "assets"), &corp.Token.CharacterID, nil, pagesCorpAssets)
 	if err != nil {
 		return nil, wrap("eveCorpAssetsList", err)
 	}
@@ -429,7 +429,7 @@ func eveCorpAssetsFind(ctx context.Context, a *session.Session, in corpAssetsFin
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/assets", corp.CorporationID), &corp.Token.CharacterID, nil, pagesCorpAssets)
+	result, err := a.ESI.GetAllPages(ctx, esiPath("corporations", esiID(corp.CorporationID), "assets"), &corp.Token.CharacterID, nil, pagesCorpAssets)
 	if err != nil {
 		return nil, wrap("eveCorpAssetsFind", err)
 	}
@@ -537,7 +537,7 @@ func eveCorpBlueprints(ctx context.Context, a *session.Session, in corpBlueprint
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/blueprints", corp.CorporationID), &corp.Token.CharacterID, nil, pagesESI)
+	result, err := a.ESI.GetAllPages(ctx, esiPath("corporations", esiID(corp.CorporationID), "blueprints"), &corp.Token.CharacterID, nil, pagesESI)
 	if err != nil {
 		return nil, wrap("eveCorpBlueprints", err)
 	}
@@ -660,7 +660,7 @@ func corpWalletRows(data any, names map[int]string) walletBalanceRows {
 }
 
 func corpWalletBalances(ctx context.Context, a *session.Session, corp *character.Corporation, divs map[string]map[int]string) (any, error) {
-	wallets, err := a.ESI.Get(ctx, fmt.Sprintf("/corporations/%d/wallets", corp.CorporationID), &corp.Token.CharacterID, nil, nil)
+	wallets, err := a.ESI.Get(ctx, esiPath("corporations", esiID(corp.CorporationID), "wallets"), &corp.Token.CharacterID, nil, nil)
 	if err != nil {
 		return nil, wrap("corpWalletBalances", err)
 	}
@@ -685,7 +685,7 @@ func corpWalletMovements(ctx context.Context, a *session.Session, corp *characte
 		out["journal_section"] = sec
 	}
 	if kind == fTransactions || kind == vBoth {
-		sec, err := transactionSection(ctx, a, fmt.Sprintf("/corporations/%d/wallets/%d/transactions", corp.CorporationID, div), corp.Token.CharacterID, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
+		sec, err := transactionSection(ctx, a, esiPath("corporations", esiID(corp.CorporationID), "wallets", esiID(div), "transactions"), corp.Token.CharacterID, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
 		if err != nil {
 			return nil, err
 		}
@@ -708,7 +708,7 @@ func corpWalletMovements(ctx context.Context, a *session.Session, corp *characte
 }
 
 func corpWalletJournal(ctx context.Context, a *session.Session, corp *character.Corporation, div int, in corpWalletIn) (map[string]any, error) {
-	res, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/wallets/%d/journal", corp.CorporationID, div), &corp.Token.CharacterID, nil, pagesShort)
+	res, err := a.ESI.GetAllPages(ctx, esiPath("corporations", esiID(corp.CorporationID), "wallets", esiID(div), "journal"), &corp.Token.CharacterID, nil, pagesShort)
 	if err != nil {
 		return nil, wrap("corpWalletJournal", err)
 	}
@@ -721,7 +721,7 @@ func eveCorpIndustryJobs(ctx context.Context, a *session.Session, in corpIndustr
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/industry/jobs", corp.CorporationID), &corp.Token.CharacterID, map[string]any{"include_completed": boolDef(in.IncludeCompleted, false)}, pagesESI)
+	result, err := a.ESI.GetAllPages(ctx, esiPath("corporations", esiID(corp.CorporationID), "industry", "jobs"), &corp.Token.CharacterID, map[string]any{"include_completed": boolDef(in.IncludeCompleted, false)}, pagesESI)
 	if err != nil {
 		return nil, wrap("eveCorpIndustryJobs", err)
 	}
@@ -799,7 +799,7 @@ func eveCorpOrders(ctx context.Context, a *session.Session, in corpOrdersIn) (an
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/orders", corp.CorporationID), &corp.Token.CharacterID, nil, pagesESI)
+	result, err := a.ESI.GetAllPages(ctx, esiPath("corporations", esiID(corp.CorporationID), "orders"), &corp.Token.CharacterID, nil, pagesESI)
 	if err != nil {
 		return nil, wrap("eveCorpOrders", err)
 	}
@@ -817,7 +817,7 @@ func eveCorpContracts(ctx context.Context, a *session.Session, in corpContractsI
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/contracts", corp.CorporationID), &corp.Token.CharacterID, nil, pagesESI)
+	result, err := a.ESI.GetAllPages(ctx, esiPath("corporations", esiID(corp.CorporationID), "contracts"), &corp.Token.CharacterID, nil, pagesESI)
 	if err != nil {
 		return nil, wrap("eveCorpContracts", err)
 	}
@@ -834,7 +834,7 @@ func eveCorpKillmails(ctx context.Context, a *session.Session, in corpKillmailsI
 	if err != nil {
 		return nil, err
 	}
-	out, err := formatKillmails(ctx, a, corp.CharacterName(), corp.Token.CharacterID, corp.CorporationID, fmt.Sprintf("/corporations/%d/killmails/recent", corp.CorporationID), limitOr(in.Limit, limitKillmails), concise(in.ResponseFormat))
+	out, err := formatKillmails(ctx, a, corp.CharacterName(), corp.Token.CharacterID, corp.CorporationID, esiPath("corporations", esiID(corp.CorporationID), "killmails", "recent"), limitOr(in.Limit, limitKillmails), concise(in.ResponseFormat))
 	if err != nil {
 		return nil, err
 	}
@@ -847,7 +847,7 @@ func eveCorpStructures(ctx context.Context, a *session.Session, in corpStructure
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/structures", corp.CorporationID), &corp.Token.CharacterID, nil, pagesESI)
+	result, err := a.ESI.GetAllPages(ctx, esiPath("corporations", esiID(corp.CorporationID), "structures"), &corp.Token.CharacterID, nil, pagesESI)
 	if err != nil {
 		return nil, wrap("eveCorpStructures", err)
 	}
@@ -938,7 +938,7 @@ func eveCorpMembers(ctx context.Context, a *session.Session, in corpMembersIn) (
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporations/%d/members", corp.CorporationID), &corp.Token.CharacterID, nil, pagesESI)
+	result, err := a.ESI.GetAllPages(ctx, esiPath("corporations", esiID(corp.CorporationID), "members"), &corp.Token.CharacterID, nil, pagesESI)
 	if err != nil {
 		return nil, wrap("eveCorpMembers", err)
 	}
@@ -978,7 +978,7 @@ func corpMemberRoleMap(ctx context.Context, a *session.Session, corp *character.
 	if conciseMode || !corp.HasRole(roleDirector) {
 		return roleMap
 	}
-	rolesRes, err := a.ESI.Get(ctx, fmt.Sprintf("/corporations/%d/roles", corp.CorporationID), &corp.Token.CharacterID, nil, nil)
+	rolesRes, err := a.ESI.Get(ctx, esiPath("corporations", esiID(corp.CorporationID), "roles"), &corp.Token.CharacterID, nil, nil)
 	if err != nil {
 		a.Logger.Error("eve: corporation roles roster", "err", err)
 
@@ -1133,7 +1133,7 @@ func corpDivisions(ctx context.Context, a *session.Session, corp *character.Corp
 	if !corpCan(corp, "divisions", "divisions") {
 		return empty
 	}
-	result, err := a.ESI.Get(ctx, fmt.Sprintf("/corporations/%d/divisions", corp.CorporationID), &corp.Token.CharacterID, nil, nil)
+	result, err := a.ESI.Get(ctx, esiPath("corporations", esiID(corp.CorporationID), "divisions"), &corp.Token.CharacterID, nil, nil)
 	if err != nil {
 		a.Logger.Error("eve: corporation divisions", "err", err)
 
@@ -1177,7 +1177,7 @@ func hangarLabel(flag string, names map[int]string) any {
 }
 
 func corpExtractions(ctx context.Context, a *session.Session, corp *character.Corporation) ([]map[string]any, error) {
-	result, err := a.ESI.Get(ctx, fmt.Sprintf("/corporation/%d/mining/extractions", corp.CorporationID), &corp.Token.CharacterID, nil, nil)
+	result, err := a.ESI.Get(ctx, esiPath("corporation", esiID(corp.CorporationID), "mining", "extractions"), &corp.Token.CharacterID, nil, nil)
 	if err != nil {
 		return nil, wrap("corpExtractions", err)
 	}
@@ -1237,7 +1237,7 @@ type miningLedgerAgg struct {
 }
 
 func corpMiningLedger(ctx context.Context, a *session.Session, corp *character.Corporation, limit int, conciseMode bool) (map[string]any, error) {
-	observersRes, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporation/%d/mining/observers", corp.CorporationID), &corp.Token.CharacterID, nil, pagesESI)
+	observersRes, err := a.ESI.GetAllPages(ctx, esiPath("corporation", esiID(corp.CorporationID), "mining", "observers"), &corp.Token.CharacterID, nil, pagesESI)
 	if err != nil {
 		return nil, wrap("corpMiningLedger", err)
 	}
@@ -1328,7 +1328,7 @@ func miningObserverPages(ctx context.Context, a *session.Session, corp *characte
 
 				return
 			}
-			r, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/corporation/%d/mining/observers/%d", corp.CorporationID, j.Int(obs["observer_id"])), &corp.Token.CharacterID, nil, pagesShort)
+			r, err := a.ESI.GetAllPages(ctx, esiPath("corporation", esiID(corp.CorporationID), "mining", "observers", esiID(j.Int(obs["observer_id"]))), &corp.Token.CharacterID, nil, pagesShort)
 			ch <- miningObsBox{obs, r, err}
 		}(obs)
 	}

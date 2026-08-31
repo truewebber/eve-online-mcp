@@ -458,6 +458,19 @@ func (c *Client) write(ctx context.Context, method, path string, characterID *in
 	return decode(resp.StatusCode, bodyBytes), nil
 }
 
+func (c *Client) endpoint(esiPath string, params map[string]any) (*url.URL, error) {
+	base, err := url.Parse(c.opts.BaseURL)
+	if err != nil {
+		return nil, wrap("endpoint", err)
+	}
+	u := base.JoinPath(strings.TrimPrefix(esiPath, "/"))
+	if q := encodeParams(params); q != "" {
+		u.RawQuery = q
+	}
+
+	return u, nil
+}
+
 func (c *Client) request(ctx context.Context, method, path string, params map[string]any, headers http.Header, jsonBody any, attempt int) (*http.Response, error) {
 	if err := c.awaitErrorBudget(); err != nil {
 		return nil, err
@@ -465,9 +478,9 @@ func (c *Client) request(ctx context.Context, method, path string, params map[st
 	if err := c.bucket.take(); err != nil {
 		return nil, err
 	}
-	u := c.opts.BaseURL + path
-	if q := encodeParams(params); q != "" {
-		u += "?" + q
+	u, err := c.endpoint(path, params)
+	if err != nil {
+		return nil, err
 	}
 	var body io.Reader
 	if jsonBody != nil {
@@ -477,7 +490,7 @@ func (c *Client) request(ctx context.Context, method, path string, params map[st
 		}
 		body = bytes.NewReader(raw)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, u, body)
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), body)
 	if err != nil {
 		return nil, wrap("request", err)
 	}

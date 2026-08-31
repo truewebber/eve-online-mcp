@@ -36,7 +36,7 @@ func (h *API) GetIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *API) GetAuthLogin(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, h.Host.BaseURL()+"/oauth/authorize", http.StatusFound)
+	http.Redirect(w, r, h.Host.URL("oauth", "authorize"), http.StatusFound)
 }
 
 func (h *API) GetAuthCallback(w http.ResponseWriter, r *http.Request, _ GetAuthCallbackParams) {

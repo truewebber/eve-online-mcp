@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"strings"
 
@@ -79,9 +80,17 @@ func (c *config) validate() error {
 
 	c.PublicURL = strings.TrimRight(c.PublicURL, "/")
 	if c.PublicURL != "" {
-		c.CallbackURL = c.PublicURL + "/auth/callback"
+		u, err := url.Parse(c.PublicURL)
+		if err != nil {
+			return fmt.Errorf("PUBLIC_URL: %w", err)
+		}
+		c.CallbackURL = u.JoinPath("auth", "callback").String()
 	} else {
-		c.CallbackURL = fmt.Sprintf("http://127.0.0.1:%s/auth/callback", port)
+		c.CallbackURL = (&url.URL{
+			Scheme: "http",
+			Host:   net.JoinHostPort("127.0.0.1", port),
+			Path:   "/auth/callback",
+		}).String()
 	}
 
 	c.UserAgent = "github.com/truewebber/eve-online-mcp/" + version

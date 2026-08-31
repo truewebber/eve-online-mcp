@@ -64,7 +64,7 @@ func eveAssetsList(ctx context.Context, a *session.Session, in assetsListIn) (an
 		return nil, wrap("eveAssetsList", err)
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/assets", cid), &cid, nil, pagesESI)
+	result, err := a.ESI.GetAllPages(ctx, esiPath("characters", esiID(cid), "assets"), &cid, nil, pagesESI)
 	if err != nil {
 		return nil, wrap("eveAssetsList", err)
 	}
@@ -187,7 +187,7 @@ func eveAssetsFind(ctx context.Context, a *session.Session, in assetsFindIn) (an
 		return nil, wrap("eveAssetsFind", err)
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/assets", cid), &cid, nil, pagesESI)
+	result, err := a.ESI.GetAllPages(ctx, esiPath("characters", esiID(cid), "assets"), &cid, nil, pagesESI)
 	if err != nil {
 		return nil, wrap("eveAssetsFind", err)
 	}
@@ -286,7 +286,7 @@ func eveAssetsBlueprints(ctx context.Context, a *session.Session, in assetsBluep
 		return nil, wrap("eveAssetsBlueprints", err)
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/blueprints", cid), &cid, nil, pagesESI)
+	result, err := a.ESI.GetAllPages(ctx, esiPath("characters", esiID(cid), "blueprints"), &cid, nil, pagesESI)
 	if err != nil {
 		return nil, wrap("eveAssetsBlueprints", err)
 	}

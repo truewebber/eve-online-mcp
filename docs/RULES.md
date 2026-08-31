@@ -149,8 +149,11 @@ unescaped value out of the request — the same class of bug as SSRF,
 open redirects, XSS in a `Location`, and an IDOR that is just an id
 spliced into a path.
 
-`filepath.Join` is for files. A string literal that is already a
-complete URL is not assembly.
+Only the host is configured, and it is a dependency. Endpoints are
+constants in the code. Parsing a base URL and `JoinPath` on every
+call is assembling a host that was already injected — keep `url.URL`
+(or the host) on the client, set `Path` and `RawQuery` from the
+hardcoded endpoint. `filepath.Join` is for files.
 
 ## 9. The user sees only static errors
 
@@ -225,3 +228,13 @@ that migrates on boot is a migrator wearing a server binary.
 The files still live with the schema they change (DB.md). Applying
 them is `goose`, a Makefile target, a pipeline job, or a pair of
 hands — not `Store.Open`.
+
+## 15. One function, one job
+
+Every function and method — exported or not — does one thing. That is
+the Go way: short, obvious, not clever. A function that fetches,
+decides, formats and writes is four functions that have not been
+named yet.
+
+Complicated business logic is those simpler functions called in
+order, not a longer body. If the name needs "and", split it.

@@ -270,7 +270,7 @@ func eveUniverseSystem(ctx context.Context, a *session.Session, in universeSyste
 }
 
 func universeSystemLookups(ctx context.Context, a *session.Session, sid int) (universeSystemESI, error) {
-	infoRes, err := a.ESI.Get(ctx, fmt.Sprintf("/universe/systems/%d", sid), nil, nil, nil)
+	infoRes, err := a.ESI.Get(ctx, esiPath("universe", "systems", esiID(sid)), nil, nil, nil)
 	if err != nil {
 		return universeSystemESI{}, wrap("universeSystemLookups", err)
 	}
@@ -300,7 +300,7 @@ func universeRegionName(ctx context.Context, a *session.Session, info map[string
 	if j.Int(info["constellation_id"]) == 0 {
 		return nil
 	}
-	c, err := a.ESI.Get(ctx, fmt.Sprintf("/universe/constellations/%d", j.Int(info["constellation_id"])), nil, nil, nil)
+	c, err := a.ESI.Get(ctx, esiPath("universe", "constellations", esiID(j.Int(info["constellation_id"]))), nil, nil, nil)
 	if err != nil {
 		return nil
 	}
@@ -344,7 +344,7 @@ func eveUniverseRoute(ctx context.Context, a *session.Session, in universeRouteI
 		return universeRouteMissing(in, oid, did), nil
 	}
 	req := universeRouteBody(in, found, pref)
-	route, err := a.ESI.Post(ctx, fmt.Sprintf("/route/%d/%d", oid, did), nil, nil, req.body)
+	route, err := a.ESI.Post(ctx, esiPath("route", esiID(oid), esiID(did)), nil, nil, req.body)
 	if err != nil {
 		return nil, wrap("eveUniverseRoute", err)
 	}
@@ -432,7 +432,7 @@ func universeHopData(ctx context.Context, a *session.Session, hops []int) map[in
 	ch := make(chan box, len(hops))
 	for _, sid := range hops {
 		go func(sid int) {
-			r, err := a.ESI.Get(ctx, fmt.Sprintf("/universe/systems/%d", sid), nil, nil, nil)
+			r, err := a.ESI.Get(ctx, esiPath("universe", "systems", esiID(sid)), nil, nil, nil)
 			if err != nil {
 				ch <- box{sid, map[string]any{fName: strconv.Itoa(sid)}}
 
@@ -542,7 +542,7 @@ func eveUniverseHotspots(ctx context.Context, a *session.Session, in universeHot
 func searchWithFallback(ctx context.Context, a *session.Session, characterID int, categories []string, query string, strict bool) (map[string][]int, string, error) {
 	attempt := strings.TrimSpace(query)
 	for {
-		result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/search", characterID), &characterID, map[string]any{
+		result, err := a.ESI.Get(ctx, esiPath("characters", esiID(characterID), "search"), &characterID, map[string]any{
 			"categories": categories, "search": attempt, fStrict: strict,
 		}, nil)
 		if err != nil {

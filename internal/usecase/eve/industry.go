@@ -53,7 +53,7 @@ func eveIndustryJobs(ctx context.Context, a *session.Session, in industryJobsIn)
 		return nil, wrap("eveIndustryJobs", err)
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/industry/jobs", cid), &cid, map[string]any{"include_completed": boolDef(in.IncludeCompleted, false)}, nil)
+	result, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "industry", "jobs"), &cid, map[string]any{"include_completed": boolDef(in.IncludeCompleted, false)}, nil)
 	if err != nil {
 		return nil, wrap("eveIndustryJobs", err)
 	}
@@ -70,7 +70,7 @@ func eveIndustryPlanets(ctx context.Context, a *session.Session, in industryPlan
 		return nil, wrap("eveIndustryPlanets", err)
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/planets", cid), &cid, nil, nil)
+	result, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "planets"), &cid, nil, nil)
 	if err != nil {
 		return nil, wrap("eveIndustryPlanets", err)
 	}
@@ -114,7 +114,7 @@ func eveIndustryMining(ctx context.Context, a *session.Session, in industryMinin
 		return nil, wrap("eveIndustryMining", err)
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/mining", cid), &cid, nil, pagesESI)
+	result, err := a.ESI.GetAllPages(ctx, esiPath("characters", esiID(cid), "mining"), &cid, nil, pagesESI)
 	if err != nil {
 		return nil, wrap("eveIndustryMining", err)
 	}
@@ -278,7 +278,7 @@ func decorateColonyDetails(ctx context.Context, a *session.Session, cid int, col
 }
 
 func decorateColonyDetail(ctx context.Context, a *session.Session, cid int, colony, row map[string]any, now time.Time) {
-	layout, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/planets/%d", cid, j.Int(colony["planet_id"])), &cid, nil, nil)
+	layout, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "planets", esiID(j.Int(colony["planet_id"]))), &cid, nil, nil)
 	if err != nil {
 		return
 	}

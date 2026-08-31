@@ -192,7 +192,7 @@ func (r *Resolver) TypeInfo(ctx context.Context, typeID int) (map[string]any, er
 	if cached != nil {
 		return j.Map(cached), nil
 	}
-	result, err := r.esi.Get(ctx, fmt.Sprintf("/universe/types/%d", typeID), nil, nil, nil)
+	result, err := r.esi.Get(ctx, esi.Path("universe", "types", esi.ID(typeID)), nil, nil, nil)
 	if err != nil {
 		return nil, wrap("TypeInfo", err)
 	}
@@ -212,7 +212,7 @@ func (r *Resolver) GroupName(ctx context.Context, groupID int) string {
 	maxAge := staticBlobAge
 	cached, err := r.blob(ctx, key, &maxAge)
 	if err != nil || cached == nil {
-		result, err := r.esi.Get(ctx, fmt.Sprintf("/universe/groups/%d", groupID), nil, nil, nil)
+		result, err := r.esi.Get(ctx, esi.Path("universe", "groups", esi.ID(groupID)), nil, nil, nil)
 		if err != nil {
 			return fmt.Sprintf("Group #%d", groupID)
 		}
@@ -327,7 +327,7 @@ func (r *Resolver) ReferencePrice(ctx context.Context, typeID int) float64 {
 func (r *Resolver) HubQuotes(ctx context.Context, typeID, regionID int, stationID *int) (map[string]any, error) {
 	result, err := r.esi.GetAllPages(
 		ctx,
-		fmt.Sprintf("/markets/%d/orders", regionID),
+		esi.Path("markets", esi.ID(regionID), "orders"),
 		nil,
 		map[string]any{"type_id": typeID, "order_type": "all"},
 		hubOrderPages,
@@ -566,7 +566,7 @@ func lessNameMatch(matches []NameMatch, rank map[string]int) func(i, j int) bool
 }
 
 func (r *Resolver) structureName(ctx context.Context, structureID, characterID int) (string, error) {
-	result, err := r.esi.Get(ctx, fmt.Sprintf("/universe/structures/%d", structureID), &characterID, nil, nil)
+	result, err := r.esi.Get(ctx, esi.Path("universe", "structures", esi.ID(structureID)), &characterID, nil, nil)
 	if err != nil {
 		return "", wrap("structureName", err)
 	}

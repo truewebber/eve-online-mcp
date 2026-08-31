@@ -179,7 +179,7 @@ func eveMarketOrders(ctx context.Context, a *session.Session, in marketOrdersIn)
 		return nil, wrap("eveMarketOrders", err)
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/orders", cid), &cid, nil, nil)
+	result, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "orders"), &cid, nil, nil)
 	if err != nil {
 		return nil, wrap("eveMarketOrders", err)
 	}
@@ -196,7 +196,7 @@ func eveMarketContracts(ctx context.Context, a *session.Session, in marketContra
 		return nil, wrap("eveMarketContracts", err)
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/contracts", cid), &cid, nil, pagesESI)
+	result, err := a.ESI.GetAllPages(ctx, esiPath("characters", esiID(cid), "contracts"), &cid, nil, pagesESI)
 	if err != nil {
 		return nil, wrap("eveMarketContracts", err)
 	}
@@ -205,7 +205,7 @@ func eveMarketContracts(ctx context.Context, a *session.Session, in marketContra
 }
 
 func marketHistory(ctx context.Context, a *session.Session, typeID, regionID, days int) (map[string]any, error) {
-	result, err := a.ESI.Get(ctx, fmt.Sprintf("/markets/%d/history", regionID), nil, map[string]any{fTypeID: typeID}, nil)
+	result, err := a.ESI.Get(ctx, esiPath("markets", esiID(regionID), "history"), nil, map[string]any{fTypeID: typeID}, nil)
 	if err != nil {
 		return nil, wrap("marketHistory", err)
 	}

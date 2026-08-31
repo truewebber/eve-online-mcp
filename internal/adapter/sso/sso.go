@@ -26,17 +26,19 @@ import (
 )
 
 const (
-	SSOBase       = "https://login.eveonline.com"
-	AuthorizeURL  = SSOBase + "/v2/oauth/authorize"
-	TokenURL      = SSOBase + "/v2/oauth/token"
-	RevokeURL     = SSOBase + "/v2/oauth/revoke"
-	JWKSURL       = SSOBase + "/oauth/jwks"
 	TokenAudience = "EVE Online"
+	ssoHost       = "login.eveonline.com"
+	ssoV2         = "v2"
+	ssoOAuth      = "oauth"
 )
+
+func ssoEndpoint(elem ...string) *url.URL {
+	return (&url.URL{Scheme: "https", Host: ssoHost}).JoinPath(elem...)
+}
 
 func knownIssuer(iss string) bool {
 	switch iss {
-	case "login.eveonline.com", "https://login.eveonline.com":
+	case ssoHost, (&url.URL{Scheme: "https", Host: ssoHost}).String():
 		return true
 	default:
 		return false
@@ -137,9 +139,11 @@ func (c *Client) PrepareLogin(scopes []string) (*PreparedLogin, error) {
 		"code_challenge":        {challenge},
 		"code_challenge_method": {"S256"},
 	}
+	u := ssoEndpoint(ssoV2, ssoOAuth, "authorize")
+	u.RawQuery = q.Encode()
 
 	return &PreparedLogin{
-		URL:      AuthorizeURL + "?" + q.Encode(),
+		URL:      u.String(),
 		State:    state,
 		Verifier: verifier,
 		Scopes:   scopes,
@@ -200,7 +204,7 @@ func (c *Client) Revoke(ctx context.Context, characterID int) {
 		"token":           {token.RefreshToken},
 		formClientID:      {c.opts.ClientID},
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, RevokeURL, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ssoEndpoint(ssoV2, ssoOAuth, "revoke").String(), strings.NewReader(data.Encode()))
 	if err != nil {
 		c.logger.Error("sso: revoke request", "character_id", characterID, "err", err)
 		c.Store.Remove(ctx, characterID)
@@ -293,7 +297,7 @@ func (c *Client) tokenRequest(ctx context.Context, data url.Values, clientID, se
 	if secret != "" {
 		data.Del(formClientID)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, TokenURL, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ssoEndpoint(ssoV2, ssoOAuth, "token").String(), strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, wrap("tokenRequest", err)
 	}
@@ -443,7 +447,7 @@ func (c *Client) signingKey(ctx context.Context, accessToken string) (any, error
 }
 
 func fetchJWKS(ctx context.Context, httpClient *http.Client) (map[string]any, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, JWKSURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ssoEndpoint(ssoOAuth, "jwks").String(), nil)
 	if err != nil {
 		return nil, wrap("fetchJWKS", err)
 	}

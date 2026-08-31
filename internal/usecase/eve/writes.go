@@ -226,7 +226,7 @@ func eveFittingSave(ctx context.Context, a *session.Session, in fittingSaveIn) (
 	if blocked.Required != nil {
 		return blocked.Required, nil
 	}
-	result, err := a.ESI.Post(ctx, fmt.Sprintf("/characters/%d/fittings", token.CharacterID), &token.CharacterID, nil, body)
+	result, err := a.ESI.Post(ctx, esiPath("characters", esiID(token.CharacterID), "fittings"), &token.CharacterID, nil, body)
 	if err != nil {
 		return nil, wrap("eveFittingSave", err)
 	}
@@ -289,7 +289,7 @@ func eveFittingDelete(ctx context.Context, a *session.Session, in fittingDeleteI
 	if err != nil {
 		return nil, wrap("eveFittingDelete", err)
 	}
-	existing, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/fittings", token.CharacterID), &token.CharacterID, nil, nil)
+	existing, err := a.ESI.Get(ctx, esiPath("characters", esiID(token.CharacterID), "fittings"), &token.CharacterID, nil, nil)
 	if err != nil {
 		return nil, wrap("eveFittingDelete", err)
 	}
@@ -316,7 +316,7 @@ func eveFittingDelete(ctx context.Context, a *session.Session, in fittingDeleteI
 	if blocked.Required != nil {
 		return blocked.Required, nil
 	}
-	if _, err := a.ESI.Delete(ctx, fmt.Sprintf("/characters/%d/fittings/%d", token.CharacterID, in.FittingID), &token.CharacterID, nil, nil); err != nil {
+	if _, err := a.ESI.Delete(ctx, esiPath("characters", esiID(token.CharacterID), "fittings", esiID(in.FittingID)), &token.CharacterID, nil, nil); err != nil {
 		return nil, wrap("eveFittingDelete", err)
 	}
 	a.Guard.Record(ctx, "eve_fitting_delete", "fittings", args, "ok")
@@ -367,7 +367,7 @@ func eveMailMark(ctx context.Context, a *session.Session, in mailMarkIn) (any, e
 	if blocked.Required != nil {
 		return blocked.Required, nil
 	}
-	if _, err := a.ESI.Put(ctx, fmt.Sprintf("/characters/%d/mail/%d", token.CharacterID, in.MailID), &token.CharacterID, nil, map[string]any{fRead: read}); err != nil {
+	if _, err := a.ESI.Put(ctx, esiPath("characters", esiID(token.CharacterID), "mail", esiID(in.MailID)), &token.CharacterID, nil, map[string]any{fRead: read}); err != nil {
 		return nil, wrap("eveMailMark", err)
 	}
 	a.Guard.Record(ctx, "eve_mail_mark", "mail_organize", args, "ok")
@@ -380,7 +380,7 @@ func eveMailDelete(ctx context.Context, a *session.Session, in mailDeleteIn) (an
 	if err != nil {
 		return nil, wrap("eveMailDelete", err)
 	}
-	header, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/mail/%d", token.CharacterID, in.MailID), &token.CharacterID, nil, nil)
+	header, err := a.ESI.Get(ctx, esiPath("characters", esiID(token.CharacterID), "mail", esiID(in.MailID)), &token.CharacterID, nil, nil)
 	if err != nil {
 		return nil, wrap("eveMailDelete", err)
 	}
@@ -401,7 +401,7 @@ func eveMailDelete(ctx context.Context, a *session.Session, in mailDeleteIn) (an
 	if blocked.Required != nil {
 		return blocked.Required, nil
 	}
-	if _, err := a.ESI.Delete(ctx, fmt.Sprintf("/characters/%d/mail/%d", token.CharacterID, in.MailID), &token.CharacterID, nil, nil); err != nil {
+	if _, err := a.ESI.Delete(ctx, esiPath("characters", esiID(token.CharacterID), "mail", esiID(in.MailID)), &token.CharacterID, nil, nil); err != nil {
 		return nil, wrap("eveMailDelete", err)
 	}
 	a.Guard.Record(ctx, "eve_mail_delete", "mail_organize", args, "ok")
@@ -467,7 +467,7 @@ func eveMailSend(ctx context.Context, a *session.Session, in mailSendIn) (any, e
 	if blocked.Required != nil {
 		return blocked.Required, nil
 	}
-	mailID, err := a.ESI.Post(ctx, fmt.Sprintf("/characters/%d/mail", token.CharacterID), &token.CharacterID, nil, payload)
+	mailID, err := a.ESI.Post(ctx, esiPath("characters", esiID(token.CharacterID), "mail"), &token.CharacterID, nil, payload)
 	if err != nil {
 		return nil, wrap("eveMailSend", err)
 	}
@@ -576,7 +576,7 @@ func eveContactsSet(ctx context.Context, a *session.Session, in contactsSetIn) (
 			watchable[m.ID] = struct{}{}
 		}
 	}
-	existing, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/contacts", token.CharacterID), &token.CharacterID, nil, pagesESI)
+	existing, err := a.ESI.GetAllPages(ctx, esiPath("characters", esiID(token.CharacterID), "contacts"), &token.CharacterID, nil, pagesESI)
 	if err != nil {
 		return nil, wrap("eveContactsSet", err)
 	}
@@ -654,7 +654,7 @@ func buildContactOps(updating, neu []int, watched bool, watchable map[int]struct
 
 func applyContactOps(ctx context.Context, a *session.Session, characterID int, standing float64, ops []contactOp) (contactApplyResult, error) {
 	appliedU, appliedA := []int{}, []int{}
-	path := fmt.Sprintf("/characters/%d/contacts", characterID)
+	path := esiPath("characters", esiID(characterID), "contacts")
 	for _, op := range ops {
 		err := runContactOp(ctx, a, characterID, path, standing, op)
 		if err != nil {
@@ -723,7 +723,7 @@ func eveContactsDelete(ctx context.Context, a *session.Session, in contactsDelet
 	if blocked.Required != nil {
 		return blocked.Required, nil
 	}
-	if _, err := a.ESI.Delete(ctx, fmt.Sprintf("/characters/%d/contacts", token.CharacterID), &token.CharacterID, map[string]any{fContactIDs: ids}, nil); err != nil {
+	if _, err := a.ESI.Delete(ctx, esiPath("characters", esiID(token.CharacterID), "contacts"), &token.CharacterID, map[string]any{fContactIDs: ids}, nil); err != nil {
 		return nil, wrap("eveContactsDelete", err)
 	}
 	a.Guard.Record(ctx, "eve_contacts_delete", fContacts, args, "ok")
@@ -747,7 +747,7 @@ func registerCalendar(s *mcp.Server) {
 			if err != nil {
 				return nil, wrap("registerCalendar", err)
 			}
-			detail, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/calendar/%d", token.CharacterID, in.EventID), &token.CharacterID, nil, nil)
+			detail, err := a.ESI.Get(ctx, esiPath("characters", esiID(token.CharacterID), "calendar", esiID(in.EventID)), &token.CharacterID, nil, nil)
 			if err != nil {
 				return nil, wrap("registerCalendar", err)
 			}
@@ -765,7 +765,7 @@ func registerCalendar(s *mcp.Server) {
 			if blocked.Required != nil {
 				return blocked.Required, nil
 			}
-			if _, err := a.ESI.Put(ctx, fmt.Sprintf("/characters/%d/calendar/%d", token.CharacterID, in.EventID), &token.CharacterID, nil, map[string]any{fResponse: in.Response}); err != nil {
+			if _, err := a.ESI.Put(ctx, esiPath("characters", esiID(token.CharacterID), "calendar", esiID(in.EventID)), &token.CharacterID, nil, map[string]any{fResponse: in.Response}); err != nil {
 				return nil, wrap("registerCalendar", err)
 			}
 			a.Guard.Record(ctx, "eve_calendar_respond", "calendar", args, "ok")
@@ -826,7 +826,7 @@ func resolveDestination(ctx context.Context, a *session.Session, name string, ch
 
 		return out, nil
 	}
-	search, err := a.ESI.Get(ctx, fmt.Sprintf("/characters/%d/search", characterID), &characterID, map[string]any{
+	search, err := a.ESI.Get(ctx, esiPath("characters", esiID(characterID), "search"), &characterID, map[string]any{
 		"categories": []string{fStructure}, "search": name, fStrict: false,
 	}, nil)
 	if err != nil {

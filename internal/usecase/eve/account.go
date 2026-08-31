@@ -2,7 +2,6 @@ package eve
 
 import (
 	"context"
-	"fmt"
 	"sort"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
@@ -159,13 +158,13 @@ func fetchOverview(ctx context.Context, a *session.Session, cid int) overviewFet
 		return overviewBox{r, err}
 	}
 	ch := make(chan overviewBox, overviewFetches)
-	go func() { ch <- get(fmt.Sprintf("/characters/%d", cid), false) }()
-	go func() { ch <- get(fmt.Sprintf("/characters/%d/wallet", cid), true) }()
-	go func() { ch <- get(fmt.Sprintf("/characters/%d/location", cid), true) }()
-	go func() { ch <- get(fmt.Sprintf("/characters/%d/ship", cid), true) }()
-	go func() { ch <- get(fmt.Sprintf("/characters/%d/online", cid), true) }()
-	go func() { ch <- get(fmt.Sprintf("/characters/%d/skillqueue", cid), true) }()
-	go func() { ch <- get(fmt.Sprintf("/characters/%d/attributes", cid), true) }()
+	go func() { ch <- get(esiPath("characters", esiID(cid)), false) }()
+	go func() { ch <- get(esiPath("characters", esiID(cid), "wallet"), true) }()
+	go func() { ch <- get(esiPath("characters", esiID(cid), "location"), true) }()
+	go func() { ch <- get(esiPath("characters", esiID(cid), "ship"), true) }()
+	go func() { ch <- get(esiPath("characters", esiID(cid), "online"), true) }()
+	go func() { ch <- get(esiPath("characters", esiID(cid), "skillqueue"), true) }()
+	go func() { ch <- get(esiPath("characters", esiID(cid), "attributes"), true) }()
 
 	return overviewFetch{<-ch, <-ch, <-ch, <-ch, <-ch, <-ch, <-ch}
 }

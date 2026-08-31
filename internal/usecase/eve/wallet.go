@@ -49,7 +49,7 @@ func walletHistory(ctx context.Context, a *session.Session, in walletHistIn) (an
 		out["journal_section"] = sec
 	}
 	if kind == fTransactions || kind == vBoth {
-		sec, err := transactionSection(ctx, a, fmt.Sprintf("/characters/%d/wallet/transactions", cid), cid, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
+		sec, err := transactionSection(ctx, a, esiPath("characters", esiID(cid), "wallet", "transactions"), cid, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
 		if err != nil {
 			return nil, err
 		}
@@ -72,7 +72,7 @@ func walletHistory(ctx context.Context, a *session.Session, in walletHistIn) (an
 }
 
 func journalSection(ctx context.Context, a *session.Session, cid int, refType string, limit int, conciseMode bool) (map[string]any, error) {
-	result, err := a.ESI.GetAllPages(ctx, fmt.Sprintf("/characters/%d/wallet/journal", cid), &cid, nil, pagesShort)
+	result, err := a.ESI.GetAllPages(ctx, esiPath("characters", esiID(cid), "wallet", "journal"), &cid, nil, pagesShort)
 	if err != nil {
 		return nil, wrap("journalSection", err)
 	}

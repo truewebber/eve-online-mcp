@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"net/url"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -82,6 +84,18 @@ func Call(ctx context.Context, fn func(*session.Session) (any, error)) (*mcp.Cal
 
 func Handle(err error) (*mcp.CallToolResult, any, error) {
 	return Result(session.MapError(err))
+}
+
+func esiPath(elem ...string) string {
+	return path.Join("/", path.Join(elem...))
+}
+
+func esiID(id int) string {
+	return strconv.Itoa(id)
+}
+
+func zkillURL(killmailID int) string {
+	return (&url.URL{Scheme: "https", Host: "zkillboard.com"}).JoinPath("kill", esiID(killmailID)).String()
 }
 
 func limitOr(v, def int) int {
