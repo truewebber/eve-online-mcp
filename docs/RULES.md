@@ -194,3 +194,12 @@ violates `service → usecase → adapter | domain`.
 A signature we do not own (generated OpenAPI, an SDK callback) lives
 in `service`. `int`, `string` and other language builtins are not a
 layer's types.
+
+## 12. SQL is declared
+
+Every query is a `const`: plain SQL or a query template. `Exec`,
+`Query` and `QueryRow` receive that name. A string literal at the
+call is not a query; it is an undeclared one.
+
+A migration file is already a declared query. `$1` is a parameter,
+not concatenation.
