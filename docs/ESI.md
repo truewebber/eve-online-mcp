@@ -167,7 +167,8 @@ the SSO). Documented in the official SSO guide.
   API Explorer link). The reverse holds too, and it is the half that
   rots: a row naming a call site that does not call it is a lie about
   coverage. Both directions are mechanical to check — extract the call
-  sites, diff against this table — and `go run ./evals lint` does it.
+  sites, diff against this table — and the catalogue check in `tests/`
+  does it.
 - Every documented path, method and scope is verifiable against
   `esi.evetech.net/meta/openapi.json` at the pinned compatibility date;
   that diff is what moving the date consists of (SPEC §9).

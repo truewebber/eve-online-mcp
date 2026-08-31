@@ -2,7 +2,7 @@
 
 **This document is normative and hand-written.** The implementation
 follows it: tool names, descriptions and parameter schemas below are the
-contract the model sees, and `go run ./evals lint` diffs a running
+contract the model sees, and the catalogue check in `tests/` diffs a running
 server's `tools/list` against this file. A tool change lands here in the
 same commit as the code. ESI endpoints behind each tool are documented
 in [ESI.md](ESI.md); the cross-cutting rules are [SPEC.md](SPEC.md) §4.
@@ -80,8 +80,8 @@ actually implemented — that text written by other players is reported and
 never obeyed, and that a stale number is never presented as live — and
 nothing else in the system can enforce either. It is assembled from
 `Instructions` + `CorpInstructions` in
-`internal/usecase/eve/register.go`, it must read as below, and `go run
-./evals lint` diffs the served string against this block.
+`internal/usecase/eve/register.go`, it must read as below, and the
+catalogue check in `tests/` diffs the served string against this block.
 
 Like the rest of this file it describes the target: the string in the
 code today still talks about "which characters are authorized" and knows

@@ -213,7 +213,8 @@ make postgres                     # local Postgres (loopback :5432)
 make migrate                      # goose, against DATABASE_URL
 go build -o eve-mcp ./cmd/eve-mcp
 ./eve-mcp                         # foreground, reads ./.env or the environment
-go run ./evals all                # lint + smoke; needs EVE_MCP_TOKEN
+go test ./...                     # unit tests
+make test-store                   # everything that needs DATABASE_URL
 ```
 
 The server is a Go binary on the host. Postgres is Compose-only — do not

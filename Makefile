@@ -1,4 +1,4 @@
-.PHONY: build run lint lint-fix lint-check smoke eval gen postgres migrate down test-store
+.PHONY: build run lint lint-fix lint-check gen postgres migrate down test-store
 
 GO ?= go
 COMPOSE ?= docker compose
@@ -28,12 +28,6 @@ lint:
 
 lint-fix:
 	$(GOLANGCI_LINT) run --fix ./...
-
-smoke:
-	$(GO) run ./evals smoke
-
-eval:
-	$(GO) run ./evals all
 
 gen:
 	$(OAPI_CODEGEN) -config api/http.cfg.yaml api/http.yaml

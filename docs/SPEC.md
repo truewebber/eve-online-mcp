@@ -5,9 +5,12 @@ document says how to build it. Where the current code differs, the delta
 is listed in §12 — the spec describes the target.
 
 §12 is the remaining work. The board in [plan/README.md](plan/README.md)
-slices it into Composer-sized tasks: T01–T10 are the current state of the
-repo, T11–T26 are §12 items 0–15 in dependency order. This file stays the
-contract either way — a task that disagrees with it is wrong.
+slices it into Composer-sized tasks: T01–T10 are history, T11–T30 are
+§12 items 0–15 in dependency order plus five tasks that answer to
+[RULES.md](RULES.md) and to no §12 item, because how the code is written
+is not a delta this document can see. This file stays the contract
+either way — a task that disagrees with it is wrong, and a task that
+disagrees with RULES.md is wrong too.
 
 ## 1. Runtime topology
 
@@ -343,7 +346,7 @@ Transport: MCP Streamable HTTP (JSON-RPC) at `/mcp`, stateless mode,
 implementation name `eve-online`. Client flow: `initialize` →
 `tools/list` → `tools/call`.
 
-Tool contract (enforced by `go run ./evals lint`):
+Tool contract (enforced by the catalogue check in `tests/`):
 
 - Names: `eve_<domain>_<action>`. Renaming is a breaking change.
 - Every input field carries a `jsonschema` tag — the whole tag is the
@@ -530,9 +533,9 @@ The normative per-tool contract lives in two companion documents:
 - **[TOOLS.md](TOOLS.md)** — every tool with its model-facing
   description and parameter schema. It is written by hand and the
   implementation follows it: a tool change lands in the same commit as
-  its TOOLS.md change, and `go run ./evals lint` compares the running
-  server's `tools/list` against it (names, required/optional fields,
-  types, descriptions, bounds).
+  its TOOLS.md change, and the catalogue check in `tests/` compares the
+  running server's `tools/list` against it (names, required/optional
+  fields, types, descriptions, bounds).
 - **[ESI.md](ESI.md)** — every EVE Online endpoint the server may call,
   with scope, page caps, the repo call site and the official CCP
   documentation link. Calling an endpoint not listed there is a bug.
@@ -728,7 +731,8 @@ internal/
   service/              transport; depends on usecase only
     http/               generated OpenAPI + handlers + both listeners
     mcp/                MCP server registration facade
-evals/                  Go: lint + smoke against a running server
+tests/                  everything that is not a unit test: smoke,
+                        catalogue check, recorded ESI fixtures
 ```
 
 Import direction: `service → usecase → adapter | domain`; domain imports
@@ -846,6 +850,11 @@ constants, no write budget (T08); per-character ESI token bucket 400 /
 2 per s with `UserRateLimited` (T09). The alt-add ownership refuse (T10)
 is superseded by item 1 below and goes away with it.
 
+Landed since, ahead of the board: **item 5** in full — the ESI response
+cache, id→name cache and reference prices are bounded pod memory and the
+cache tables are dropped — and the half of item 4 that swaps the
+boot-time migrator for goose applied from outside the binary.
+
 Remaining, in dependency order:
 
 0. **Something to accept these against.** Recorded ESI fixtures at the
@@ -935,8 +944,8 @@ Remaining, in dependency order:
     nothing — across 19 list tools, the matching `next_cursor` /
     `total_pages` / `total` response fields, and `page`/`offset` in
     `patchBounds`.
-13. **`evals lint` against the catalog** — its own item because it is a
-    parser, not a flag: read TOOLS.md's per-tool tables (names,
+13. **The catalogue check** — its own item because it is a parser,
+    not a flag: read TOOLS.md's per-tool tables (names,
     required/optional, types, descriptions, bounds, pagination
     parameters) and diff them against a running server's `tools/list`;
     then the same for `instructions`, and for ESI.md's call-site column
