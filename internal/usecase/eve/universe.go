@@ -267,18 +267,6 @@ func eveUniverseSystem(_ context.Context, a *session.Session, in universeSystemI
 }
 
 func universeSystemLookups(a *session.Session, sid int) (universeSystemESI, error) {
-	type box struct {
-		r   esi.Result
-		err error
-	}
-	ch := make(chan box, 3)
-	go func() {
-		r, err := a.ESI.Get(fmt.Sprintf("/universe/systems/%d", sid), nil, nil, nil)
-		ch <- box{r, err}
-	}()
-	go func() { r, err := a.ESI.Get("/universe/system_kills", nil, nil, nil); ch <- box{r, err} }()
-	go func() { r, err := a.ESI.Get("/universe/system_jumps", nil, nil, nil); ch <- box{r, err} }()
-	// Identify by fetching again in order — race-free:
 	infoRes, err := a.ESI.Get(fmt.Sprintf("/universe/systems/%d", sid), nil, nil, nil)
 	if err != nil {
 		return universeSystemESI{}, err
@@ -291,7 +279,6 @@ func universeSystemLookups(a *session.Session, sid int) (universeSystemESI, erro
 	if err != nil {
 		return universeSystemESI{}, err
 	}
-	_, _, _ = <-ch, <-ch, <-ch
 
 	return universeSystemESI{infoRes, killsRes, jumpsRes}, nil
 }
