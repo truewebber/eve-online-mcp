@@ -234,6 +234,12 @@ make ci                           # lint, unit tests, store tests, tests/
 make generate                     # mockgen + oapi-codegen
 ```
 
+CI on every push and pull request: lint, `go test ./...` against a
+Postgres service (migrations applied in the job), then a
+`linux/amd64` + `linux/arm64` image build. A push to `master` also publishes
+`ghcr.io/truewebber/eve-online-mcp:<git sha>`. `make ci` is the
+lint-and-test half locally.
+
 The server is a Go binary on the host. Postgres is Compose-only — do not
 put the app in Compose, and do not run `docker compose down -v`: that
 deletes the `eve-mcp-pg` volume. `make down` stops Postgres and keeps it.

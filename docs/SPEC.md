@@ -827,6 +827,11 @@ the mail cap counts from (§5.4). It stores no message bodies.
   header is ignored in favour of the socket address.
 - **Local dev:** any reachable Postgres (e.g. `docker run postgres`),
   `DATABASE_URL` in `./.env`, `./eve-mcp` in the foreground.
+- **Image:** CI builds `linux/amd64` and `linux/arm64` and, on `master`,
+  pushes `ghcr.io/truewebber/eve-online-mcp:<git sha>`. The pipeline is lint,
+  tests against a throwaway Postgres (goose in the job, not in the
+  binary), then the image. No CI step talks to CCP or needs a
+  character.
 - **Rollout:** migrations are forward-only and run in the deploy
   pipeline (or by hand) before the new image serves traffic — never
   inside `Open` (RULES.md §14). A migration must therefore be
