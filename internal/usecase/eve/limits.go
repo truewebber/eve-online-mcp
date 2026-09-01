@@ -35,11 +35,14 @@ const (
 	searchPoolFloor   = 50
 	searchPoolMax     = 200
 
-	fittingNameMax    = 50
-	fittingDescMax    = 500
-	mailRecipientsMax = 20
-	mailSubjectMax    = 1000
-	mailBodyMax       = 10000
+	fittingNameMax           = 50
+	fittingDescMax           = 500
+	mailRecipientsMax        = 20
+	mailComposeRecipientsMax = 50
+	mailSubjectMax           = 1000
+	mailBodyMax              = 10000
+	calendarESIPage          = 50
+	cspaRecipientsMax        = 100
 
 	typeDescPreview    = 500
 	textPreview        = 300

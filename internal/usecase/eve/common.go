@@ -55,6 +55,8 @@ func patchBounds(schema *jsonschema.Schema) {
 			prop.Minimum, prop.Maximum = new(0.0), new(argHistoryDays)
 		case fApprovedCost:
 			prop.Minimum = new(0.0)
+		case fFromEvent, fEventID, fMailID, fFittingID, "page":
+			prop.Minimum = new(1.0)
 		}
 	}
 }
@@ -96,6 +98,11 @@ func Handle(err error) (*mcp.CallToolResult, any, error) {
 	if v, ok := errors.AsType[ValidationError](err); ok {
 		out["field"] = v.Field
 	}
+	if charge, ok := errors.AsType[CSPAExceedsError](err); ok {
+		out["priced_cspa_cost_isk"] = charge.Cost
+		out[fApprovedCost] = charge.Approved
+		out["shortfall_isk"] = charge.Cost - float64(charge.Approved)
+	}
 
 	return Result(out)
 }
@@ -120,7 +127,7 @@ func limitOr(v, def int) int {
 	return v
 }
 
-func concise(format string) bool { return format != "detailed" }
+func concise(format string) bool { return format != formatDetailed }
 
 func boolDef(p *bool, def bool) bool {
 	if p == nil {

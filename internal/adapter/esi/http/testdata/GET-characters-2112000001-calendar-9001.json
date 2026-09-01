@@ -1,0 +1,28 @@
+{
+  "method": "GET",
+  "path": "/characters/2112000001/calendar/9001",
+  "source": "openapi",
+  "compat_date": "2026-08-18",
+  "status": 200,
+  "headers": {
+    "Content-Type": "application/json",
+    "X-Compatibility-Date": "2026-08-18",
+    "X-Esi-Error-Limit-Remain": "100",
+    "X-Esi-Error-Limit-Reset": "60",
+    "ETag": "\"openapi\"",
+    "Cache-Control": "public",
+    "Expires": "Wed, 19 Aug 2026 00:00:00 GMT"
+  },
+  "body": {
+    "date": "2026-09-01T18:00:00Z",
+    "duration": 60,
+    "event_id": 9001,
+    "importance": 1,
+    "owner_id": 196379789,
+    "owner_name": "FC Pilot",
+    "owner_type": "character",
+    "response": "not_responded",
+    "text": "Be on comms.",
+    "title": "Event 9001"
+  }
+}

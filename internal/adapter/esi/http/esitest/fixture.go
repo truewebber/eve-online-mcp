@@ -28,9 +28,16 @@ func Key(method, path string, query url.Values) string {
 	b.WriteString(method)
 	b.WriteByte(' ')
 	b.WriteString(path)
+	var extra []string
 	if page := query.Get("page"); page != "" {
-		b.WriteString("?page=")
-		b.WriteString(page)
+		extra = append(extra, "page="+page)
+	}
+	if from := query.Get("from_event"); from != "" {
+		extra = append(extra, "from_event="+from)
+	}
+	if len(extra) > 0 {
+		b.WriteByte('?')
+		b.WriteString(strings.Join(extra, "&"))
 	}
 
 	return b.String()
@@ -49,6 +56,9 @@ func (f Fixture) Filename() string {
 	name := f.Method + f.Path
 	if page := f.Query["page"]; page != "" {
 		name += "-page-" + page
+	}
+	if from := f.Query["from_event"]; from != "" {
+		name += "-from-event-" + from
 	}
 	var b strings.Builder
 	for _, r := range name {

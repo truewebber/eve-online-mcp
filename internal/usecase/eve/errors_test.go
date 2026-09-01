@@ -36,6 +36,8 @@ func TestHandleKeepsKindAndHidesInner(t *testing.T) {
 		{esi.Error{Msg: "Network error: " + errInner.Error(), Status: 502}, "EsiError", sentenceESI},
 		{UnresolvedError{Names: []string{misspelledName}}, kindError, sentenceUnresolved},
 		{ValidationError{Field: "character_id", Invariant: "must be a positive integer"}, kindError, "character_id must be a positive integer"},
+		{ErrCSPAUnpriced, kindError, "CSPA charge could not be priced"},
+		{CSPAExceedsError{Cost: 10, Approved: 0}, kindError, "exceeds approved_cost"},
 		{errInner, kindError, sentenceGeneric},
 	}
 	for _, tc := range cases {
@@ -58,6 +60,21 @@ func TestHandleKeepsKindAndHidesInner(t *testing.T) {
 		if strings.Contains(raw, errInner.Error()) || strings.Contains(raw, "pgx-detail") || strings.Contains(raw, "ccp-detail") {
 			t.Fatalf("inner leaked: %s", raw)
 		}
+	}
+}
+
+func TestHandleCSPAExceedsExtras(t *testing.T) {
+	t.Parallel()
+	res, _, err := Handle(CSPAExceedsError{Cost: 2950, Approved: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out map[string]any
+	if json.Unmarshal([]byte(toolText(res)), &out) != nil {
+		t.Fatal(toolText(res))
+	}
+	if out["priced_cspa_cost_isk"] != float64(2950) || out["approved_cost"] != float64(0) || out["shortfall_isk"] != float64(2950) {
+		t.Fatalf("%+v", out)
 	}
 }
 

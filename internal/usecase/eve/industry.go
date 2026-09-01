@@ -42,6 +42,9 @@ func registerIndustry(s *mcp.Server) {
 }
 
 func eveIndustryJobs(ctx context.Context, a *session.Session, in industryJobsIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
 	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveIndustryJobs", err)

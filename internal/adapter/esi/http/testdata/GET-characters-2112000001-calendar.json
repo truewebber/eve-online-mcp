@@ -1,0 +1,368 @@
+{
+  "method": "GET",
+  "path": "/characters/2112000001/calendar",
+  "source": "openapi",
+  "compat_date": "2026-08-18",
+  "status": 200,
+  "headers": {
+    "Content-Type": "application/json",
+    "X-Compatibility-Date": "2026-08-18",
+    "X-Esi-Error-Limit-Remain": "100",
+    "X-Esi-Error-Limit-Reset": "60",
+    "ETag": "\"openapi\"",
+    "Cache-Control": "public",
+    "Expires": "Wed, 19 Aug 2026 00:00:00 GMT"
+  },
+  "body": [
+    {
+      "event_date": "2026-09-01T18:00:00Z",
+      "event_id": 9001,
+      "event_response": "not_responded",
+      "importance": 1,
+      "title": "Event 9001"
+    },
+    {
+      "event_date": "2026-09-02T18:00:00Z",
+      "event_id": 9002,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9002"
+    },
+    {
+      "event_date": "2026-09-03T18:00:00Z",
+      "event_id": 9003,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9003"
+    },
+    {
+      "event_date": "2026-09-04T18:00:00Z",
+      "event_id": 9004,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9004"
+    },
+    {
+      "event_date": "2026-09-05T18:00:00Z",
+      "event_id": 9005,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9005"
+    },
+    {
+      "event_date": "2026-09-06T18:00:00Z",
+      "event_id": 9006,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9006"
+    },
+    {
+      "event_date": "2026-09-07T18:00:00Z",
+      "event_id": 9007,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9007"
+    },
+    {
+      "event_date": "2026-09-08T18:00:00Z",
+      "event_id": 9008,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9008"
+    },
+    {
+      "event_date": "2026-09-09T18:00:00Z",
+      "event_id": 9009,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9009"
+    },
+    {
+      "event_date": "2026-09-10T18:00:00Z",
+      "event_id": 9010,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9010"
+    },
+    {
+      "event_date": "2026-09-11T18:00:00Z",
+      "event_id": 9011,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9011"
+    },
+    {
+      "event_date": "2026-09-12T18:00:00Z",
+      "event_id": 9012,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9012"
+    },
+    {
+      "event_date": "2026-09-13T18:00:00Z",
+      "event_id": 9013,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9013"
+    },
+    {
+      "event_date": "2026-09-14T18:00:00Z",
+      "event_id": 9014,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9014"
+    },
+    {
+      "event_date": "2026-09-15T18:00:00Z",
+      "event_id": 9015,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9015"
+    },
+    {
+      "event_date": "2026-09-16T18:00:00Z",
+      "event_id": 9016,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9016"
+    },
+    {
+      "event_date": "2026-09-17T18:00:00Z",
+      "event_id": 9017,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9017"
+    },
+    {
+      "event_date": "2026-09-18T18:00:00Z",
+      "event_id": 9018,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9018"
+    },
+    {
+      "event_date": "2026-09-19T18:00:00Z",
+      "event_id": 9019,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9019"
+    },
+    {
+      "event_date": "2026-09-20T18:00:00Z",
+      "event_id": 9020,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9020"
+    },
+    {
+      "event_date": "2026-09-21T18:00:00Z",
+      "event_id": 9021,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9021"
+    },
+    {
+      "event_date": "2026-09-22T18:00:00Z",
+      "event_id": 9022,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9022"
+    },
+    {
+      "event_date": "2026-09-23T18:00:00Z",
+      "event_id": 9023,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9023"
+    },
+    {
+      "event_date": "2026-09-24T18:00:00Z",
+      "event_id": 9024,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9024"
+    },
+    {
+      "event_date": "2026-09-25T18:00:00Z",
+      "event_id": 9025,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9025"
+    },
+    {
+      "event_date": "2026-09-26T18:00:00Z",
+      "event_id": 9026,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9026"
+    },
+    {
+      "event_date": "2026-09-27T18:00:00Z",
+      "event_id": 9027,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9027"
+    },
+    {
+      "event_date": "2026-09-28T18:00:00Z",
+      "event_id": 9028,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9028"
+    },
+    {
+      "event_date": "2026-09-01T18:00:00Z",
+      "event_id": 9029,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9029"
+    },
+    {
+      "event_date": "2026-09-02T18:00:00Z",
+      "event_id": 9030,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9030"
+    },
+    {
+      "event_date": "2026-09-03T18:00:00Z",
+      "event_id": 9031,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9031"
+    },
+    {
+      "event_date": "2026-09-04T18:00:00Z",
+      "event_id": 9032,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9032"
+    },
+    {
+      "event_date": "2026-09-05T18:00:00Z",
+      "event_id": 9033,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9033"
+    },
+    {
+      "event_date": "2026-09-06T18:00:00Z",
+      "event_id": 9034,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9034"
+    },
+    {
+      "event_date": "2026-09-07T18:00:00Z",
+      "event_id": 9035,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9035"
+    },
+    {
+      "event_date": "2026-09-08T18:00:00Z",
+      "event_id": 9036,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9036"
+    },
+    {
+      "event_date": "2026-09-09T18:00:00Z",
+      "event_id": 9037,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9037"
+    },
+    {
+      "event_date": "2026-09-10T18:00:00Z",
+      "event_id": 9038,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9038"
+    },
+    {
+      "event_date": "2026-09-11T18:00:00Z",
+      "event_id": 9039,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9039"
+    },
+    {
+      "event_date": "2026-09-12T18:00:00Z",
+      "event_id": 9040,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9040"
+    },
+    {
+      "event_date": "2026-09-13T18:00:00Z",
+      "event_id": 9041,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9041"
+    },
+    {
+      "event_date": "2026-09-14T18:00:00Z",
+      "event_id": 9042,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9042"
+    },
+    {
+      "event_date": "2026-09-15T18:00:00Z",
+      "event_id": 9043,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9043"
+    },
+    {
+      "event_date": "2026-09-16T18:00:00Z",
+      "event_id": 9044,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9044"
+    },
+    {
+      "event_date": "2026-09-17T18:00:00Z",
+      "event_id": 9045,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9045"
+    },
+    {
+      "event_date": "2026-09-18T18:00:00Z",
+      "event_id": 9046,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9046"
+    },
+    {
+      "event_date": "2026-09-19T18:00:00Z",
+      "event_id": 9047,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9047"
+    },
+    {
+      "event_date": "2026-09-20T18:00:00Z",
+      "event_id": 9048,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9048"
+    },
+    {
+      "event_date": "2026-09-21T18:00:00Z",
+      "event_id": 9049,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9049"
+    },
+    {
+      "event_date": "2026-09-22T18:00:00Z",
+      "event_id": 9050,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Event 9050"
+    }
+  ]
+}

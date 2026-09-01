@@ -332,7 +332,7 @@ func eveUniverseRoute(ctx context.Context, a *session.Session, in universeRouteI
 	}
 	pref, ok := routePref(prefKey)
 	if !ok {
-		return nil, ValidationError{Field: fieldPreference, Invariant: "must be one of shorter, safer, less_secure"}
+		return nil, ValidationError{Field: fieldPreference, Invariant: enumInvariant(vShorter, "safer", "less_secure")}
 	}
 	found, err := universeResolveSystems(ctx, a, in)
 	if err != nil {
@@ -535,7 +535,7 @@ func eveUniverseHotspots(ctx context.Context, a *session.Session, in universeHot
 	}
 	visible, meta := page(outRows, limit, "")
 
-	return merge(map[string]any{"window": "last hour", fDataAge: result.StaleNote(), fSystems: visible}, meta), nil
+	return merge(map[string]any{fWindow: "last hour", fDataAge: result.StaleNote(), fSystems: visible}, meta), nil
 }
 
 func searchWithFallback(ctx context.Context, a *session.Session, characterID int, categories []string, query string, strict bool) (map[string][]int, string, error) {

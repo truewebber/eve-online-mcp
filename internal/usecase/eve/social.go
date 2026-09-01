@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
 	"github.com/truewebber/eve-online-mcp/internal/j"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 
@@ -43,6 +44,15 @@ type fitIn struct {
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
+type calendarListIn struct {
+	FromEvent      int    `json:"from_event,omitempty"      jsonschema:"Continue after this event id — pass back the next_cursor from a previous call. Empty starts from now."`
+	UnansweredOnly *bool  `json:"unanswered_only,omitempty" jsonschema:"Only events this character has not responded to yet."`
+	Detail         *bool  `json:"detail,omitempty"          jsonschema:"Fetch each listed event's full record: organiser, duration and description text. One extra request per event, so use it for the one event the user asked about, not for a whole month."`
+	Attendees      *bool  `json:"attendees,omitempty"       jsonschema:"Also fetch who accepted, declined or has not answered. One extra request per event, same warning as detail."`
+	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
+}
+
 func registerSocial(s *mcp.Server) {
 	addTool(s, &mcp.Tool{
 		Name:        "eve_mail_list",
@@ -64,9 +74,16 @@ func registerSocial(s *mcp.Server) {
 		Name:        "eve_fitting_list",
 		Description: "Saved ship fittings with their module lists.\n\nIn concise mode module lists are omitted. Returns: fittings[] with fitting_id (needed by eve_fitting_delete).",
 	}, sessionTool(eveFittingList))
+	addTool(s, &mcp.Tool{
+		Name:        "eve_calendar_list",
+		Description: "Calendar events and invitations, soonest first.\n\nFleet ops, CTAs and corp meetings land here, each with whether this character has answered. Anything reading not_responded is still waiting on them, and this is the only place the event_id for eve_calendar_respond comes from.",
+	}, sessionTool(eveCalendarList))
 }
 
 func eveMailList(ctx context.Context, a *session.Session, in mailListIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
 	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveMailList", err)
@@ -146,7 +163,7 @@ func eveMailRead(ctx context.Context, a *session.Session, in mailReadIn) (any, e
 	if j.Int(mail[fFrom]) != 0 {
 		idSet[j.Int(mail[fFrom])] = struct{}{}
 	}
-	for _, r := range j.Maps(mail["recipients"]) {
+	for _, r := range j.Maps(mail[fRecipients]) {
 		if j.Int(r["recipient_id"]) != 0 {
 			idSet[j.Int(r["recipient_id"])] = struct{}{}
 		}
@@ -156,7 +173,7 @@ func eveMailRead(ctx context.Context, a *session.Session, in mailReadIn) (any, e
 		return nil, wrap("eveMailRead", err)
 	}
 	var to []string
-	for _, r := range j.Maps(mail["recipients"]) {
+	for _, r := range j.Maps(mail[fRecipients]) {
 		to = append(to, names[j.Int(r["recipient_id"])])
 	}
 
@@ -168,6 +185,9 @@ func eveMailRead(ctx context.Context, a *session.Session, in mailReadIn) (any, e
 }
 
 func eveSocialNotifications(ctx context.Context, a *session.Session, in notesIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
 	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveSocialNotifications", err)
@@ -228,6 +248,9 @@ func eveSocialNotifications(ctx context.Context, a *session.Session, in notesIn)
 }
 
 func eveSocialKillmails(ctx context.Context, a *session.Session, in kmIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
 	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveSocialKillmails", err)
@@ -240,6 +263,9 @@ func eveSocialKillmails(ctx context.Context, a *session.Session, in kmIn) (any, 
 }
 
 func eveFittingList(ctx context.Context, a *session.Session, in fitIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
 	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveFittingList", err)
@@ -292,6 +318,159 @@ func eveFittingList(ctx context.Context, a *session.Session, in fitIn) (any, err
 		fCharacter: token.CharacterName, fDataAge: result.StaleNote(),
 		"fittings": project(visible, []string{fFittingID, fName, "ship", "module_count"}, concise(in.ResponseFormat)),
 	}, meta), nil
+}
+
+func eveCalendarList(ctx context.Context, a *session.Session, in calendarListIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
+	token, err := a.Character(ctx)
+	if err != nil {
+		return nil, wrap("eveCalendarList", err)
+	}
+	if err := a.RequireScope(token, "esi-calendar.read_calendar_events.v1", "calendar"); err != nil {
+		return nil, wrap("eveCalendarList", err)
+	}
+	listed, err := fetchCalendarPage(ctx, a, token.CharacterID, in.FromEvent)
+	if err != nil {
+		return nil, err
+	}
+	events := listed.events
+	if boolDef(in.UnansweredOnly, false) {
+		events = unansweredCalendar(events)
+	}
+	ages := []float64{listed.age}
+	if boolDef(in.Detail, false) {
+		events, ages, err = attachCalendarDetail(ctx, a, token.CharacterID, events, ages)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if boolDef(in.Attendees, false) {
+		events, ages, err = attachCalendarAttendees(ctx, a, token.CharacterID, events, ages)
+		if err != nil {
+			return nil, err
+		}
+	}
+	limit := limitOr(in.Limit, limitDefault)
+	visible, meta := page(events, limit, "Pass next_cursor as from_event.")
+	if cursor := calendarCursor(listed.events, visible, listed.full, limit); cursor != 0 {
+		meta[fNextCursor] = cursor
+	}
+	keep := []string{fEventID, fTitle, fEventDate, fResponse, "importance"}
+
+	return merge(map[string]any{
+		fCharacter: token.CharacterName, fDataAge: esi.Result{AgeSeconds: oldestAge(ages)}.StaleNote(),
+		fEvents: project(visible, keep, concise(in.ResponseFormat)),
+	}, meta), nil
+}
+
+type calendarPage struct {
+	events []map[string]any
+	age    float64
+	full   bool
+}
+
+func fetchCalendarPage(ctx context.Context, a *session.Session, characterID, fromEvent int) (calendarPage, error) {
+	params := map[string]any{}
+	if fromEvent > 0 {
+		params[fFromEvent] = fromEvent
+	}
+	result, err := a.ESI.Get(ctx, esiPath("characters", esiID(characterID), "calendar"), &characterID, params, nil)
+	if err != nil {
+		return calendarPage{}, wrap("fetchCalendarPage", err)
+	}
+	var events []map[string]any
+	for _, raw := range j.Maps(result.Data) {
+		events = append(events, map[string]any{
+			fEventID: raw[fEventID], fTitle: raw[fTitle], fEventDate: raw[fEventDate],
+			fResponse: raw["event_response"], "importance": raw["importance"],
+		})
+	}
+
+	return calendarPage{events: events, age: result.AgeSeconds, full: len(j.Maps(result.Data)) >= calendarESIPage}, nil
+}
+
+func unansweredCalendar(events []map[string]any) []map[string]any {
+	var out []map[string]any
+	for _, e := range events {
+		if j.Str(e[fResponse]) == vNotResponded {
+			out = append(out, e)
+		}
+	}
+
+	return out
+}
+
+func attachCalendarDetail(ctx context.Context, a *session.Session, characterID int, events []map[string]any, ages []float64) ([]map[string]any, []float64, error) {
+	for i, e := range events {
+		id := j.Int(e[fEventID])
+		result, err := a.ESI.Get(ctx, esiPath("characters", esiID(characterID), "calendar", esiID(id)), &characterID, nil, nil)
+		if err != nil {
+			return nil, nil, wrap("attachCalendarDetail", err)
+		}
+		ages = append(ages, result.AgeSeconds)
+		detail := j.Map(result.Data)
+		e["organiser"] = detail["owner_name"]
+		e["duration"] = detail["duration"]
+		e[fDescription] = stripMarkup(j.Str(detail["text"]))
+		events[i] = e
+	}
+
+	return events, ages, nil
+}
+
+func attachCalendarAttendees(ctx context.Context, a *session.Session, characterID int, events []map[string]any, ages []float64) ([]map[string]any, []float64, error) {
+	for i, e := range events {
+		id := j.Int(e[fEventID])
+		result, err := a.ESI.Get(ctx, esiPath("characters", esiID(characterID), "calendar", esiID(id), "attendees"), &characterID, nil, nil)
+		if err != nil {
+			return nil, nil, wrap("attachCalendarAttendees", err)
+		}
+		ages = append(ages, result.AgeSeconds)
+		rows := j.Maps(result.Data)
+		ids := map[int]struct{}{}
+		for _, row := range rows {
+			ids[j.Int(row[fCharacterID])] = struct{}{}
+		}
+		names, err := a.Resolver.Names(ctx, setToList(ids), nil)
+		if err != nil {
+			return nil, nil, wrap("attachCalendarAttendees", err)
+		}
+		var attendees []map[string]any
+		for _, row := range rows {
+			cid := j.Int(row[fCharacterID])
+			attendees = append(attendees, map[string]any{
+				fName: nameOr(names, cid), fResponse: row["event_response"],
+			})
+		}
+		e["attendees"] = attendees
+		events[i] = e
+	}
+
+	return events, ages, nil
+}
+
+func calendarCursor(esiEvents, visible []map[string]any, fullPage bool, limit int) int {
+	if len(visible) == limit && len(visible) > 0 {
+		return j.Int(visible[len(visible)-1][fEventID])
+	}
+	if fullPage && len(esiEvents) > 0 {
+		return j.Int(esiEvents[len(esiEvents)-1][fEventID])
+	}
+
+	return 0
+}
+
+func oldestAge(ages []float64) float64 {
+	var oldest float64
+	for i, age := range ages {
+		if i == 0 || age > oldest {
+			oldest = age
+		}
+	}
+
+	return oldest
 }
 
 type killmailFetch struct {

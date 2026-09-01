@@ -791,7 +791,7 @@ only previews.
 
 ### `eve_ui_set_waypoint`
 
-*Source: `internal/usecase/eve/writes.go`*
+*Source: `internal/usecase/eve/writes_ui.go`*
 
 Set an autopilot waypoint in the running game client.
 
@@ -806,7 +806,7 @@ This only moves the route marker on the map. It never undocks, flies or activate
 
 ### `eve_ui_open_window`
 
-*Source: `internal/usecase/eve/writes.go`*
+*Source: `internal/usecase/eve/writes_ui.go`*
 
 Open a window in the running game client.
 
@@ -822,7 +822,7 @@ A `window` outside the three values is refused with the list of accepted ones �
 
 ### `eve_fitting_save`
 
-*Source: `internal/usecase/eve/writes.go`*
+*Source: `internal/usecase/eve/writes_fittings.go`*
 
 Save a ship fitting to the character's in-game fitting list.
 
@@ -846,7 +846,7 @@ Each `modules` entry:
 
 ### `eve_fitting_delete`
 
-*Source: `internal/usecase/eve/writes.go`*
+*Source: `internal/usecase/eve/writes_fittings.go`*
 
 Delete a saved fitting. Permanent — there is no undo in game. The preview names the fitting so the user can confirm before the token is spent.
 
@@ -857,7 +857,7 @@ Delete a saved fitting. Permanent — there is no undo in game. The preview name
 
 ### `eve_mail_mark`
 
-*Source: `internal/usecase/eve/writes.go`*
+*Source: `internal/usecase/eve/writes_mail.go`*
 
 Change the read flag on one mail. This does not return the mail's contents — use eve_mail_read for that.
 
@@ -869,7 +869,7 @@ Change the read flag on one mail. This does not return the mail's contents — u
 
 ### `eve_mail_delete`
 
-*Source: `internal/usecase/eve/writes.go`*
+*Source: `internal/usecase/eve/writes_mail.go`*
 
 Delete one mail. Permanent — deleted EVE mail cannot be recovered. The preview shows sender, subject and date so the user can confirm.
 
@@ -880,7 +880,7 @@ Delete one mail. Permanent — deleted EVE mail cannot be recovered. The preview
 
 ### `eve_mail_compose`
 
-*Source: `internal/usecase/eve/writes.go`*
+*Source: `internal/usecase/eve/writes_mail.go`*
 
 Open a pre-filled mail in the player's client without sending it.
 
@@ -898,7 +898,7 @@ Needs the EVE client logged in on this character. There is no way to tell from h
 
 ### `eve_mail_send`
 
-*Source: `internal/usecase/eve/writes.go`*
+*Source: `internal/usecase/eve/writes_mail.go`*
 
 Send an in-game EVE mail from this character to other players.
 
@@ -923,7 +923,7 @@ no confirmation to give (SPEC §4.1).
 
 ### `eve_contacts_set`
 
-*Source: `internal/usecase/eve/writes.go`*
+*Source: `internal/usecase/eve/writes_contacts.go`*
 
 Add or update contacts with a standing.
 
@@ -938,7 +938,7 @@ A negative standing colours that player red in the overview. Treat it as a visib
 
 ### `eve_contacts_delete`
 
-*Source: `internal/usecase/eve/writes.go`*
+*Source: `internal/usecase/eve/writes_contacts.go`*
 
 Remove contacts from this character's contact list.
 
@@ -951,7 +951,7 @@ Deleting a contact also clears any standing set on them. That is a visible socia
 
 ### `eve_calendar_respond`
 
-*Source: `internal/usecase/eve/writes.go`*
+*Source: `internal/usecase/eve/writes_calendar.go`*
 
 Respond to a calendar event invitation on this character.
 

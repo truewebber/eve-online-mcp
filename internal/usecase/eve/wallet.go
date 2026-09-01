@@ -27,16 +27,19 @@ func registerWallet(s *mcp.Server) {
 }
 
 func walletHistory(ctx context.Context, a *session.Session, in walletHistIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
+	kind, err := pickEnum(fKind, in.Kind, fJournal, fJournal, fTransactions, vBoth)
+	if err != nil {
+		return nil, err
+	}
 	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("walletHistory", err)
 	}
 	if err := a.RequireScope(token, "esi-wallet.read_character_wallet.v1", "wallet history"); err != nil {
 		return nil, wrap("walletHistory", err)
-	}
-	kind := in.Kind
-	if kind == "" {
-		kind = fJournal
 	}
 	cid := token.CharacterID
 	out := map[string]any{fCharacter: token.CharacterName, fPeriod: "last ~30 days (ESI retention limit)"}

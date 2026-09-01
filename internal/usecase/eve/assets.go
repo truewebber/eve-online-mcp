@@ -53,6 +53,9 @@ func registerAssets(s *mcp.Server) {
 }
 
 func eveAssetsList(ctx context.Context, a *session.Session, in assetsListIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
 	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveAssetsList", err)
@@ -173,8 +176,11 @@ func topItemLines(types map[int]int, typeNames map[int]string, prices map[int]ma
 }
 
 func eveAssetsFind(ctx context.Context, a *session.Session, in assetsFindIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(in.Name) == "" {
-		return nil, ValidationError{Field: "name", Invariant: "is required"}
+		return nil, ValidationError{Field: "name", Invariant: invariantRequired}
 	}
 	token, err := a.Character(ctx)
 	if err != nil {
@@ -275,6 +281,9 @@ func assetFindRows(matches []map[string]any, roots map[int]int, byID map[int]map
 }
 
 func eveAssetsBlueprints(ctx context.Context, a *session.Session, in assetsBlueprintsIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
 	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveAssetsBlueprints", err)

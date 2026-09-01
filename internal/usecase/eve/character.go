@@ -44,6 +44,9 @@ func registerCharacter(s *mcp.Server) {
 }
 
 func eveCharacterSkills(ctx context.Context, a *session.Session, in characterSkillsIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
 	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveCharacterSkills", err)

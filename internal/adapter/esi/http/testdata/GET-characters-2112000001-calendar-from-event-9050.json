@@ -1,0 +1,28 @@
+{
+  "method": "GET",
+  "path": "/characters/2112000001/calendar",
+  "query": {
+    "from_event": "9050"
+  },
+  "source": "openapi",
+  "compat_date": "2026-08-18",
+  "status": 200,
+  "headers": {
+    "Content-Type": "application/json",
+    "X-Compatibility-Date": "2026-08-18",
+    "X-Esi-Error-Limit-Remain": "100",
+    "X-Esi-Error-Limit-Reset": "60",
+    "ETag": "\"openapi\"",
+    "Cache-Control": "public",
+    "Expires": "Wed, 19 Aug 2026 00:00:00 GMT"
+  },
+  "body": [
+    {
+      "event_date": "2026-08-01T12:00:00Z",
+      "event_id": 8001,
+      "event_response": "accepted",
+      "importance": 0,
+      "title": "Older Op"
+    }
+  ]
+}

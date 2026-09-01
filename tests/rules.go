@@ -29,7 +29,7 @@ func skipInSmoke(name string) bool {
 	case "eve_auth_logout", "eve_mail_read",
 		"eve_ui_set_waypoint", "eve_ui_open_window",
 		"eve_fitting_save", "eve_fitting_delete",
-		"eve_mail_mark", "eve_mail_delete", "eve_mail_send",
+		"eve_mail_mark", "eve_mail_delete", "eve_mail_compose", "eve_mail_send",
 		"eve_contacts_set", "eve_contacts_delete", "eve_calendar_respond":
 		return true
 	case "eve_corp_assets_list", "eve_corp_assets_find", "eve_corp_blueprints",

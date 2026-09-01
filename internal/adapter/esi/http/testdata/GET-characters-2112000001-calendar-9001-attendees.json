@@ -1,0 +1,26 @@
+{
+  "method": "GET",
+  "path": "/characters/2112000001/calendar/9001/attendees",
+  "source": "openapi",
+  "compat_date": "2026-08-18",
+  "status": 200,
+  "headers": {
+    "Content-Type": "application/json",
+    "X-Compatibility-Date": "2026-08-18",
+    "X-Esi-Error-Limit-Remain": "100",
+    "X-Esi-Error-Limit-Reset": "60",
+    "ETag": "\"openapi\"",
+    "Cache-Control": "public",
+    "Expires": "Wed, 19 Aug 2026 00:00:00 GMT"
+  },
+  "body": [
+    {
+      "character_id": 196379789,
+      "event_response": "accepted"
+    },
+    {
+      "character_id": 2112000001,
+      "event_response": "not_responded"
+    }
+  ]
+}

@@ -76,7 +76,7 @@ func TestLintNoCharacterParameter(t *testing.T) {
 
 func TestToolCountAfterIdentityRewrite(t *testing.T) {
 	t.Parallel()
-	const want = 50
+	const want = 52
 	tools := liveTools(t)
 	if len(tools) != want {
 		t.Fatalf("tools/list %d, want %d", len(tools), want)

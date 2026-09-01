@@ -54,7 +54,7 @@ func registerMarket(s *mcp.Server) {
 
 func eveMarketPrice(ctx context.Context, a *session.Session, in marketPriceIn) (any, error) {
 	if strings.TrimSpace(in.Item) == "" {
-		return nil, ValidationError{Field: "item", Invariant: "is required"}
+		return nil, ValidationError{Field: "item", Invariant: invariantRequired}
 	}
 	match, err := resolveNamed(ctx, a, in.Item, []string{catInventoryTypes})
 	if err != nil {
@@ -174,6 +174,9 @@ func marketSpread(quotes map[string]any) any {
 }
 
 func eveMarketOrders(ctx context.Context, a *session.Session, in marketOrdersIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
 	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveMarketOrders", err)
@@ -191,6 +194,9 @@ func eveMarketOrders(ctx context.Context, a *session.Session, in marketOrdersIn)
 }
 
 func eveMarketContracts(ctx context.Context, a *session.Session, in marketContractsIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
 	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveMarketContracts", err)

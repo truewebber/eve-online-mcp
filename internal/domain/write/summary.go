@@ -34,6 +34,9 @@ func summarize(tool string, args map[string]any) string {
 		return "delete mail " + argString(args, "mail_id")
 	case "eve_calendar_respond":
 		return fmt.Sprintf("respond %s to event %s", argString(args, "response"), argString(args, "event_id"))
+	case "eve_mail_compose":
+		return fmt.Sprintf("open compose to %d recipients, subject '%s'",
+			lenAny(args["recipients"], args["to"]), argString(args, "subject"))
 	default:
 		return tool
 	}

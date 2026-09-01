@@ -1,0 +1,17 @@
+{
+  "method": "POST",
+  "path": "/characters/2112000001/cspa",
+  "source": "openapi",
+  "compat_date": "2026-08-18",
+  "status": 201,
+  "headers": {
+    "Content-Type": "application/json",
+    "X-Compatibility-Date": "2026-08-18",
+    "X-Esi-Error-Limit-Remain": "100",
+    "X-Esi-Error-Limit-Reset": "60",
+    "ETag": "\"openapi\"",
+    "Cache-Control": "public",
+    "Expires": "Wed, 19 Aug 2026 00:00:00 GMT"
+  },
+  "body": 2950.0
+}

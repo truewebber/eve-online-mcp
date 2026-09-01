@@ -1,6 +1,6 @@
 # T24 — New tools and previews: calendar, compose, CSPA, enums, NPC corp
 
-- Status: `todo`
+- Status: `done`
 - Size: L
 - Depends on: T14, T19
 - RULES: §15 (one function, one job), §5 (tests), §6 (the code is the
@@ -133,20 +133,20 @@ Every mutation this task adds writes a `mutations` row through
 
 ## Acceptance
 
-- [ ] `tools/list` has 52 tools, including `eve_calendar_list` and
+- [x] `tools/list` has 52 tools, including `eve_calendar_list` and
       `eve_mail_compose`
-- [ ] `eve_calendar_respond` is reachable end to end from a list call
-- [ ] `eve_mail_send`'s preview states a priced charge and refuses above
+- [x] `eve_calendar_respond` is reachable end to end from a list call
+- [x] `eve_mail_send`'s preview states a priced charge and refuses above
       `approved_cost` before consent
-- [ ] A preview that cannot price mints no token
-- [ ] Every enumerated parameter refuses unknown values; nothing falls
+- [x] A preview that cannot price mints no token
+- [x] Every enumerated parameter refuses unknown values; nothing falls
       through to a default branch
-- [ ] `eve_corp_overview` answers NPC corporations without inviting
+- [x] `eve_corp_overview` answers NPC corporations without inviting
       twelve 403s
-- [ ] `eve_mail_compose` is recorded in `mutations` and never sends
-- [ ] No file in `usecase/eve` is longer after this task than
+- [x] `eve_mail_compose` is recorded in `mutations` and never sends
+- [x] No file in `usecase/eve` is longer after this task than
       `writes.go` was before it
-- [ ] `go test ./...` and `make lint` pass
+- [x] `go test ./...` and `make lint` pass
 
 ## Verify
 

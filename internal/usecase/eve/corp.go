@@ -79,12 +79,12 @@ func corpRole(key string) []string {
 }
 
 func esiRole(name string) bool {
-	switch name {
-	case roleDirector, roleAccountant, "Junior_Accountant", "Factory_Manager", roleStationManager, "Trader":
-		return true
-	default:
-		return false
-	}
+	_, ok := map[string]struct{}{
+		roleDirector: {}, roleAccountant: {}, "Junior_Accountant": {},
+		"Factory_Manager": {}, roleStationManager: {}, "Trader": {},
+	}[name]
+
+	return ok
 }
 
 type corpAssetsListIn struct {
@@ -292,6 +292,9 @@ func corpOverviewNextStep(a *session.Session, corp *character.Corporation, out m
 }
 
 func eveCorpAssetsList(ctx context.Context, a *session.Session, in corpAssetsListIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
 	corp, err := openCorp(ctx, a, fAssets, fAssets, "corporation assets")
 	if err != nil {
 		return nil, err
@@ -410,6 +413,9 @@ func corpAssetBucketTotal(buckets map[int]*corpAssetBucket) float64 {
 }
 
 func eveCorpAssetsFind(ctx context.Context, a *session.Session, in corpAssetsFindIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
 	corp, err := openCorp(ctx, a, fAssets, fAssets, "corporation assets")
 	if err != nil {
 		return nil, err
@@ -518,6 +524,9 @@ func sumIntField(rows []map[string]any, key string) int {
 }
 
 func eveCorpBlueprints(ctx context.Context, a *session.Session, in corpBlueprintsIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
 	corp, err := openCorp(ctx, a, fBlueprints, fBlueprints, "corporation blueprints")
 	if err != nil {
 		return nil, err
@@ -608,16 +617,19 @@ func eveCorpWallet(ctx context.Context, a *session.Session, in corpWalletIn) (an
 	if err != nil {
 		return nil, err
 	}
-	kind := in.Kind
-	if kind == "" {
-		kind = "balances"
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
+	kind, err := pickEnum(fKind, in.Kind, vBalances, vBalances, fJournal, fTransactions, vBoth)
+	if err != nil {
+		return nil, err
 	}
 	div := in.Division
 	if div == 0 {
 		div = 1
 	}
 	divs := corpDivisions(ctx, a, corp)
-	if kind == "balances" {
+	if kind == vBalances {
 		return corpWalletBalances(ctx, a, corp, divs)
 	}
 
@@ -702,6 +714,9 @@ func corpWalletJournal(ctx context.Context, a *session.Session, corp *character.
 }
 
 func eveCorpIndustryJobs(ctx context.Context, a *session.Session, in corpIndustryJobsIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
 	corp, err := openCorp(ctx, a, fJobs, fJobs, "corporation industry jobs")
 	if err != nil {
 		return nil, err
@@ -719,6 +734,9 @@ func eveCorpIndustryJobs(ctx context.Context, a *session.Session, in corpIndustr
 }
 
 func eveCorpMining(ctx context.Context, a *session.Session, in corpMiningIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
 	corp, err := a.ResolveCorporation(ctx)
 	if err != nil {
 		return nil, wrap("eveCorpMining", err)
@@ -780,6 +798,9 @@ func corpMiningAttachLedger(ctx context.Context, a *session.Session, corp *chara
 }
 
 func eveCorpOrders(ctx context.Context, a *session.Session, in corpOrdersIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
 	corp, err := openCorp(ctx, a, fOrders, fOrders, "corporation market orders")
 	if err != nil {
 		return nil, err
@@ -798,6 +819,9 @@ func eveCorpOrders(ctx context.Context, a *session.Session, in corpOrdersIn) (an
 }
 
 func eveCorpContracts(ctx context.Context, a *session.Session, in corpContractsIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
 	corp, err := openCorp(ctx, a, fContracts, "", "corporation contracts")
 	if err != nil {
 		return nil, err
@@ -815,6 +839,9 @@ func eveCorpContracts(ctx context.Context, a *session.Session, in corpContractsI
 }
 
 func eveCorpKillmails(ctx context.Context, a *session.Session, in corpKillmailsIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
 	corp, err := openCorp(ctx, a, fKillmails, fKillmails, "corporation killmails")
 	if err != nil {
 		return nil, err
@@ -828,6 +855,9 @@ func eveCorpKillmails(ctx context.Context, a *session.Session, in corpKillmailsI
 }
 
 func eveCorpStructures(ctx context.Context, a *session.Session, in corpStructuresIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
 	corp, err := openCorp(ctx, a, fStructures, fStructures, "corporation structures")
 	if err != nil {
 		return nil, err
@@ -919,6 +949,9 @@ func structureServices(s map[string]any) any {
 }
 
 func eveCorpMembers(ctx context.Context, a *session.Session, in corpMembersIn) (any, error) {
+	if err := rejectUnknownFormat(in.ResponseFormat); err != nil {
+		return nil, err
+	}
 	corp, err := openCorp(ctx, a, fMembers, "", "corporation membership")
 	if err != nil {
 		return nil, err
