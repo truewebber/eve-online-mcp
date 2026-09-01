@@ -12,8 +12,6 @@ import (
 	esihttp "github.com/truewebber/eve-online-mcp/internal/adapter/esi/http"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
 	ssohttp "github.com/truewebber/eve-online-mcp/internal/adapter/sso/http"
-	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
-	"github.com/truewebber/eve-online-mcp/internal/adapter/store/storetest"
 	"github.com/truewebber/eve-online-mcp/internal/domain/authcode"
 	authcodepgx "github.com/truewebber/eve-online-mcp/internal/domain/authcode/pgx"
 	"github.com/truewebber/eve-online-mcp/internal/domain/character"
@@ -22,9 +20,11 @@ import (
 	confirmpgx "github.com/truewebber/eve-online-mcp/internal/domain/confirm/pgx"
 	"github.com/truewebber/eve-online-mcp/internal/domain/loginstate"
 	loginstatepgx "github.com/truewebber/eve-online-mcp/internal/domain/loginstate/pgx"
-
+	mutationpgx "github.com/truewebber/eve-online-mcp/internal/domain/mutation/pgx"
 	oauthclientpgx "github.com/truewebber/eve-online-mcp/internal/domain/oauthclient/pgx"
 	"github.com/truewebber/eve-online-mcp/internal/mocks"
+	"github.com/truewebber/eve-online-mcp/internal/postgres"
+	"github.com/truewebber/eve-online-mcp/internal/postgres/pgtest"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 )
 
@@ -36,27 +36,27 @@ const (
 	testHMACKey = "0123456789abcdef0123456789abcdef"
 )
 
-func openDB(t *testing.T) *store.Store {
+func openDB(t *testing.T) *postgres.DB {
 	t.Helper()
 
-	return storetest.Open(t, mocks.QuietLogger(gomock.NewController(t)))
+	return pgtest.Open(t, mocks.QuietLogger(gomock.NewController(t)))
 }
 
-func characters(t *testing.T, db *store.Store) character.Repository {
+func characters(t *testing.T, db *postgres.DB) character.Repository {
 	t.Helper()
 
 	return characterpgx.New(db.Pool(), mocks.QuietLogger(gomock.NewController(t)))
 }
 
-func logins(db *store.Store) loginstate.Repository {
+func logins(db *postgres.DB) loginstate.Repository {
 	return loginstatepgx.New(db.Pool())
 }
 
-func codes(db *store.Store) authcode.Repository {
+func codes(db *postgres.DB) authcode.Repository {
 	return authcodepgx.New(db.Pool())
 }
 
-func confirms(db *store.Store) confirm.Repository {
+func confirms(db *postgres.DB) confirm.Repository {
 	return confirmpgx.New(db.Pool())
 }
 
@@ -75,16 +75,16 @@ func testSSO(t *testing.T) sso.Client {
 	}, nhttp.DefaultClient, mocks.QuietLogger(gomock.NewController(t)))
 }
 
-func testServer(t *testing.T, db *store.Store) *Server {
+func testServer(t *testing.T, db *postgres.DB) *Server {
 	t.Helper()
 	logger := mocks.QuietLogger(gomock.NewController(t))
 	runtime, err := session.Open(session.Options{
-		Store:      db,
 		Characters: characters(t, db),
 		Clients:    oauthclientpgx.New(db.Pool()),
 		Logins:     logins(db),
 		Codes:      codes(db),
 		Confirms:   confirms(db),
+		Mutations:  mutationpgx.New(db.Pool()),
 		ESI:        testESI(t),
 		SSO:        testSSO(t),
 		Logger:     logger,

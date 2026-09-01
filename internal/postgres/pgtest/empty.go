@@ -1,4 +1,4 @@
-package storetest
+package pgtest
 
 import (
 	"context"
@@ -10,6 +10,12 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+)
+
+const (
+	createDatabaseSQL = "CREATE DATABASE "
+	dropDatabaseSQL   = "DROP DATABASE "
+	dropDatabaseForce = " WITH (FORCE)"
 )
 
 func EmptyDatabase(tb testing.TB) string {
@@ -40,7 +46,7 @@ func EmptyDatabase(tb testing.TB) string {
 		tb.Fatal(err)
 	}
 
-	if _, err := admin.Exec(ctx, "CREATE DATABASE "+ident); err != nil {
+	if _, err := admin.Exec(ctx, createDatabaseSQL+ident); err != nil {
 		if cerr := admin.Close(ctx); cerr != nil {
 			tb.Errorf("close admin: %v", cerr)
 		}
@@ -52,7 +58,7 @@ func EmptyDatabase(tb testing.TB) string {
 
 	tb.Cleanup(func() {
 		dropCtx := context.Background()
-		if _, err := admin.Exec(dropCtx, "DROP DATABASE "+ident+" WITH (FORCE)"); err != nil {
+		if _, err := admin.Exec(dropCtx, dropDatabaseSQL+ident+dropDatabaseForce); err != nil {
 			tb.Errorf("drop %s: %v", name, err)
 		}
 		if err := admin.Close(dropCtx); err != nil {

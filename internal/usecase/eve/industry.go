@@ -6,7 +6,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/truewebber/eve-online-mcp/internal/domain/j"
+	"github.com/truewebber/eve-online-mcp/internal/j"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"

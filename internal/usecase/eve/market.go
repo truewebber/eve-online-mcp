@@ -8,11 +8,15 @@ import (
 	"time"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
-	"github.com/truewebber/eve-online-mcp/internal/domain/j"
-	"github.com/truewebber/eve-online-mcp/internal/domain/universe"
+	"github.com/truewebber/eve-online-mcp/internal/j"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+const (
+	theForgeRegionID = 10000002
+	jita44StationID  = 60003760
 )
 
 type marketPriceIn struct {
@@ -101,7 +105,7 @@ type marketPlaceResult struct {
 }
 
 func marketPlace(ctx context.Context, a *session.Session, in marketPriceIn) (marketPlaceResult, error) {
-	out := marketPlaceResult{regionID: universe.TheForgeRegionID, regionName: "The Forge"}
+	out := marketPlaceResult{regionID: theForgeRegionID, regionName: "The Forge"}
 	if strings.TrimSpace(in.Region) != "" {
 		r, err := resolveNamed(ctx, a, in.Region, []string{"regions"})
 		if err != nil {
@@ -112,8 +116,9 @@ func marketPlace(ctx context.Context, a *session.Session, in marketPriceIn) (mar
 		}
 		out.regionID, out.regionName = r.Chosen.ID, r.Chosen.Name
 	}
-	if !boolDef(in.WholeRegion, false) && out.regionID == universe.TheForgeRegionID {
-		out.station = new(universe.Jita44StationID)
+	if !boolDef(in.WholeRegion, false) && out.regionID == theForgeRegionID {
+		station := jita44StationID
+		out.station = &station
 	}
 
 	return out, nil

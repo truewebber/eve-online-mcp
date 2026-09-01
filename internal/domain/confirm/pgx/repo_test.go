@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/mock/gomock"
 
-	"github.com/truewebber/eve-online-mcp/internal/adapter/store/storetest"
+	"github.com/truewebber/eve-online-mcp/internal/postgres/pgtest"
 
 	"github.com/truewebber/eve-online-mcp/internal/domain/confirm"
 	"github.com/truewebber/eve-online-mcp/internal/mocks"
@@ -21,7 +21,7 @@ const (
 func openRepo(t *testing.T) *Repo {
 	t.Helper()
 
-	return New(storetest.Open(t, mocks.QuietLogger(gomock.NewController(t))).Pool())
+	return New(pgtest.Open(t, mocks.QuietLogger(gomock.NewController(t))).Pool())
 }
 
 func TestPutGetDelete(t *testing.T) {

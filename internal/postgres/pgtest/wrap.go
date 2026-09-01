@@ -1,4 +1,4 @@
-package store
+package pgtest
 
 import "fmt"
 
@@ -7,5 +7,5 @@ func wrap(op string, err error) error {
 		return nil
 	}
 
-	return fmt.Errorf("store: %s: %w", op, err)
+	return fmt.Errorf("pgtest: %s: %w", op, err)
 }

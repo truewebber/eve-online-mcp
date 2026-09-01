@@ -1,4 +1,4 @@
-package storetest
+package pgtest
 
 import (
 	"context"
@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	errSQLNotDir  = errors.New("storetest: sql is not a directory")
-	errNoRepoRoot = errors.New("storetest: repo root not found")
+	errSQLNotDir  = errors.New("pgtest: sql is not a directory")
+	errNoRepoRoot = errors.New("pgtest: repo root not found")
 )
 
 const (
@@ -32,11 +32,11 @@ func Apply(ctx context.Context, databaseURL string) error {
 func apply(ctx context.Context, databaseURL string) error {
 	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {
-		return fmt.Errorf("storetest: goose open: %w", err)
+		return fmt.Errorf("pgtest: goose open: %w", err)
 	}
 	err = applyLocked(ctx, db)
 	if cerr := db.Close(); cerr != nil && err == nil {
-		return fmt.Errorf("storetest: goose close: %w", cerr)
+		return fmt.Errorf("pgtest: goose close: %w", cerr)
 	}
 
 	return err
@@ -45,24 +45,24 @@ func apply(ctx context.Context, databaseURL string) error {
 func applyLocked(ctx context.Context, db *sql.DB) error {
 	conn, err := db.Conn(ctx)
 	if err != nil {
-		return fmt.Errorf("storetest: goose lock: %w", err)
+		return fmt.Errorf("pgtest: goose lock: %w", err)
 	}
 	if _, err := conn.ExecContext(ctx, lockApply, applyAdvisoryKey); err != nil {
 		if cerr := conn.Close(); cerr != nil {
-			return fmt.Errorf("storetest: goose lock: %w", errors.Join(err, cerr))
+			return fmt.Errorf("pgtest: goose lock: %w", errors.Join(err, cerr))
 		}
 
-		return fmt.Errorf("storetest: goose lock: %w", err)
+		return fmt.Errorf("pgtest: goose lock: %w", err)
 	}
 
 	err = up(ctx, db)
 	_, uerr := conn.ExecContext(context.WithoutCancel(ctx), unlockApply, applyAdvisoryKey)
 	if cerr := conn.Close(); err == nil {
 		if uerr != nil {
-			return fmt.Errorf("storetest: goose unlock: %w", uerr)
+			return fmt.Errorf("pgtest: goose unlock: %w", uerr)
 		}
 		if cerr != nil {
-			return fmt.Errorf("storetest: goose lock close: %w", cerr)
+			return fmt.Errorf("pgtest: goose lock close: %w", cerr)
 		}
 	}
 
@@ -76,10 +76,10 @@ func up(ctx context.Context, db *sql.DB) error {
 	}
 	provider, err := goose.NewProvider(goose.DialectPostgres, db, fsys)
 	if err != nil {
-		return fmt.Errorf("storetest: goose provider: %w", err)
+		return fmt.Errorf("pgtest: goose provider: %w", err)
 	}
 	if _, err := provider.Up(ctx); err != nil {
-		return fmt.Errorf("storetest: goose up: %w", err)
+		return fmt.Errorf("pgtest: goose up: %w", err)
 	}
 
 	return nil
@@ -88,7 +88,7 @@ func up(ctx context.Context, db *sql.DB) error {
 func migrationFS() (fs.FS, error) {
 	dir, err := os.Getwd()
 	if err != nil {
-		return nil, fmt.Errorf("storetest: wd: %w", err)
+		return nil, fmt.Errorf("pgtest: wd: %w", err)
 	}
 	for {
 		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err != nil {
@@ -103,7 +103,7 @@ func migrationFS() (fs.FS, error) {
 		sqlDir := filepath.Join(dir, "sql")
 		st, err := os.Stat(sqlDir)
 		if err != nil {
-			return nil, fmt.Errorf("storetest: sql: %w", err)
+			return nil, fmt.Errorf("pgtest: sql: %w", err)
 		}
 		if !st.IsDir() {
 			return nil, errSQLNotDir

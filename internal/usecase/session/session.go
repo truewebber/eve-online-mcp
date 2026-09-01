@@ -12,23 +12,24 @@ import (
 	"github.com/truewebber/gopkg/log"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
+	esihttp "github.com/truewebber/eve-online-mcp/internal/adapter/esi/http"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
-	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
 	"github.com/truewebber/eve-online-mcp/internal/domain/authcode"
 	"github.com/truewebber/eve-online-mcp/internal/domain/character"
 	"github.com/truewebber/eve-online-mcp/internal/domain/confirm"
-	"github.com/truewebber/eve-online-mcp/internal/domain/j"
 	"github.com/truewebber/eve-online-mcp/internal/domain/loginstate"
+	"github.com/truewebber/eve-online-mcp/internal/domain/mutation"
 	"github.com/truewebber/eve-online-mcp/internal/domain/oauthclient"
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
+	"github.com/truewebber/eve-online-mcp/internal/j"
 )
 
 const idleConnFactor = 2
 
 var (
-	ErrStoreRequired = errors.New("session: postgres store is required")
-	ErrESIRequired   = errors.New("session: ESI client is required")
-	ErrSSORequired   = errors.New("session: SSO client is required")
+	ErrMutationsRequired = errors.New("session: mutation repository is required")
+	ErrESIRequired       = errors.New("session: ESI client is required")
+	ErrSSORequired       = errors.New("session: SSO client is required")
 )
 
 type Options struct {
@@ -38,35 +39,35 @@ type Options struct {
 	HTTP              *http.Client
 	ESI               esi.Client
 	SSO               sso.Client
-	Store             *store.Store
 	Characters        character.Repository
 	Clients           oauthclient.Repository
 	Logins            loginstate.Repository
 	Codes             authcode.Repository
 	Confirms          confirm.Repository
+	Mutations         mutation.Repository
 	Logger            log.Logger
 }
 
 type Session struct {
 	Opts        Options
 	HTTP        *http.Client
-	Store       *store.Store
 	Characters  character.Repository
 	Clients     oauthclient.Repository
 	Logins      loginstate.Repository
 	Codes       authcode.Repository
 	Confirms    confirm.Repository
+	Mutations   mutation.Repository
 	CharacterID int
 	SSO         sso.Client
 	ESI         esi.Client
-	Resolver    *esi.Resolver
+	Resolver    *esihttp.Resolver
 	Guard       *write.Guard
 	Logger      log.Logger
 }
 
 func Open(opts Options) (*Session, error) {
-	if opts.Store == nil {
-		return nil, ErrStoreRequired
+	if opts.Mutations == nil {
+		return nil, ErrMutationsRequired
 	}
 	if opts.ESI == nil {
 		return nil, ErrESIRequired
@@ -81,20 +82,20 @@ func Open(opts Options) (*Session, error) {
 	purgeExpired(context.Background(), opts)
 	ssoClient := opts.SSO.ForCharacter(0, opts.Characters)
 	esiClient := opts.ESI.ForUser(ssoTokens{sso: ssoClient})
-	persist := guardPersist{db: opts.Store, confirms: opts.Confirms}
+	persist := guardPersist{mutations: opts.Mutations, confirms: opts.Confirms}
 
 	return &Session{
 		Opts:       opts,
 		HTTP:       opts.HTTP,
-		Store:      opts.Store,
 		Characters: opts.Characters,
 		Clients:    opts.Clients,
 		Logins:     opts.Logins,
 		Codes:      opts.Codes,
 		Confirms:   opts.Confirms,
+		Mutations:  opts.Mutations,
 		SSO:        ssoClient,
 		ESI:        esiClient,
-		Resolver:   esi.NewResolver(esiClient, opts.Logger),
+		Resolver:   esihttp.NewResolver(esiClient, opts.Logger),
 		Guard:      write.NewGuard(persist, 0, opts.Logger),
 		Logger:     opts.Logger,
 	}, nil
@@ -154,12 +155,6 @@ func purgeExpired(ctx context.Context, opts Options) {
 	}
 }
 
-func (s *Session) Close() {
-	if s.Store != nil {
-		s.Store.Close()
-	}
-}
-
 type ctxKey struct{}
 
 func With(ctx context.Context, s *Session) context.Context {
@@ -185,17 +180,17 @@ func (s *Session) ForCharacter(characterID int) *Session {
 	return &Session{
 		Opts:        opts,
 		HTTP:        s.HTTP,
-		Store:       s.Store,
 		Characters:  s.Characters,
 		Clients:     s.Clients,
 		Logins:      s.Logins,
 		Codes:       s.Codes,
 		Confirms:    s.Confirms,
+		Mutations:   s.Mutations,
 		CharacterID: characterID,
 		SSO:         ssoClient,
 		ESI:         esiClient,
 		Resolver:    s.Resolver.ForUser(esiClient),
-		Guard:       write.NewGuard(guardPersist{db: s.Store, confirms: s.Confirms}, int64(characterID), s.Logger),
+		Guard:       write.NewGuard(guardPersist{mutations: s.Mutations, confirms: s.Confirms}, int64(characterID), s.Logger),
 		Logger:      s.Logger,
 	}
 }

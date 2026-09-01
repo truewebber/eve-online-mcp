@@ -21,7 +21,7 @@ import (
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
 	"github.com/truewebber/eve-online-mcp/internal/domain/character"
-	"github.com/truewebber/eve-online-mcp/internal/domain/j"
+	"github.com/truewebber/eve-online-mcp/internal/j"
 
 	"github.com/golang-jwt/jwt/v5"
 )

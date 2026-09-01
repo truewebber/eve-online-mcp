@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -167,11 +168,14 @@ func (g *Guard) consumeConfirm(ctx context.Context, tool, digest, confirmToken s
 	if g.persist == nil {
 		return BlockedError{Msg: errConfirmUnknown}
 	}
-	pending, ok, err := g.persist.GetConfirm(ctx, confirmToken)
+	pending, err := g.persist.GetConfirm(ctx, confirmToken)
+	if errors.Is(err, ErrConfirmNotFound) || pending == nil {
+		return BlockedError{Msg: errConfirmUnknown}
+	}
 	if err != nil {
 		return wrap("consumeConfirm", err)
 	}
-	if !ok || pending.CharacterID != g.characterID {
+	if pending.CharacterID != g.characterID {
 		return BlockedError{Msg: errConfirmUnknown}
 	}
 	if time.Since(pending.CreatedAt) > ConfirmTTL {

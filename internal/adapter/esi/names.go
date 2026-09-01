@@ -45,7 +45,7 @@ func article(kind string) string {
 	return "a " + kind
 }
 
-func categoryKind(key string) string {
+func CategoryKind(key string) string {
 	switch key {
 	case "agents":
 		return "agent"

@@ -9,8 +9,8 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
-	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
-	"github.com/truewebber/eve-online-mcp/internal/adapter/store/storetest"
+	"github.com/truewebber/eve-online-mcp/internal/postgres"
+	"github.com/truewebber/eve-online-mcp/internal/postgres/pgtest"
 
 	"github.com/truewebber/eve-online-mcp/internal/domain/character"
 	characterpgx "github.com/truewebber/eve-online-mcp/internal/domain/character/pgx"
@@ -19,13 +19,13 @@ import (
 
 const testRefreshToken = "rt-1"
 
-func openStore(t *testing.T) *store.Store {
+func openStore(t *testing.T) *postgres.DB {
 	t.Helper()
 
-	return storetest.Open(t, mocks.QuietLogger(gomock.NewController(t)))
+	return pgtest.Open(t, mocks.QuietLogger(gomock.NewController(t)))
 }
 
-func openChars(t *testing.T, db *store.Store) character.Repository {
+func openChars(t *testing.T, db *postgres.DB) character.Repository {
 	t.Helper()
 
 	return characterpgx.New(db.Pool(), mocks.QuietLogger(gomock.NewController(t)))

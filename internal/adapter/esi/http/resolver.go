@@ -1,4 +1,4 @@
-package esi
+package http
 
 import (
 	"context"
@@ -10,7 +10,8 @@ import (
 
 	"github.com/truewebber/gopkg/log"
 
-	"github.com/truewebber/eve-online-mcp/internal/domain/j"
+	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
+	"github.com/truewebber/eve-online-mcp/internal/j"
 )
 
 const (
@@ -39,14 +40,14 @@ type priceCache struct {
 }
 
 type Resolver struct {
-	esi    Client
+	esi    esi.Client
 	names  *nameCache
 	blobs  *blobCache
 	prices *priceCache
 	logger log.Logger
 }
 
-func NewResolver(c Client, logger log.Logger) *Resolver {
+func NewResolver(c esi.Client, logger log.Logger) *Resolver {
 	return &Resolver{
 		esi:    c,
 		names:  newNameCache(),
@@ -56,7 +57,7 @@ func NewResolver(c Client, logger log.Logger) *Resolver {
 	}
 }
 
-func (r *Resolver) ForUser(c Client) *Resolver {
+func (r *Resolver) ForUser(c esi.Client) *Resolver {
 	return &Resolver{esi: c, names: r.names, blobs: r.blobs, prices: r.prices, logger: r.logger}
 }
 
@@ -128,7 +129,7 @@ func (r *Resolver) IDsFromNames(ctx context.Context, names []string) (map[string
 	return out, nil
 }
 
-func (r *Resolver) ResolveNames(ctx context.Context, names []string, prefer, only []string) (map[string]NameResolution, error) {
+func (r *Resolver) ResolveNames(ctx context.Context, names []string, prefer, only []string) (map[string]esi.NameResolution, error) {
 	lookup, err := r.IDsFromNames(ctx, names)
 	if err != nil {
 		return nil, err
@@ -142,7 +143,7 @@ func (r *Resolver) TypeInfo(ctx context.Context, typeID int) (map[string]any, er
 	if cached := r.blob(key, staticBlobAge); cached != nil {
 		return j.Map(cached), nil
 	}
-	result, err := r.esi.Get(ctx, Path("universe", "types", ID(typeID)), nil, nil, nil)
+	result, err := r.esi.Get(ctx, esi.Path("universe", "types", esi.ID(typeID)), nil, nil, nil)
 	if err != nil {
 		return nil, wrap("TypeInfo", err)
 	}
@@ -159,7 +160,7 @@ func (r *Resolver) GroupName(ctx context.Context, groupID int) string {
 	key := fmt.Sprintf("group:%d", groupID)
 	cached := r.blob(key, staticBlobAge)
 	if cached == nil {
-		result, err := r.esi.Get(ctx, Path("universe", "groups", ID(groupID)), nil, nil, nil)
+		result, err := r.esi.Get(ctx, esi.Path("universe", "groups", esi.ID(groupID)), nil, nil, nil)
 		if err != nil {
 			return fmt.Sprintf("Group #%d", groupID)
 		}
@@ -253,7 +254,7 @@ func (r *Resolver) ReferencePrice(ctx context.Context, typeID int) float64 {
 func (r *Resolver) HubQuotes(ctx context.Context, typeID, regionID int, stationID *int) (map[string]any, error) {
 	result, err := r.esi.GetAllPages(
 		ctx,
-		Path("markets", ID(regionID), "orders"),
+		esi.Path("markets", esi.ID(regionID), "orders"),
 		nil,
 		map[string]any{"type_id": typeID, "order_type": "all"},
 		hubOrderPages,
@@ -379,19 +380,19 @@ func (r *Resolver) fillStructureNames(ctx context.Context, out map[int]string, s
 	}
 }
 
-func collectNameBuckets(lookup map[string]any, only []string) map[string][]NameMatch {
+func collectNameBuckets(lookup map[string]any, only []string) map[string][]esi.NameMatch {
 	onlySet := map[string]struct{}{}
 	for _, k := range only {
 		onlySet[k] = struct{}{}
 	}
-	buckets := map[string][]NameMatch{}
+	buckets := map[string][]esi.NameMatch{}
 	for key, entries := range lookup {
 		if len(onlySet) > 0 {
 			if _, ok := onlySet[key]; !ok {
 				continue
 			}
 		}
-		kind := categoryKind(key)
+		kind := esi.CategoryKind(key)
 		if kind == "" {
 			kind = key
 		}
@@ -402,7 +403,7 @@ func collectNameBuckets(lookup map[string]any, only []string) map[string][]NameM
 				continue
 			}
 			k := strings.ToLower(strings.TrimSpace(name))
-			buckets[k] = append(buckets[k], NameMatch{ID: id, Name: name, Category: key, Kind: kind})
+			buckets[k] = append(buckets[k], esi.NameMatch{ID: id, Name: name, Category: key, Kind: kind})
 		}
 	}
 
@@ -418,13 +419,13 @@ func preferRank(prefer []string) map[string]int {
 	return rank
 }
 
-func pickNameResolutions(names []string, buckets map[string][]NameMatch, rank map[string]int) map[string]NameResolution {
-	out := map[string]NameResolution{}
+func pickNameResolutions(names []string, buckets map[string][]esi.NameMatch, rank map[string]int) map[string]esi.NameResolution {
+	out := map[string]esi.NameResolution{}
 	for _, asked := range names {
 		wanted := strings.ToLower(strings.TrimSpace(asked))
-		matches := append([]NameMatch{}, buckets[wanted]...)
+		matches := append([]esi.NameMatch{}, buckets[wanted]...)
 		sort.Slice(matches, lessNameMatch(matches, rank))
-		res := NameResolution{Query: strings.TrimSpace(asked)}
+		res := esi.NameResolution{Query: strings.TrimSpace(asked)}
 		if len(matches) > 0 {
 			cp := matches[0]
 			res.Chosen = &cp
@@ -436,7 +437,7 @@ func pickNameResolutions(names []string, buckets map[string][]NameMatch, rank ma
 	return out
 }
 
-func lessNameMatch(matches []NameMatch, rank map[string]int) func(i, j int) bool {
+func lessNameMatch(matches []esi.NameMatch, rank map[string]int) func(i, j int) bool {
 	return func(i, j int) bool {
 		ri, okI := rank[matches[i].Category]
 		if !okI {
@@ -458,7 +459,7 @@ func lessNameMatch(matches []NameMatch, rank map[string]int) func(i, j int) bool
 }
 
 func (r *Resolver) structureName(ctx context.Context, structureID, characterID int) (string, error) {
-	result, err := r.esi.Get(ctx, Path("universe", "structures", ID(structureID)), &characterID, nil, nil)
+	result, err := r.esi.Get(ctx, esi.Path("universe", "structures", esi.ID(structureID)), &characterID, nil, nil)
 	if err != nil {
 		return "", wrap("structureName", err)
 	}

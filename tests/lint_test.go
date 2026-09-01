@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/truewebber/eve-online-mcp/internal/domain/j"
+	"github.com/truewebber/eve-online-mcp/internal/j"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )

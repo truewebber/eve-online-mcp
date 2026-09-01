@@ -710,20 +710,20 @@ cmd/eve-mcp/            package main: main.go (composition root),
                         config.go (env, no prefix)
 internal/
   adapter/              external systems; each package owns its Options
-    esi/                ESI contract (Client, Result, name resolver);
-                        http/ implements it (in-memory cache, bucket)
+    esi/                ESI contract (Client, Result, name types);
+                        http/ implements it (resolver, name cache, bucket)
     sso/                SSO contract (Client, CharacterToken);
                         http/ implements it (PKCE, token, JWKS)
-    store/              remaining tables until their domains land — see DB.md
+  postgres/             pool only (Open, Pool, Close); pgtest/ for tests
   domain/               entity + contract; implementation nested
     character/          identity + repository; pgx/ implements it
     oauthclient/        MCP DCR client + repository; pgx/
     loginstate/         in-flight SSO handshake + repository; pgx/
     authcode/           one-time MCP code + repository; pgx/
     confirm/            one-shot consent token + repository; pgx/
+    mutation/           mail_log (mutations table lands in T19); pgx/
     write/              capability catalog, Guard (confirm cycle, mail cap)
-    universe/           reference constants (Jita, The Forge)
-    j/                  map[string]any helpers
+  j/                    map[string]any helpers, above the layer split
   usecase/              business logic
     session/            per-character runtime (Session, resolution)
     oauth/              MCP authorization server + sessions

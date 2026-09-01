@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/truewebber/eve-online-mcp/internal/domain/j"
+	"github.com/truewebber/eve-online-mcp/internal/j"
 )
 
 type findings struct {

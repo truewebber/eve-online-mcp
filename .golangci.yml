@@ -84,13 +84,68 @@ linters:
           reason: durable store is Postgres, not SQLite
     depguard:
       rules:
-        domain-boundaries:
+        domain-no-character:
           list-mode: lax
           files:
-            - "**/internal/domain/*/*.go"
+            - "**/internal/domain/**/*.go"
+            - "!**/internal/domain/character/**"
             - "!$test"
           deny:
-            - pkg: github.com/truewebber/eve-online-mcp/internal/domain/
+            - pkg: github.com/truewebber/eve-online-mcp/internal/domain/character
+              desc: domains must not import each other; use interfaces only
+        domain-no-oauthclient:
+          list-mode: lax
+          files:
+            - "**/internal/domain/**/*.go"
+            - "!**/internal/domain/oauthclient/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/truewebber/eve-online-mcp/internal/domain/oauthclient
+              desc: domains must not import each other; use interfaces only
+        domain-no-loginstate:
+          list-mode: lax
+          files:
+            - "**/internal/domain/**/*.go"
+            - "!**/internal/domain/loginstate/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/truewebber/eve-online-mcp/internal/domain/loginstate
+              desc: domains must not import each other; use interfaces only
+        domain-no-authcode:
+          list-mode: lax
+          files:
+            - "**/internal/domain/**/*.go"
+            - "!**/internal/domain/authcode/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/truewebber/eve-online-mcp/internal/domain/authcode
+              desc: domains must not import each other; use interfaces only
+        domain-no-confirm:
+          list-mode: lax
+          files:
+            - "**/internal/domain/**/*.go"
+            - "!**/internal/domain/confirm/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/truewebber/eve-online-mcp/internal/domain/confirm
+              desc: domains must not import each other; use interfaces only
+        domain-no-mutation:
+          list-mode: lax
+          files:
+            - "**/internal/domain/**/*.go"
+            - "!**/internal/domain/mutation/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/truewebber/eve-online-mcp/internal/domain/mutation
+              desc: domains must not import each other; use interfaces only
+        domain-no-write:
+          list-mode: lax
+          files:
+            - "**/internal/domain/**/*.go"
+            - "!**/internal/domain/write/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/truewebber/eve-online-mcp/internal/domain/write
               desc: domains must not import each other; use interfaces only
         service-no-domain:
           list-mode: lax

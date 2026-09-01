@@ -11,13 +11,14 @@ import (
 	esihttp "github.com/truewebber/eve-online-mcp/internal/adapter/esi/http"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
 	ssohttp "github.com/truewebber/eve-online-mcp/internal/adapter/sso/http"
-	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
 	authcodepgx "github.com/truewebber/eve-online-mcp/internal/domain/authcode/pgx"
 	characterpgx "github.com/truewebber/eve-online-mcp/internal/domain/character/pgx"
 	confirmpgx "github.com/truewebber/eve-online-mcp/internal/domain/confirm/pgx"
 	loginstatepgx "github.com/truewebber/eve-online-mcp/internal/domain/loginstate/pgx"
+	mutationpgx "github.com/truewebber/eve-online-mcp/internal/domain/mutation/pgx"
 	oauthclientpgx "github.com/truewebber/eve-online-mcp/internal/domain/oauthclient/pgx"
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
+	"github.com/truewebber/eve-online-mcp/internal/postgres"
 	httpsvc "github.com/truewebber/eve-online-mcp/internal/service/http"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/oauth"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
@@ -55,20 +56,21 @@ func start(logger log.Logger) error {
 		return err
 	}
 
-	db, err := store.Open(context.Background(), cfg.DatabaseURL, logger)
+	db, err := postgres.Open(context.Background(), cfg.DatabaseURL, logger)
 	if err != nil {
-		return fmt.Errorf("open store: %w", err)
+		return fmt.Errorf("open postgres: %w", err)
 	}
+	defer db.Close()
 	pool := db.Pool()
 	chars := characterpgx.New(pool, logger)
 	opts := session.Options{
 		UserAgent:  cfg.UserAgent,
-		Store:      db,
 		Characters: chars,
 		Clients:    oauthclientpgx.New(pool),
 		Logins:     loginstatepgx.New(pool),
 		Codes:      authcodepgx.New(pool),
 		Confirms:   confirmpgx.New(pool),
+		Mutations:  mutationpgx.New(pool),
 		Logger:     logger,
 	}
 	opts.HTTP = session.NewHTTPClient(opts)
@@ -87,8 +89,6 @@ func start(logger log.Logger) error {
 	if err != nil {
 		return fmt.Errorf("open session: %w", err)
 	}
-	defer runtime.Close()
-
 	host := oauth.Host{
 		Listen:      cfg.Listen,
 		PublicURL:   cfg.PublicURL,

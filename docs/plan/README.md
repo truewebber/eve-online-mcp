@@ -99,7 +99,7 @@ commit as the change to the document that owns it; after the task
 | [T12](T12-hmac-key.md) | `HMAC_KEY` env; drop `app_secrets` | done | S | T11 | §14 §16 | §2, §12.4 |
 | [T13](T13-tests-and-ci.md) | `tests/` end to end, and a pipeline | done | M | T12 | §5 §3 §14 | §4.3, §6, §9 |
 | [T14](T14-character-is-the-user.md) | The character is the user; drop `users` | done | L | T13 | §11 §5 | §3.3, §12.1 |
-| [T15](T15-postgres-is-not-an-adapter.md) | Retire `adapter/store`; entities and contracts only | todo | M | T14 | §11 §12 §16 | §7 |
+| [T15](T15-postgres-is-not-an-adapter.md) | Retire `adapter/store`; entities and contracts only | done | M | T14 | §11 §12 §16 | §7 |
 | [T16](T16-assembled-urls.md) | URLs are assembled, never concatenated | todo | S | T15 | §8 §16 | §3.1, §9 |
 | [T17](T17-sessions-own-the-grant.md) | Sessions own the grant; runtime by `sid` | todo | L | T16 | §2 §11 §12 | §3.1–3.4, §12.2–3 |
 | [T18](T18-scope-checks.md) | Both scope checks | todo | M | T17 | §5 §9 | §3.2, §3.5, §12.6 |

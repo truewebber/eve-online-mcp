@@ -87,13 +87,12 @@ func (mr *MockWritePersistMockRecorder) DeleteConfirm(ctx, token any) *gomock.Ca
 }
 
 // GetConfirm mocks base method.
-func (m *MockWritePersist) GetConfirm(ctx context.Context, token string) (*write.Confirm, bool, error) {
+func (m *MockWritePersist) GetConfirm(ctx context.Context, token string) (*write.Confirm, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetConfirm", ctx, token)
 	ret0, _ := ret[0].(*write.Confirm)
-	ret1, _ := ret[1].(bool)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // GetConfirm indicates an expected call of GetConfirm.

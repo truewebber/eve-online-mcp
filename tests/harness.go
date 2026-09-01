@@ -17,16 +17,17 @@ import (
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi/http/esitest"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
 	ssohttp "github.com/truewebber/eve-online-mcp/internal/adapter/sso/http"
-	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
-	"github.com/truewebber/eve-online-mcp/internal/adapter/store/storetest"
 	authcodepgx "github.com/truewebber/eve-online-mcp/internal/domain/authcode/pgx"
 	"github.com/truewebber/eve-online-mcp/internal/domain/character"
 	characterpgx "github.com/truewebber/eve-online-mcp/internal/domain/character/pgx"
 	confirmpgx "github.com/truewebber/eve-online-mcp/internal/domain/confirm/pgx"
 	loginstatepgx "github.com/truewebber/eve-online-mcp/internal/domain/loginstate/pgx"
+	mutationpgx "github.com/truewebber/eve-online-mcp/internal/domain/mutation/pgx"
 	oauthclientpgx "github.com/truewebber/eve-online-mcp/internal/domain/oauthclient/pgx"
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 	"github.com/truewebber/eve-online-mcp/internal/mocks"
+	"github.com/truewebber/eve-online-mcp/internal/postgres"
+	"github.com/truewebber/eve-online-mcp/internal/postgres/pgtest"
 	httpsvc "github.com/truewebber/eve-online-mcp/internal/service/http"
 	svcmcp "github.com/truewebber/eve-online-mcp/internal/service/mcp"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/oauth"
@@ -79,14 +80,14 @@ func openEnv(t *testing.T) *env {
 	return &env{server: hs, client: sess, token: token}
 }
 
-func openThrowaway(t *testing.T, logger log.Logger) *store.Store {
+func openThrowaway(t *testing.T, logger log.Logger) *postgres.DB {
 	t.Helper()
-	dsn := storetest.EmptyDatabase(t)
+	dsn := pgtest.EmptyDatabase(t)
 	ctx := t.Context()
-	if err := storetest.Apply(ctx, dsn); err != nil {
+	if err := pgtest.Apply(ctx, dsn); err != nil {
 		t.Fatal(err)
 	}
-	db, err := store.Open(ctx, dsn, logger)
+	db, err := postgres.Open(ctx, dsn, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +98,7 @@ func openThrowaway(t *testing.T, logger log.Logger) *store.Store {
 
 func wire(
 	t *testing.T,
-	db *store.Store,
+	db *postgres.DB,
 	host oauth.Host,
 	httpClient *nhttp.Client,
 	logger log.Logger,
@@ -106,12 +107,12 @@ func wire(
 	pool := db.Pool()
 	opts := session.Options{
 		UserAgent:  testUserAgent,
-		Store:      db,
 		Characters: characterpgx.New(pool, logger),
 		Clients:    oauthclientpgx.New(pool),
 		Logins:     loginstatepgx.New(pool),
 		Codes:      authcodepgx.New(pool),
 		Confirms:   confirmpgx.New(pool),
+		Mutations:  mutationpgx.New(pool),
 		HTTP:       httpClient,
 		Logger:     logger,
 	}

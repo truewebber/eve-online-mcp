@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/mock/gomock"
 
-	"github.com/truewebber/eve-online-mcp/internal/adapter/store/storetest"
+	"github.com/truewebber/eve-online-mcp/internal/postgres/pgtest"
 
 	"github.com/truewebber/eve-online-mcp/internal/domain/character"
 	"github.com/truewebber/eve-online-mcp/internal/mocks"
@@ -20,7 +20,7 @@ const testRefreshTwo = "rt-2"
 func openRepo(t *testing.T) *Repo {
 	t.Helper()
 	logger := mocks.QuietLogger(gomock.NewController(t))
-	db := storetest.Open(t, logger)
+	db := pgtest.Open(t, logger)
 
 	return New(db.Pool(), logger)
 }

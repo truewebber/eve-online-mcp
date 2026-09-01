@@ -47,14 +47,14 @@ func (b *confirmBox) put(_ context.Context, c write.Confirm) error {
 	return nil
 }
 
-func (b *confirmBox) get(_ context.Context, token string) (*write.Confirm, bool, error) {
+func (b *confirmBox) get(_ context.Context, token string) (*write.Confirm, error) {
 	c, ok := b.tokens[token]
 	if !ok {
-		return nil, false, nil
+		return nil, write.ErrConfirmNotFound
 	}
 	cp := c
 
-	return &cp, true, nil
+	return &cp, nil
 }
 
 func (b *confirmBox) drop(_ context.Context, token string) error {

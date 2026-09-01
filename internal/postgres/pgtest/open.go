@@ -1,4 +1,4 @@
-package storetest
+package pgtest
 
 import (
 	"context"
@@ -7,10 +7,10 @@ import (
 
 	"github.com/truewebber/gopkg/log"
 
-	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
+	"github.com/truewebber/eve-online-mcp/internal/postgres"
 )
 
-func Open(tb testing.TB, logger log.Logger) *store.Store {
+func Open(tb testing.TB, logger log.Logger) *postgres.DB {
 	tb.Helper()
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
@@ -18,24 +18,24 @@ func Open(tb testing.TB, logger log.Logger) *store.Store {
 	}
 
 	ctx := context.Background()
-	s, err := store.Open(ctx, dsn, logger)
+	db, err := postgres.Open(ctx, dsn, logger)
 	if err != nil {
 		tb.Fatal(err)
 	}
 	if err := apply(ctx, dsn); err != nil {
-		s.Close()
+		db.Close()
 		tb.Fatal(err)
 	}
-	release, err := s.HoldTestLock(ctx)
+	release, err := HoldTestLock(ctx, db, logger)
 	if err != nil {
-		s.Close()
+		db.Close()
 		tb.Fatal(err)
 	}
-	tb.Cleanup(s.Close)
+	tb.Cleanup(db.Close)
 	tb.Cleanup(release)
-	if err := s.ResetTables(ctx); err != nil {
+	if err := ResetTables(ctx, db); err != nil {
 		tb.Fatal(err)
 	}
 
-	return s
+	return db
 }

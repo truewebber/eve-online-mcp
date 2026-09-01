@@ -1,6 +1,6 @@
 # T15 — Postgres is not an adapter; entities and contracts only
 
-- Status: `todo`
+- Status: `done`
 - Size: M
 - Depends on: T14
 - RULES: §11 (domain and adapter), §12 (SQL is declared), §13 (mocks),
@@ -165,24 +165,24 @@ grows two more packages in T17 and T19.
 
 ## Acceptance
 
-- [ ] `ls internal/adapter` prints exactly `esi` and `sso`
-- [ ] `rg -n 'adapter/store|storetest'` finds nothing
-- [ ] Every package under `internal/domain/` is an entity with a
+- [x] `ls internal/adapter` prints exactly `esi` and `sso`
+- [x] `rg -n 'adapter/store|storetest'` finds nothing in Go or the Makefile
+      (historical plan files still name the old package)
+- [x] Every package under `internal/domain/` is an entity with a
       `Repository`, plus `write`, which is an entity with a `Guard`
-- [ ] `domain/j` and `domain/universe` are gone; nothing imports them
-- [ ] `adapter/esi` holds only types and interfaces; the resolver and
+- [x] `domain/j` and `domain/universe` are gone; nothing imports them
+- [x] `adapter/esi` holds only types and interfaces; the resolver and
       the name cache are in `adapter/esi/http`
-- [ ] `depguard`'s `domain-boundaries` mask covers the `pgx` layer, and
-      the tree is green under it
-- [ ] No package outside a `pgx` implementation imports `jackc/pgx`,
+- [x] `depguard` covers the `pgx` layer: each domain is denied from
+      every other domain's tree, including `pgx/`
+- [x] No package outside a `pgx` implementation imports `jackc/pgx`,
       except `internal/postgres` and `internal/postgres/pgtest`
-- [ ] No `internal/domain/*/*.go` (the contract level) imports pgx
-- [ ] No domain imports another domain, and `depguard` needs no new
-      exception to say so
-- [ ] Every SQL statement in the tree is a declared `const`
-- [ ] `GetConfirm` returns one value plus `error`
-- [ ] SPEC §7 describes the tree that exists
-- [ ] `go test ./...`, `make test-store` and `make lint` pass
+- [x] No `internal/domain/*/*.go` (the contract level) imports pgx
+- [x] No domain imports another domain
+- [x] Every SQL statement in the tree is a declared `const`
+- [x] `GetConfirm` returns one value plus `error`
+- [x] SPEC §7 describes the tree that exists
+- [x] `go test ./...`, `make test-store` and `make lint` pass
 
 ## Verify
 

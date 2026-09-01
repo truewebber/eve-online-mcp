@@ -1,16 +1,15 @@
-package storetest
+package pgtest
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
 	"go.uber.org/mock/gomock"
 
-	"github.com/truewebber/eve-online-mcp/internal/adapter/store"
 	"github.com/truewebber/eve-online-mcp/internal/mocks"
+	"github.com/truewebber/eve-online-mcp/internal/postgres"
 )
 
 const listPublicTables = `
@@ -23,11 +22,11 @@ func TestOpenDoesNotMigrate(t *testing.T) {
 	t.Parallel()
 	dsn := EmptyDatabase(t)
 	ctx := context.Background()
-	s, err := store.Open(ctx, dsn, mocks.QuietLogger(gomock.NewController(t)))
+	db, err := postgres.Open(ctx, dsn, mocks.QuietLogger(gomock.NewController(t)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Close()
+	db.Close()
 
 	got, err := publicTables(ctx, dsn)
 	if err != nil {
@@ -70,11 +69,11 @@ func TestGooseAppliesFromEmpty(t *testing.T) {
 func publicTables(ctx context.Context, databaseURL string) ([]string, error) {
 	conn, err := pgx.Connect(ctx, databaseURL)
 	if err != nil {
-		return nil, fmt.Errorf("storetest: open: %w", err)
+		return nil, wrap("open", err)
 	}
 	names, err := collectPublicTables(ctx, conn)
 	if cerr := conn.Close(ctx); cerr != nil && err == nil {
-		return nil, fmt.Errorf("storetest: close: %w", cerr)
+		return nil, wrap("close", cerr)
 	}
 
 	return names, err
@@ -83,11 +82,11 @@ func publicTables(ctx context.Context, databaseURL string) ([]string, error) {
 func collectPublicTables(ctx context.Context, conn *pgx.Conn) ([]string, error) {
 	rows, err := conn.Query(ctx, listPublicTables)
 	if err != nil {
-		return nil, fmt.Errorf("storetest: tables: %w", err)
+		return nil, wrap("tables", err)
 	}
 	names, err := pgx.CollectRows(rows, pgx.RowTo[string])
 	if err != nil {
-		return nil, fmt.Errorf("storetest: tables: %w", err)
+		return nil, wrap("tables", err)
 	}
 
 	return names, nil
