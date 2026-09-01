@@ -25,6 +25,10 @@ import (
 	"github.com/truewebber/eve-online-mcp/internal/postgres/pgtest"
 )
 
+func authz(args map[string]any, token string, scopes []string) write.Authz {
+	return write.Authz{Tool: write.ToolMailSend, Capability: write.CapMailSend, Args: args, Token: token, Scopes: scopes}
+}
+
 func openGuardRuntime(t *testing.T) (*Session, *Session) {
 	t.Helper()
 	ctx := context.Background()
@@ -71,12 +75,12 @@ func TestGuardMailCapUsesMutations(t *testing.T) {
 	g := sess.Guard
 	scopes := write.Capabilities()[write.CapMailSend].Scopes
 	for range 5 {
-		if _, err := g.Authorize(ctx, write.ToolMailSend, write.CapMailSend, nil, nil, "", scopes); err != nil {
+		if _, err := g.Authorize(ctx, authz(nil, "", scopes)); err != nil {
 			t.Fatal(err)
 		}
 		recordOK(t, g, nil)
 	}
-	_, err := g.Authorize(ctx, write.ToolMailSend, write.CapMailSend, nil, nil, "", scopes)
+	_, err := g.Authorize(ctx, authz(nil, "", scopes))
 	var blocked write.BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "Mail budget exhausted") {
 		t.Fatalf("sixth %v", err)
@@ -94,7 +98,7 @@ func TestConcurrentFifthMailWriteBlocked(t *testing.T) {
 	}
 	preview := func(g *write.Guard) string {
 		t.Helper()
-		out, err := g.Authorize(ctx, write.ToolMailSend, write.CapMailSend, nil, nil, "", scopes)
+		out, err := g.Authorize(ctx, authz(nil, "", scopes))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -112,7 +116,7 @@ func TestConcurrentFifthMailWriteBlocked(t *testing.T) {
 	errc := make(chan error, 2)
 	send := func(g *write.Guard, token string) {
 		defer wg.Done()
-		_, err := g.Authorize(ctx, write.ToolMailSend, write.CapMailSend, nil, nil, token, scopes)
+		_, err := g.Authorize(ctx, authz(nil, token, scopes))
 		if err != nil {
 			errc <- err
 
@@ -170,9 +174,9 @@ func TestRefusalBeforeESINotRecorded(t *testing.T) {
 	for range 5 {
 		recordOK(t, g, nil)
 	}
-	_, err := g.Authorize(ctx, write.ToolMailSend, write.CapMailSend, map[string]any{
+	_, err := g.Authorize(ctx, authz(map[string]any{
 		"subject": "x", "body": "should not be stored",
-	}, nil, "", scopes)
+	}, "", scopes))
 	if !errors.As(err, new(write.BlockedError)) {
 		t.Fatalf("want blocked, got %v", err)
 	}

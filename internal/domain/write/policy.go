@@ -10,7 +10,13 @@ const (
 	MailCap    = 5
 	ConfirmTTL = 300 * time.Second
 
-	CapMailSend = "mail_send"
+	CapMailSend     = "mail_send"
+	CapWaypoint     = "waypoint"
+	CapOpenWindow   = "openwindow"
+	CapFittings     = "fittings"
+	CapCalendar     = "calendar"
+	CapMailOrganize = "mail_organize"
+	CapContacts     = "contacts"
 )
 
 type Capability struct {
@@ -22,32 +28,32 @@ type Capability struct {
 
 func Capabilities() map[string]Capability {
 	return map[string]Capability{
-		"waypoint": {
-			Name: "waypoint", Scopes: []string{"esi-ui.write_waypoint.v1"},
+		CapWaypoint: {
+			Name: CapWaypoint, Scopes: []string{"esi-ui.write_waypoint.v1"},
 			Summary: "Set autopilot waypoints in the running game client.",
 		},
-		"openwindow": {
-			Name: "openwindow", Scopes: []string{"esi-ui.open_window.v1"},
+		CapOpenWindow: {
+			Name: CapOpenWindow, Scopes: []string{"esi-ui.open_window.v1"},
 			Summary: "Open market / info / contract / new-mail windows in the client.",
 		},
-		"fittings": {
-			Name: "fittings", Scopes: []string{"esi-fittings.write_fittings.v1"},
+		CapFittings: {
+			Name: CapFittings, Scopes: []string{"esi-fittings.write_fittings.v1"},
 			Summary: "Save and delete saved ship fittings.",
 		},
-		"calendar": {
-			Name: "calendar", Scopes: []string{"esi-calendar.respond_calendar_events.v1"},
+		CapCalendar: {
+			Name: CapCalendar, Scopes: []string{"esi-calendar.respond_calendar_events.v1"},
 			Summary: "Respond to calendar events (accept / decline / tentative).", OutwardFacing: true,
 		},
-		"mail_organize": {
-			Name: "mail_organize", Scopes: []string{"esi-mail.organize_mail.v1"},
+		CapMailOrganize: {
+			Name: CapMailOrganize, Scopes: []string{"esi-mail.organize_mail.v1"},
 			Summary: "Mark mail read, manage labels, delete mail.",
 		},
 		CapMailSend: {
 			Name: CapMailSend, Scopes: []string{"esi-mail.send_mail.v1"},
 			Summary: "Send in-game EVE mail to other players.", OutwardFacing: true,
 		},
-		"contacts": {
-			Name: "contacts", Scopes: []string{"esi-characters.write_contacts.v1"},
+		CapContacts: {
+			Name: CapContacts, Scopes: []string{"esi-characters.write_contacts.v1"},
 			Summary: "Add, edit and delete character contacts and standings.", OutwardFacing: true,
 		},
 	}

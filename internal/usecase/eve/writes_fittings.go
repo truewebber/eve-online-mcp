@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 	"github.com/truewebber/eve-online-mcp/internal/j"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 
@@ -39,11 +40,11 @@ type fittingResolved struct {
 
 func registerWriteFittings(s *mcp.Server) {
 	addTool(s, &mcp.Tool{
-		Name:        "eve_fitting_save",
+		Name:        write.ToolFittingSave,
 		Description: "Save a ship fitting to the character's in-game fitting list.\n\nDoes not buy, move or fit anything — it stores a template. Unknown module names are rejected before anything is saved.",
 	}, sessionTool(eveFittingSave))
 	addTool(s, &mcp.Tool{
-		Name:        "eve_fitting_delete",
+		Name:        write.ToolFittingDelete,
 		Description: "Delete a saved fitting. Permanent — there is no undo in game. The preview names the fitting so the user can confirm before the token is spent.",
 	}, sessionTool(eveFittingDelete))
 }
@@ -74,15 +75,18 @@ func eveFittingSave(ctx context.Context, a *session.Session, in fittingSaveIn) (
 		fAction:    "Save a new fitting to the in-game fitting list",
 		fCharacter: token.CharacterName, "fitting_name": name, "hull": in.Ship, fModules: resolved.previewMods,
 	}
-	blocked, err := a.Guard.Authorize(ctx, "eve_fitting_save", "fittings", args, preview, in.ConfirmToken, token.Scopes)
+	blocked, err := a.Guard.Authorize(ctx, write.Authz{
+		Tool: write.ToolFittingSave, Capability: write.CapFittings,
+		Args: args, Preview: preview, Token: in.ConfirmToken, Scopes: token.Scopes,
+	})
 	if err != nil {
 		return nil, wrap("eveFittingSave", err)
 	}
 	if blocked.Required != nil {
 		return blocked.Required, nil
 	}
-	result, err := a.ESI.Post(ctx, esiPath("characters", esiID(token.CharacterID), "fittings"), &token.CharacterID, nil, body)
-	recordWrite(ctx, a, "eve_fitting_save", "fittings", args, err)
+	result, err := a.ESI.Post(ctx, esiPath("characters", esiID(token.CharacterID), fFittings), &token.CharacterID, nil, body)
+	recordWrite(ctx, a, writeLog{tool: write.ToolFittingSave, capability: write.CapFittings, args: args, err: err})
 	if err != nil {
 		return nil, wrap("eveFittingSave", err)
 	}
@@ -95,7 +99,7 @@ func eveFittingDelete(ctx context.Context, a *session.Session, in fittingDeleteI
 	if err != nil {
 		return nil, wrap("eveFittingDelete", err)
 	}
-	existing, err := a.ESI.Get(ctx, esiPath("characters", esiID(token.CharacterID), "fittings"), &token.CharacterID, nil, nil)
+	existing, err := a.ESI.Get(ctx, esiPath("characters", esiID(token.CharacterID), fFittings), &token.CharacterID, nil, nil)
 	if err != nil {
 		return nil, wrap("eveFittingDelete", err)
 	}
@@ -119,15 +123,18 @@ func eveFittingDelete(ctx context.Context, a *session.Session, in fittingDeleteI
 		fAction: "Permanently delete a saved fitting", fCharacter: token.CharacterName,
 		"fitting_name": match[fName], fModules: len(j.Slice(match[fItems])),
 	}
-	blocked, err := a.Guard.Authorize(ctx, "eve_fitting_delete", "fittings", args, preview, in.ConfirmToken, token.Scopes)
+	blocked, err := a.Guard.Authorize(ctx, write.Authz{
+		Tool: write.ToolFittingDelete, Capability: write.CapFittings,
+		Args: args, Preview: preview, Token: in.ConfirmToken, Scopes: token.Scopes,
+	})
 	if err != nil {
 		return nil, wrap("eveFittingDelete", err)
 	}
 	if blocked.Required != nil {
 		return blocked.Required, nil
 	}
-	_, err = a.ESI.Delete(ctx, esiPath("characters", esiID(token.CharacterID), "fittings", esiID(in.FittingID)), &token.CharacterID, nil, nil)
-	recordWrite(ctx, a, "eve_fitting_delete", "fittings", args, err)
+	_, err = a.ESI.Delete(ctx, esiPath("characters", esiID(token.CharacterID), fFittings, esiID(in.FittingID)), &token.CharacterID, nil, nil)
+	recordWrite(ctx, a, writeLog{tool: write.ToolFittingDelete, capability: write.CapFittings, args: args, err: err})
 	if err != nil {
 		return nil, wrap("eveFittingDelete", err)
 	}

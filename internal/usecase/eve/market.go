@@ -75,7 +75,7 @@ func eveMarketPrice(ctx context.Context, a *session.Session, in marketPriceIn) (
 	if err != nil {
 		return nil, wrap("eveMarketPrice", err)
 	}
-	out, err := marketQuoteView(ctx, a, match, quotes, place, in.Item)
+	out, err := marketQuoteView(ctx, a, quoteView{match: match, quotes: quotes, place: place, item: in.Item})
 	if err != nil {
 		return nil, err
 	}
@@ -125,15 +125,22 @@ func marketPlace(ctx context.Context, a *session.Session, in marketPriceIn) (mar
 	return out, nil
 }
 
-func marketQuoteView(ctx context.Context, a *session.Session, match esi.NameResolution, quotes map[string]any, place marketPlaceResult, item string) (map[string]any, error) {
-	typeID := match.Chosen.ID
+type quoteView struct {
+	match  esi.NameResolution
+	quotes map[string]any
+	place  marketPlaceResult
+	item   string
+}
+
+func marketQuoteView(ctx context.Context, a *session.Session, in quoteView) (map[string]any, error) {
+	typeID := in.match.Chosen.ID
 	average := a.Resolver.ReferencePrice(ctx, typeID)
 	info, err := a.Resolver.TypeInfo(ctx, typeID)
 	if err != nil {
 		return nil, wrap("marketQuoteView", err)
 	}
-	priced := "all of " + place.regionName
-	if place.station != nil {
+	priced := "all of " + in.place.regionName
+	if in.place.station != nil {
 		priced = "Jita IV-4"
 	}
 	vol := info["packaged_volume"]
@@ -141,22 +148,22 @@ func marketQuoteView(ctx context.Context, a *session.Session, match esi.NameReso
 		vol = info["volume"]
 	}
 	out := compact(map[string]any{
-		fItem: match.Chosen.Name, "priced_at": priced,
-		"best_sell": isk(quotes["best_sell"]), "best_sell_isk": quotes["best_sell"],
-		"best_buy": isk(quotes["best_buy"]), "best_buy_isk": quotes["best_buy"],
-		"spread_pct": marketSpread(quotes), "sell_volume_available": quotes["sell_volume"],
-		"buy_volume_wanted": quotes["buy_volume"], "ccp_average_price": isk(average),
-		"packaged_volume_m3": vol, fDataAge: quotes[fDataAge],
+		fItem: in.match.Chosen.Name, "priced_at": priced,
+		"best_sell": isk(in.quotes["best_sell"]), "best_sell_isk": in.quotes["best_sell"],
+		"best_buy": isk(in.quotes["best_buy"]), "best_buy_isk": in.quotes["best_buy"],
+		"spread_pct": marketSpread(in.quotes), "sell_volume_available": in.quotes["sell_volume"],
+		"buy_volume_wanted": in.quotes["buy_volume"], "ccp_average_price": isk(average),
+		"packaged_volume_m3": vol, fDataAge: in.quotes[fDataAge],
 	})
-	if quotes["best_sell"] == nil && quotes["best_buy"] == nil {
+	if in.quotes["best_sell"] == nil && in.quotes["best_buy"] == nil {
 		out[fNote] = "No orders at all here. Try whole_region=true, or a different region — not everything is traded outside the main hubs."
 	}
-	if match.Ambiguous() {
-		others := make([]string, 0, len(match.Alternatives))
-		for _, m := range match.Alternatives {
+	if in.match.Ambiguous() {
+		others := make([]string, 0, len(in.match.Alternatives))
+		for _, m := range in.match.Alternatives {
 			others = append(others, fmt.Sprintf("#%d", m.ID))
 		}
-		out["ambiguity_note"] = fmt.Sprintf("%d item types are named %q; priced #%d. Others: %s. Call eve_universe_search with categories='inventory_type' to pick.", len(match.Alternatives)+1, item, typeID, strings.Join(others, ", "))
+		out["ambiguity_note"] = fmt.Sprintf("%d item types are named %q; priced #%d. Others: %s. Call eve_universe_search with categories='inventory_type' to pick.", len(in.match.Alternatives)+1, in.item, typeID, strings.Join(others, ", "))
 	}
 
 	return out, nil
@@ -191,7 +198,10 @@ func eveMarketOrders(ctx context.Context, a *session.Session, in marketOrdersIn)
 		return nil, wrap("eveMarketOrders", err)
 	}
 
-	return formatOrders(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, limitLong), concise(in.ResponseFormat), nil)
+	return formatOrders(ctx, a, orderView{
+		character: token.CharacterName, cid: cid, data: result.Data, stale: result.StaleNote(),
+		limit: limitOr(in.Limit, limitLong), conciseMode: concise(in.ResponseFormat),
+	})
 }
 
 func eveMarketContracts(ctx context.Context, a *session.Session, in marketContractsIn) (any, error) {
@@ -211,7 +221,11 @@ func eveMarketContracts(ctx context.Context, a *session.Session, in marketContra
 		return nil, wrap("eveMarketContracts", err)
 	}
 
-	return formatContracts(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), in.Page, result.PageCount(), limitOr(in.Limit, limitDefault), concise(in.ResponseFormat), false)
+	return formatContracts(ctx, a, contractView{
+		character: token.CharacterName, cid: cid, data: result.Data, stale: result.StaleNote(),
+		outstandingOnly: boolDef(in.OutstandingOnly, true), page: in.Page, totalPages: result.PageCount(),
+		limit: limitOr(in.Limit, limitDefault), conciseMode: concise(in.ResponseFormat),
+	})
 }
 
 func marketHistory(ctx context.Context, a *session.Session, typeID, regionID, days int) (map[string]any, error) {
@@ -254,10 +268,20 @@ func marketHistory(ctx context.Context, a *session.Session, typeID, regionID, da
 	}, nil
 }
 
-func formatOrders(ctx context.Context, a *session.Session, character string, cid int, data any, stale string, limit int, conciseMode bool, walletNames map[int]string) (map[string]any, error) {
-	orders := j.Maps(data)
+type orderView struct {
+	character   string
+	cid         int
+	data        any
+	stale       string
+	limit       int
+	conciseMode bool
+	walletNames map[int]string
+}
+
+func formatOrders(ctx context.Context, a *session.Session, in orderView) (map[string]any, error) {
+	orders := j.Maps(in.data)
 	if len(orders) == 0 {
-		return map[string]any{fCharacter: character, fOrders: []any{}, fNote: "No open market orders.", fDataAge: stale}, nil
+		return map[string]any{fCharacter: in.character, fOrders: []any{}, fNote: "No open market orders.", fDataAge: in.stale}, nil
 	}
 	typeSet, placeSet := map[int]struct{}{}, map[int]struct{}{}
 	for _, o := range orders {
@@ -268,7 +292,7 @@ func formatOrders(ctx context.Context, a *session.Session, character string, cid
 	if err != nil {
 		return nil, wrap("formatOrders", err)
 	}
-	places, err := a.Resolver.Names(ctx, setToList(placeSet), &cid)
+	places, err := a.Resolver.Names(ctx, setToList(placeSet), &in.cid)
 	if err != nil {
 		return nil, wrap("formatOrders", err)
 	}
@@ -306,8 +330,8 @@ func formatOrders(ctx context.Context, a *session.Session, character string, cid
 			row["range"] = o["range"]
 			row["escrow"] = isk(o["escrow"])
 		}
-		if walletNames != nil {
-			row[fWallet] = walletLabel(j.Int(o["wallet_division"]), walletNames)
+		if in.walletNames != nil {
+			row[fWallet] = walletLabel(j.Int(o["wallet_division"]), in.walletNames)
 		}
 		rows = append(rows, row)
 	}
@@ -318,40 +342,36 @@ func formatOrders(ctx context.Context, a *session.Session, character string, cid
 
 		return j.Str(rows[i][fItem]) < j.Str(rows[k][fItem])
 	})
-	paged := applyLimit(rows, limit, "")
+	paged := applyLimit(rows, in.limit, "")
 	keep := []string{fSide, fItem, fPrice, "remaining", "filled_pct", fLocation, "expires_in"}
-	if walletNames != nil {
+	if in.walletNames != nil {
 		keep = append(keep, fWallet)
 	}
 
 	return merge(map[string]any{
-		fCharacter: character, "open_orders": len(rows),
+		fCharacter: in.character, "open_orders": len(rows),
 		"sell_side_value": isk(sellValue), "buy_escrow_locked": isk(buyEscrow),
-		fDataAge: stale, fOrders: project(paged.Rows, keep, conciseMode),
+		fDataAge: in.stale, fOrders: project(paged.Rows, keep, in.conciseMode),
 	}, paged.fields), nil
 }
 
-func formatContracts(ctx context.Context, a *session.Session, character string, cid int, data any, stale string, outstandingOnly bool, page, totalPages, limit int, conciseMode, corp bool) (map[string]any, error) {
-	contracts := j.Maps(data)
-	if outstandingOnly {
-		var filtered []map[string]any
-		for _, c := range contracts {
-			if j.Str(c[fStatus]) == vOutstanding {
-				filtered = append(filtered, c)
-			}
-		}
-		contracts = filtered
+type contractView struct {
+	character               string
+	cid                     int
+	data                    any
+	stale                   string
+	outstandingOnly         bool
+	page, totalPages, limit int
+	conciseMode, corp       bool
+}
+
+func formatContracts(ctx context.Context, a *session.Session, in contractView) (map[string]any, error) {
+	contracts := j.Maps(in.data)
+	if in.outstandingOnly {
+		contracts = outstandingContracts(contracts)
 	}
 	if len(contracts) == 0 {
-		note := "This character has no contracts at all, in any state."
-		if outstandingOnly {
-			note = "No outstanding contracts. Pass outstanding_only=false to include finished and expired ones."
-		}
-		if corp && outstandingOnly {
-			note = "No outstanding corporation contracts. Pass outstanding_only=false to include finished and expired ones."
-		}
-
-		return merge(map[string]any{fCharacter: character, fContracts: []any{}, fNote: note, fDataAge: stale}, pageByNumber(nil, page, totalPages, limit).fields), nil
+		return merge(map[string]any{fCharacter: in.character, fContracts: []any{}, fNote: contractEmptyNote(in), fDataAge: in.stale}, pageByNumber(nil, in.page, in.totalPages, in.limit).fields), nil
 	}
 	idSet := map[int]struct{}{}
 	for _, c := range contracts {
@@ -361,16 +381,56 @@ func formatContracts(ctx context.Context, a *session.Session, character string, 
 			}
 		}
 	}
-	names, err := a.Resolver.Names(ctx, setToList(idSet), &cid)
+	names, err := a.Resolver.Names(ctx, setToList(idSet), &in.cid)
 	if err != nil {
 		return nil, wrap("formatContracts", err)
 	}
 	sort.Slice(contracts, func(i, k int) bool { return j.Str(contracts[i]["date_issued"]) > j.Str(contracts[k]["date_issued"]) })
-	var rows []map[string]any
-	outstanding := 0
+	listed := contractRows(contracts, names, in.corp)
+	paged := pageByNumber(listed.rows, in.page, in.totalPages, in.limit)
+	keep := []string{fType, fStatus, fTitle, fPrice, fReward, fCollateral, fFrom, "to", fExpires}
+	if in.corp {
+		keep = []string{fType, fStatus, fTitle, "issuer", fPrice, fReward, fCollateral, fFrom, "to", fExpires}
+	}
+
+	return merge(map[string]any{
+		fCharacter: in.character, fTotal: len(listed.rows), vOutstanding: listed.outstanding,
+		fDataAge: in.stale, fContracts: project(paged.Rows, keep, in.conciseMode),
+	}, paged.fields), nil
+}
+
+func outstandingContracts(contracts []map[string]any) []map[string]any {
+	var filtered []map[string]any
 	for _, c := range contracts {
 		if j.Str(c[fStatus]) == vOutstanding {
-			outstanding++
+			filtered = append(filtered, c)
+		}
+	}
+
+	return filtered
+}
+
+func contractEmptyNote(in contractView) string {
+	if in.corp && in.outstandingOnly {
+		return "No outstanding corporation contracts. Pass outstanding_only=false to include finished and expired ones."
+	}
+	if in.outstandingOnly {
+		return "No outstanding contracts. Pass outstanding_only=false to include finished and expired ones."
+	}
+
+	return "This character has no contracts at all, in any state."
+}
+
+type contractList struct {
+	rows        []map[string]any
+	outstanding int
+}
+
+func contractRows(contracts []map[string]any, names map[int]string, corp bool) contractList {
+	var out contractList
+	for _, c := range contracts {
+		if j.Str(c[fStatus]) == vOutstanding {
+			out.outstanding++
 		}
 		issuer := names[j.Int(c["issuer_id"])]
 		if issuer == "" {
@@ -386,18 +446,10 @@ func formatContracts(ctx context.Context, a *session.Session, character string, 
 		if corp {
 			row["assignee"] = names[j.Int(c["assignee_id"])]
 		}
-		rows = append(rows, row)
-	}
-	paged := pageByNumber(rows, page, totalPages, limit)
-	keep := []string{fType, fStatus, fTitle, fPrice, fReward, fCollateral, fFrom, "to", fExpires}
-	if corp {
-		keep = []string{fType, fStatus, fTitle, "issuer", fPrice, fReward, fCollateral, fFrom, "to", fExpires}
+		out.rows = append(out.rows, row)
 	}
 
-	return merge(map[string]any{
-		fCharacter: character, fTotal: len(rows), vOutstanding: outstanding,
-		fDataAge: stale, fContracts: project(paged.Rows, keep, conciseMode),
-	}, paged.fields), nil
+	return out
 }
 
 func nilIfZero(v any) any {

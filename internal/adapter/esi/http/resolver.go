@@ -70,18 +70,18 @@ func (r *Resolver) Names(ctx context.Context, ids []int, characterID *int) (map[
 	for id := range wanted {
 		list = append(list, id)
 	}
-	out, missing := r.names.get(list)
-	if len(missing) == 0 {
-		return out, nil
+	hit := r.names.get(list)
+	if len(hit.missing) == 0 {
+		return hit.names, nil
 	}
-	r.fillMissingNames(ctx, out, missing, characterID)
+	r.fillMissingNames(ctx, hit.names, hit.missing, characterID)
 	for id := range wanted {
-		if _, ok := out[id]; !ok {
-			out[id] = fmt.Sprintf("Unknown #%d", id)
+		if _, ok := hit.names[id]; !ok {
+			hit.names[id] = fmt.Sprintf("Unknown #%d", id)
 		}
 	}
 
-	return out, nil
+	return hit.names, nil
 }
 
 func (r *Resolver) Name(ctx context.Context, id int, characterID *int) (string, error) {

@@ -141,9 +141,9 @@ func findingOwner(f finding) string {
 func formatFinding(f finding) string {
 	switch f.Tool {
 	case "instructions":
-		doc, got := quotePair(f.Doc, f.Got)
+		q := quotePair(f.Doc, f.Got)
 
-		return "instructions text: " + docsTOOLS + " " + doc + "; " + sideInit + " " + got
+		return "instructions text: " + docsTOOLS + " " + q.Doc + "; " + sideInit + " " + q.Got
 	case "esi":
 		return "esi " + f.Field + ": " + docsESI + " " + quoteSide(f.Doc) + "; call site " + quoteSide(f.Got)
 	default:

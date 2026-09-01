@@ -131,64 +131,9 @@ func TestLockForRefreshSerializesAndRereads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	started := make(chan struct{})
-	release := make(chan struct{})
-	var mu sync.Mutex
-	var order []string
-	errc := make(chan error, 2)
-
-	go func() {
-		errc <- repo.LockForRefresh(ctx, row.ID, func(_ string) (string, error) {
-			mu.Lock()
-			order = append(order, "a-start")
-			mu.Unlock()
-			close(started)
-			<-release
-			mu.Lock()
-			order = append(order, "a-end")
-			mu.Unlock()
-
-			return "from-a", nil
-		})
-	}()
-	<-started
-	doneB := make(chan struct{})
-	go func() {
-		errc <- repo.LockForRefresh(ctx, row.ID, func(tok string) (string, error) {
-			mu.Lock()
-			order = append(order, "b:"+tok)
-			mu.Unlock()
-
-			return "from-b", nil
-		})
-		close(doneB)
-	}()
-	time.Sleep(80 * time.Millisecond)
-	mu.Lock()
-	for _, step := range order {
-		if len(step) > 0 && step[0] == 'b' {
-			mu.Unlock()
-			t.Fatalf("b ran before a released: %v", order)
-		}
-	}
-	snapshot := append([]string(nil), order...)
-	mu.Unlock()
-	if len(snapshot) != 1 || snapshot[0] != "a-start" {
-		t.Fatalf("during lock: %v", snapshot)
-	}
-	close(release)
-	select {
-	case <-doneB:
-	case <-time.After(5 * time.Second):
-		t.Fatal("b blocked forever")
-	}
-	if err := <-errc; err != nil {
-		t.Fatal(err)
-	}
-	if err := <-errc; err != nil {
-		t.Fatal(err)
-	}
+	race := startRefreshLockRace(ctx, repo, row.ID)
+	race.assertHeld(t)
+	race.finish(t)
 	live, err := repo.LiveByID(ctx, row.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -196,10 +141,91 @@ func TestLockForRefreshSerializesAndRereads(t *testing.T) {
 	if live.RefreshToken != "from-b" {
 		t.Fatalf("token %s", live.RefreshToken)
 	}
-	mu.Lock()
-	defer mu.Unlock()
-	if len(order) != 3 || order[0] != "a-start" || order[1] != "a-end" || order[2] != "b:from-a" {
-		t.Fatalf("order %v", order)
+	race.assertOrder(t)
+}
+
+type refreshLockRace struct {
+	started, release, doneB chan struct{}
+	mu                      sync.Mutex
+	order                   []string
+	errc                    chan error
+}
+
+func startRefreshLockRace(ctx context.Context, repo *Repo, id int64) *refreshLockRace {
+	r := &refreshLockRace{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+		doneB:   make(chan struct{}),
+		errc:    make(chan error, 2),
+	}
+	go func() {
+		r.errc <- repo.LockForRefresh(ctx, id, func(_ string) (string, error) {
+			r.mu.Lock()
+			r.order = append(r.order, "a-start")
+			r.mu.Unlock()
+			close(r.started)
+			<-r.release
+			r.mu.Lock()
+			r.order = append(r.order, "a-end")
+			r.mu.Unlock()
+
+			return "from-a", nil
+		})
+	}()
+	<-r.started
+	go func() {
+		r.errc <- repo.LockForRefresh(ctx, id, func(tok string) (string, error) {
+			r.mu.Lock()
+			r.order = append(r.order, "b:"+tok)
+			r.mu.Unlock()
+
+			return "from-b", nil
+		})
+		close(r.doneB)
+	}()
+
+	return r
+}
+
+func (r *refreshLockRace) assertHeld(t *testing.T) {
+	t.Helper()
+	time.Sleep(80 * time.Millisecond)
+	r.mu.Lock()
+	for _, step := range r.order {
+		if len(step) > 0 && step[0] == 'b' {
+			r.mu.Unlock()
+			t.Fatalf("b ran before a released: %v", r.order)
+		}
+	}
+	snapshot := append([]string(nil), r.order...)
+	r.mu.Unlock()
+	if len(snapshot) != 1 || snapshot[0] != "a-start" {
+		t.Fatalf("during lock: %v", snapshot)
+	}
+}
+
+func (r *refreshLockRace) finish(t *testing.T) {
+	t.Helper()
+	close(r.release)
+	select {
+	case <-r.doneB:
+	case <-time.After(5 * time.Second):
+		t.Fatal("b blocked forever")
+	}
+	if err := <-r.errc; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-r.errc; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (r *refreshLockRace) assertOrder(t *testing.T) {
+	t.Helper()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.order) != 3 || r.order[0] != "a-start" || r.order[1] != "a-end" || r.order[2] != "b:from-a" {
+		t.Fatalf("order %v", r.order)
 	}
 }
 

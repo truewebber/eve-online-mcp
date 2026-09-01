@@ -318,21 +318,33 @@ func eveCharacterStandings(ctx context.Context, a *session.Session, in character
 	out := merge(map[string]any{
 		fCharacter: token.CharacterName, "loyalty_points": formatLoyaltyPoints(lpData, names), "standings": paged.Rows,
 	}, paged.fields)
-	applyStandingsNotes(out, standingsErr, lpErr, lpGranted, token.CharacterName, lpScope)
-	if age := standingsAge(standingsRes, standingsErr, lpRes, lpErr, lpGranted); age != "" {
+	fetched := standingsFetch{
+		standings: standingsRes, standingsErr: standingsErr,
+		lp: lpRes, lpErr: lpErr, lpGranted: lpGranted,
+	}
+	applyStandingsNotes(standingsNotes{out: out, fetched: fetched, character: token.CharacterName, lpScope: lpScope})
+	if age := standingsAge(fetched); age != "" {
 		out[fDataAge] = age
 	}
 
 	return out, nil
 }
 
-func standingsAge(standingsRes esi.Result, standingsErr error, lpRes esi.Result, lpErr error, lpGranted bool) string {
+type standingsFetch struct {
+	standings    esi.Result
+	standingsErr error
+	lp           esi.Result
+	lpErr        error
+	lpGranted    bool
+}
+
+func standingsAge(in standingsFetch) string {
 	var ages []float64
-	if standingsErr == nil {
-		ages = append(ages, standingsRes.AgeSeconds)
+	if in.standingsErr == nil {
+		ages = append(ages, in.standings.AgeSeconds)
 	}
-	if lpGranted && lpErr == nil {
-		ages = append(ages, lpRes.AgeSeconds)
+	if in.lpGranted && in.lpErr == nil {
+		ages = append(ages, in.lp.AgeSeconds)
 	}
 	if len(ages) == 0 {
 		return ""
@@ -390,13 +402,20 @@ func formatLoyaltyPoints(lpData []map[string]any, names map[int]string) []map[st
 	return lpRows
 }
 
-func applyStandingsNotes(out map[string]any, standingsErr, lpErr error, lpGranted bool, character, lpScope string) {
-	if standingsErr != nil {
-		out["standings_note"] = fmt.Sprintf("Standings could not be read: %v. The list above is empty because the call failed, not because there are none.", standingsErr)
+type standingsNotes struct {
+	out       map[string]any
+	fetched   standingsFetch
+	character string
+	lpScope   string
+}
+
+func applyStandingsNotes(in standingsNotes) {
+	if in.fetched.standingsErr != nil {
+		in.out["standings_note"] = fmt.Sprintf("Standings could not be read: %v. The list above is empty because the call failed, not because there are none.", in.fetched.standingsErr)
 	}
-	if lpErr != nil {
-		out["loyalty_points_note"] = fmt.Sprintf("Loyalty points could not be read: %v.", lpErr)
-	} else if !lpGranted {
-		out["loyalty_points_note"] = fmt.Sprintf("%s was not authorized with '%s', so loyalty point balances are not available. Re-run the login for this character to include them.", character, lpScope)
+	if in.fetched.lpErr != nil {
+		in.out["loyalty_points_note"] = fmt.Sprintf("Loyalty points could not be read: %v.", in.fetched.lpErr)
+	} else if !in.fetched.lpGranted {
+		in.out["loyalty_points_note"] = fmt.Sprintf("%s was not authorized with '%s', so loyalty point balances are not available. Re-run the login for this character to include them.", in.character, in.lpScope)
 	}
 }

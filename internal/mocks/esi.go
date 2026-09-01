@@ -101,18 +101,18 @@ func (mr *MockESIClientMockRecorder) GetAllPages(ctx, path, characterID, params,
 }
 
 // GetCursorPages mocks base method.
-func (m *MockESIClient) GetCursorPages(ctx context.Context, path string, characterID *int, params map[string]any, cursorParam, cursorKey string, batchSize, maxPages int) (esi.Result, error) {
+func (m *MockESIClient) GetCursorPages(ctx context.Context, path string, q esi.CursorQuery) (esi.Result, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetCursorPages", ctx, path, characterID, params, cursorParam, cursorKey, batchSize, maxPages)
+	ret := m.ctrl.Call(m, "GetCursorPages", ctx, path, q)
 	ret0, _ := ret[0].(esi.Result)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetCursorPages indicates an expected call of GetCursorPages.
-func (mr *MockESIClientMockRecorder) GetCursorPages(ctx, path, characterID, params, cursorParam, cursorKey, batchSize, maxPages any) *gomock.Call {
+func (mr *MockESIClientMockRecorder) GetCursorPages(ctx, path, q any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCursorPages", reflect.TypeOf((*MockESIClient)(nil).GetCursorPages), ctx, path, characterID, params, cursorParam, cursorKey, batchSize, maxPages)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCursorPages", reflect.TypeOf((*MockESIClient)(nil).GetCursorPages), ctx, path, q)
 }
 
 // Post mocks base method.

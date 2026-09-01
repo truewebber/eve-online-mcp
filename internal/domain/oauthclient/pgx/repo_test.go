@@ -7,6 +7,7 @@ import (
 
 	"go.uber.org/mock/gomock"
 
+	"github.com/truewebber/eve-online-mcp/internal/postgres"
 	"github.com/truewebber/eve-online-mcp/internal/postgres/pgtest"
 
 	"github.com/truewebber/eve-online-mcp/internal/domain/oauthclient"
@@ -59,6 +60,28 @@ func TestSweepClients(t *testing.T) {
 	db := pgtest.Open(t, mocks.QuietLogger(gomock.NewController(t)))
 	repo := New(db.Pool())
 	ctx := context.Background()
+	seedSweepClients(t, repo, db)
+	soft, err := repo.SoftDeleteAbandoned(ctx)
+	if err != nil || soft != 1 {
+		t.Fatalf("soft %d %v", soft, err)
+	}
+	assertSweepKept(t, repo)
+	hard, err := repo.DeleteLongSoftDeleted(ctx)
+	if err != nil || hard != 1 {
+		t.Fatalf("hard %d %v", hard, err)
+	}
+	var n int
+	if err := db.Pool().QueryRow(ctx, countClientsSQL).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 4 {
+		t.Fatalf("rows %d", n)
+	}
+}
+
+func seedSweepClients(t *testing.T, repo *Repo, db *postgres.DB) {
+	t.Helper()
+	ctx := context.Background()
 	for _, id := range []string{"abandoned", "used", "young", "longgone", "softday"} {
 		if err := repo.Upsert(ctx, oauthclient.Client{
 			ID: id, RedirectURIs: []string{testRedirect},
@@ -83,10 +106,11 @@ func TestSweepClients(t *testing.T) {
 	if _, err := db.Pool().Exec(ctx, softRecentSQL, "softday"); err != nil {
 		t.Fatal(err)
 	}
-	soft, err := repo.SoftDeleteAbandoned(ctx)
-	if err != nil || soft != 1 {
-		t.Fatalf("soft %d %v", soft, err)
-	}
+}
+
+func assertSweepKept(t *testing.T, repo *Repo) {
+	t.Helper()
+	ctx := context.Background()
 	if _, err := repo.Get(ctx, "abandoned"); !errors.Is(err, oauthclient.ErrNotFound) {
 		t.Fatalf("abandoned still visible: %v", err)
 	}
@@ -95,16 +119,5 @@ func TestSweepClients(t *testing.T) {
 	}
 	if _, err := repo.Get(ctx, "young"); err != nil {
 		t.Fatalf("young client gone: %v", err)
-	}
-	hard, err := repo.DeleteLongSoftDeleted(ctx)
-	if err != nil || hard != 1 {
-		t.Fatalf("hard %d %v", hard, err)
-	}
-	var n int
-	if err := db.Pool().QueryRow(ctx, countClientsSQL).Scan(&n); err != nil {
-		t.Fatal(err)
-	}
-	if n != 4 {
-		t.Fatalf("rows %d", n)
 	}
 }

@@ -94,10 +94,19 @@ type TokenSource interface {
 	AccessToken(ctx context.Context, characterID int) (string, error)
 }
 
+type CursorQuery struct {
+	CharacterID *int
+	Params      map[string]any
+	CursorParam string
+	CursorKey   string
+	BatchSize   int
+	MaxPages    int
+}
+
 type Client interface {
 	Get(ctx context.Context, path string, characterID *int, params map[string]any, cacheTTL *float64) (Result, error)
 	GetAllPages(ctx context.Context, path string, characterID *int, params map[string]any, maxPages int) (Result, error)
-	GetCursorPages(ctx context.Context, path string, characterID *int, params map[string]any, cursorParam, cursorKey string, batchSize, maxPages int) (Result, error)
+	GetCursorPages(ctx context.Context, path string, q CursorQuery) (Result, error)
 	Post(ctx context.Context, path string, characterID *int, params map[string]any, jsonBody any) (any, error)
 	Put(ctx context.Context, path string, characterID *int, params map[string]any, jsonBody any) (any, error)
 	Delete(ctx context.Context, path string, characterID *int, params map[string]any, jsonBody any) (any, error)

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 	"github.com/truewebber/eve-online-mcp/internal/j"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 
@@ -13,36 +14,33 @@ import (
 )
 
 func registerWaypoint(s *mcp.Server) {
-	type in struct {
-		Destination         string `json:"destination"                     jsonschema:"Exact system, station or structure name."`
-		ClearOtherWaypoints *bool  `json:"clear_other_waypoints,omitempty" jsonschema:"True replaces the whole existing route. Default true."`
-		AddToBeginning      *bool  `json:"add_to_beginning,omitempty"      jsonschema:"Insert as the very next hop rather than the final stop."`
-		ConfirmToken        string `json:"confirm_token,omitempty"         jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
-	}
 	addTool(s, &mcp.Tool{
-		Name:        "eve_ui_set_waypoint",
+		Name:        write.ToolUISetWaypoint,
 		Description: "Set an autopilot waypoint in the running game client.\n\nThis only moves the route marker on the map. It never undocks, flies or activates autopilot. Default clear_other_waypoints=true wipes a route the player may have spent time building.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in in) (*mcp.CallToolResult, any, error) {
-		return Call(ctx, func(a *session.Session) (any, error) {
-			return eveUISetWaypoint(ctx, a, in.Destination, in.ClearOtherWaypoints, in.AddToBeginning, in.ConfirmToken)
-		})
-	})
+	}, sessionTool(eveUISetWaypoint))
 }
 
-func eveUISetWaypoint(ctx context.Context, a *session.Session, destination string, clearOther, addToBeginning *bool, confirmToken string) (any, error) {
+type waypointIn struct {
+	Destination         string `json:"destination"                     jsonschema:"Exact system, station or structure name."`
+	ClearOtherWaypoints *bool  `json:"clear_other_waypoints,omitempty" jsonschema:"True replaces the whole existing route. Default true."`
+	AddToBeginning      *bool  `json:"add_to_beginning,omitempty"      jsonschema:"Insert as the very next hop rather than the final stop."`
+	ConfirmToken        string `json:"confirm_token,omitempty"         jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
+}
+
+func eveUISetWaypoint(ctx context.Context, a *session.Session, in waypointIn) (any, error) {
 	token, err := a.Character(ctx)
 	if err != nil {
 		return nil, wrap("eveUISetWaypoint", err)
 	}
-	target, err := resolveDestination(ctx, a, destination, token.CharacterID)
+	target, err := resolveDestination(ctx, a, in.Destination, token.CharacterID)
 	if err != nil {
 		return nil, err
 	}
 	if _, ok := target[fError]; ok {
 		return target, nil
 	}
-	clearOthers := boolDef(clearOther, true)
-	add := boolDef(addToBeginning, false)
+	clearOthers := boolDef(in.ClearOtherWaypoints, true)
+	add := boolDef(in.AddToBeginning, false)
 	args := map[string]any{
 		"destination_id": target["id"], fCharacterID: token.CharacterID,
 		"clear_other_waypoints": clearOthers, "add_to_beginning": add,
@@ -60,7 +58,10 @@ func eveUISetWaypoint(ctx context.Context, a *session.Session, destination strin
 	if amb := j.Str(target["ambiguity"]); amb != "" {
 		preview["ambiguous_name"] = amb + " — this routes to the first. Cancel and use eve_universe_search if the other one was meant."
 	}
-	blocked, err := a.Guard.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, preview, confirmToken, token.Scopes)
+	blocked, err := a.Guard.Authorize(ctx, write.Authz{
+		Tool: write.ToolUISetWaypoint, Capability: write.CapWaypoint,
+		Args: args, Preview: preview, Token: in.ConfirmToken, Scopes: token.Scopes,
+	})
 	if err != nil {
 		return nil, wrap("eveUISetWaypoint", err)
 	}
@@ -70,7 +71,7 @@ func eveUISetWaypoint(ctx context.Context, a *session.Session, destination strin
 	_, err = a.ESI.Post(ctx, "/ui/autopilot/waypoint", &token.CharacterID, map[string]any{
 		"destination_id": target["id"], "clear_other_waypoints": clearOthers, "add_to_beginning": add,
 	}, nil)
-	recordWrite(ctx, a, "eve_ui_set_waypoint", "waypoint", args, err)
+	recordWrite(ctx, a, writeLog{tool: write.ToolUISetWaypoint, capability: write.CapWaypoint, args: args, err: err})
 	if err != nil {
 		return nil, wrap("eveUISetWaypoint", err)
 	}
@@ -80,7 +81,7 @@ func eveUISetWaypoint(ctx context.Context, a *session.Session, destination strin
 
 func registerOpenWindow(s *mcp.Server) {
 	addTool(s, &mcp.Tool{
-		Name:        "eve_ui_open_window",
+		Name:        write.ToolUIOpenWindow,
 		Description: "Open a window in the running game client.\n\nGood for handing something off to the player. Changes nothing in game and costs nothing.\n\nA `window` outside the three values is refused with the list of accepted ones — it never falls back to one of them. For a pre-filled mail window, that is eve_mail_compose.",
 	}, sessionTool(eveUIOpenWindow))
 }
@@ -117,7 +118,10 @@ func eveUIOpenWindow(ctx context.Context, a *session.Session, in openWindowIn) (
 			preview["ambiguous_name"] = amb + " — this opens the first. Cancel and use eve_universe_search if the other one was meant."
 		}
 	}
-	blocked, err := a.Guard.Authorize(ctx, "eve_ui_open_window", "openwindow", args, preview, in.ConfirmToken, token.Scopes)
+	blocked, err := a.Guard.Authorize(ctx, write.Authz{
+		Tool: write.ToolUIOpenWindow, Capability: write.CapOpenWindow,
+		Args: args, Preview: preview, Token: in.ConfirmToken, Scopes: token.Scopes,
+	})
 	if err != nil {
 		return nil, wrap("eveUIOpenWindow", err)
 	}
@@ -125,7 +129,7 @@ func eveUIOpenWindow(ctx context.Context, a *session.Session, in openWindowIn) (
 		return blocked.Required, nil
 	}
 	_, err = a.ESI.Post(ctx, plan.path, &token.CharacterID, plan.params, nil)
-	recordWrite(ctx, a, "eve_ui_open_window", "openwindow", args, err)
+	recordWrite(ctx, a, writeLog{tool: write.ToolUIOpenWindow, capability: write.CapOpenWindow, args: args, err: err})
 	if err != nil {
 		return nil, wrap("eveUIOpenWindow", err)
 	}
@@ -215,9 +219,9 @@ func planOpenWindow(ctx context.Context, a *session.Session, kind, target string
 	case windowContract:
 		return planContractWindow(target)
 	case windowMarket:
-		return planNamedWindow(ctx, a, kind, target, characterID, "/ui/openwindow/marketdetails", fTypeID)
+		return planNamedWindow(ctx, a, namedWindowIn{kind: kind, target: target, characterID: characterID, path: "/ui/openwindow/marketdetails", idKey: fTypeID})
 	case windowInfo:
-		return planNamedWindow(ctx, a, kind, target, characterID, "/ui/openwindow/information", "target_id")
+		return planNamedWindow(ctx, a, namedWindowIn{kind: kind, target: target, characterID: characterID, path: "/ui/openwindow/information", idKey: "target_id"})
 	default:
 		return windowPlan{}, ValidationError{Field: fWindow, Invariant: enumInvariant(windowMarket, windowInfo, windowContract)}
 	}
@@ -236,8 +240,13 @@ func planContractWindow(target string) (windowPlan, error) {
 	}, nil
 }
 
-func planNamedWindow(ctx context.Context, a *session.Session, kind, target string, characterID int, path, idKey string) (windowPlan, error) {
-	resolved, err := resolveEntity(ctx, a, target, characterID, kind)
+type namedWindowIn struct {
+	kind, target, path, idKey string
+	characterID               int
+}
+
+func planNamedWindow(ctx context.Context, a *session.Session, in namedWindowIn) (windowPlan, error) {
+	resolved, err := resolveEntity(ctx, a, in.target, in.characterID, in.kind)
 	if err != nil {
 		return windowPlan{}, err
 	}
@@ -250,7 +259,7 @@ func planNamedWindow(ctx context.Context, a *session.Session, kind, target strin
 	}
 
 	return windowPlan{
-		path: path, params: map[string]any{idKey: resolved["id"]},
+		path: in.path, params: map[string]any{in.idKey: resolved["id"]},
 		label: label, resolved: resolved,
 	}, nil
 }

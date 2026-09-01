@@ -59,7 +59,10 @@ func eveIndustryJobs(ctx context.Context, a *session.Session, in industryJobsIn)
 		return nil, wrap("eveIndustryJobs", err)
 	}
 
-	return industryJobsResult(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), limitOr(in.Limit, limitMedium), concise(in.ResponseFormat), false)
+	return industryJobsResult(ctx, a, jobsView{
+		character: token.CharacterName, cid: cid, data: result.Data, stale: result.StaleNote(),
+		limit: limitOr(in.Limit, limitMedium), conciseMode: concise(in.ResponseFormat),
+	})
 }
 
 func eveIndustryPlanets(ctx context.Context, a *session.Session, in industryPlanetsIn) (any, error) {
@@ -124,8 +127,8 @@ func eveIndustryMining(ctx context.Context, a *session.Session, in industryMinin
 	if len(entries) == 0 {
 		return map[string]any{fCharacter: token.CharacterName, fOres: []any{}, fNote: "Nothing mined recently.", fDataAge: result.StaleNote()}, nil
 	}
-	totals, bySystem := sumMining(entries)
-	names, err := a.Resolver.Names(ctx, append(keys(totals), keys(bySystem)...), nil)
+	sums := sumMining(entries)
+	names, err := a.Resolver.Names(ctx, append(keys(sums.totals), keys(sums.bySystem)...), nil)
 	if err != nil {
 		return nil, wrap("eveIndustryMining", err)
 	}
@@ -133,28 +136,37 @@ func eveIndustryMining(ctx context.Context, a *session.Session, in industryMinin
 	if err != nil {
 		return nil, wrap("eveIndustryMining", err)
 	}
-	rows, grand := miningOreRows(totals, names, prices)
+	ores := miningOreRows(sums.totals, names, prices)
+	rows, grand := ores.rows, ores.grand
 	paged := pageByOffset(rows, in.Offset, limitOr(in.Limit, limitDefault), "")
 
 	return merge(map[string]any{
 		fCharacter: token.CharacterName, fPeriod: "last ~30 days",
-		fTotalEstimatedValue: isk(grand), "top_systems": topMiningSystems(bySystem, names, limitTopItems),
+		fTotalEstimatedValue: isk(grand), "top_systems": topMiningSystems(sums.bySystem, names, limitTopItems),
 		fDataAge: result.StaleNote(), fOres: paged.Rows,
 	}, paged.fields), nil
 }
 
-func sumMining(entries []map[string]any) (map[int]int, map[int]int) {
-	totals := map[int]int{}
-	bySystem := map[int]int{}
-	for _, e := range entries {
-		totals[j.Int(e[fTypeID])] += j.Int(e[fQuantity])
-		bySystem[j.Int(e["solar_system_id"])] += j.Int(e[fQuantity])
-	}
-
-	return totals, bySystem
+type miningSums struct {
+	totals, bySystem map[int]int
 }
 
-func miningOreRows(totals map[int]int, names map[int]string, prices map[int]map[string]float64) ([]map[string]any, float64) {
+func sumMining(entries []map[string]any) miningSums {
+	out := miningSums{totals: map[int]int{}, bySystem: map[int]int{}}
+	for _, e := range entries {
+		out.totals[j.Int(e[fTypeID])] += j.Int(e[fQuantity])
+		out.bySystem[j.Int(e["solar_system_id"])] += j.Int(e[fQuantity])
+	}
+
+	return out
+}
+
+type miningOreView struct {
+	rows  []map[string]any
+	grand float64
+}
+
+func miningOreRows(totals map[int]int, names map[int]string, prices map[int]map[string]float64) miningOreView {
 	rows := make([]map[string]any, 0, len(totals))
 	grand := 0.0
 	for tid, qty := range totals {
@@ -164,7 +176,7 @@ func miningOreRows(totals map[int]int, names map[int]string, prices map[int]map[
 	}
 	sort.Slice(rows, func(i, k int) bool { return j.Int(rows[i][fUnits]) > j.Int(rows[k][fUnits]) })
 
-	return rows, grand
+	return miningOreView{rows: rows, grand: grand}
 }
 
 func topMiningSystems(bySystem map[int]int, names map[int]string, n int) []map[string]any {
@@ -185,13 +197,22 @@ func topMiningSystems(bySystem map[int]int, names map[int]string, n int) []map[s
 	return top
 }
 
-func industryJobsResult(ctx context.Context, a *session.Session, character string, cid int, data any, stale string, limit int, conciseMode, withInstaller bool) (map[string]any, error) {
-	jobs := j.Maps(data)
+type jobsView struct {
+	character                  string
+	cid                        int
+	data                       any
+	stale                      string
+	limit                      int
+	conciseMode, withInstaller bool
+}
+
+func industryJobsResult(ctx context.Context, a *session.Session, in jobsView) (map[string]any, error) {
+	jobs := j.Maps(in.data)
 	if len(jobs) == 0 {
 		return map[string]any{
-			fCharacter: character, fJobs: []any{},
+			fCharacter: in.character, fJobs: []any{},
 			fNote:    "No industry jobs. Pass include_completed=true to see finished ones.",
-			fDataAge: stale,
+			fDataAge: in.stale,
 		}, nil
 	}
 	idSet := map[int]struct{}{}
@@ -209,7 +230,7 @@ func industryJobsResult(ctx context.Context, a *session.Session, character strin
 		if loc != 0 {
 			placeSet[loc] = struct{}{}
 		}
-		if withInstaller && j.Int(job["installer_id"]) != 0 {
+		if in.withInstaller && j.Int(job["installer_id"]) != 0 {
 			people[j.Int(job["installer_id"])] = struct{}{}
 		}
 	}
@@ -217,67 +238,88 @@ func industryJobsResult(ctx context.Context, a *session.Session, character strin
 	if err != nil {
 		return nil, wrap("industryJobsResult", err)
 	}
-	places, err := a.Resolver.Names(ctx, setToList(placeSet), &cid)
+	places, err := a.Resolver.Names(ctx, setToList(placeSet), &in.cid)
 	if err != nil {
 		return nil, wrap("industryJobsResult", err)
 	}
-	now := time.Now().UTC()
-	var rows []map[string]any
-	for _, job := range jobs {
-		end := parseTime(j.Str(job["end_date"]))
-		ready := end != nil && !end.After(now)
-		ends := vUnknown
-		if ready {
-			ends = "ready to deliver"
-		} else if end != nil {
-			ends = humanDelta(end.Sub(now))
-		}
-		product := names[j.Int(job["product_type_id"])]
-		if product == "" {
-			product = names[j.Int(job["blueprint_type_id"])]
-		}
-		loc := j.Int(job["station_id"])
-		if loc == 0 {
-			loc = j.Int(job["output_location_id"])
-		}
-		row := map[string]any{
-			"activity": activityName(j.Int(job["activity_id"])), "product": product,
-			"runs": job["runs"], "ends_in": ends, fLocation: places[loc],
-			"ready": ready, fStatus: job[fStatus],
-			fBlueprint:     names[j.Int(job["blueprint_type_id"])],
-			"install_cost": isk(job["cost"]), "end_date": job["end_date"],
-		}
-		if withInstaller {
-			row["installer"] = names[j.Int(job["installer_id"])]
-		}
-		rows = append(rows, row)
-	}
-	sort.Slice(rows, func(i, k int) bool { return j.Str(rows[i]["end_date"]) < j.Str(rows[k]["end_date"]) })
-	paged := applyLimit(rows, limit, "")
-	active, readyN := 0, 0
-	for _, r := range rows {
-		if j.Bool(r["ready"]) {
-			readyN++
-		} else {
-			active++
-		}
-	}
+	rows := industryJobRows(jobs, names, places, in.withInstaller)
+	paged := applyLimit(rows, in.limit, "")
+	counts := industryJobCounts(rows)
 	keep := []string{"activity", "product", "runs", "ends_in", fLocation}
-	if withInstaller {
+	if in.withInstaller {
 		keep = append(keep, "installer")
 	}
 
 	return merge(map[string]any{
-		fCharacter: character, "active_jobs": active, "ready_to_deliver": readyN,
-		fDataAge: stale, fJobs: project(paged.Rows, keep, conciseMode),
+		fCharacter: in.character, "active_jobs": counts.active, "ready_to_deliver": counts.ready,
+		fDataAge: in.stale, fJobs: project(paged.Rows, keep, in.conciseMode),
 	}, paged.fields), nil
+}
+
+func industryJobRows(jobs []map[string]any, names, places map[int]string, withInstaller bool) []map[string]any {
+	now := time.Now().UTC()
+	rows := make([]map[string]any, 0, len(jobs))
+	for _, job := range jobs {
+		rows = append(rows, industryJobRow(job, names, places, withInstaller, now))
+	}
+	sort.Slice(rows, func(i, k int) bool { return j.Str(rows[i]["end_date"]) < j.Str(rows[k]["end_date"]) })
+
+	return rows
+}
+
+func industryJobRow(job map[string]any, names, places map[int]string, withInstaller bool, now time.Time) map[string]any {
+	end := parseTime(j.Str(job["end_date"]))
+	ready := end != nil && !end.After(now)
+	ends := vUnknown
+	if ready {
+		ends = "ready to deliver"
+	} else if end != nil {
+		ends = humanDelta(end.Sub(now))
+	}
+	product := names[j.Int(job["product_type_id"])]
+	if product == "" {
+		product = names[j.Int(job["blueprint_type_id"])]
+	}
+	loc := j.Int(job["station_id"])
+	if loc == 0 {
+		loc = j.Int(job["output_location_id"])
+	}
+	row := map[string]any{
+		"activity": activityName(j.Int(job["activity_id"])), "product": product,
+		"runs": job["runs"], "ends_in": ends, fLocation: places[loc],
+		"ready": ready, fStatus: job[fStatus],
+		fBlueprint:     names[j.Int(job["blueprint_type_id"])],
+		"install_cost": isk(job["cost"]), "end_date": job["end_date"],
+	}
+	if withInstaller {
+		row["installer"] = names[j.Int(job["installer_id"])]
+	}
+
+	return row
+}
+
+type jobCounts struct {
+	active, ready int
+}
+
+func industryJobCounts(rows []map[string]any) jobCounts {
+	var out jobCounts
+	for _, r := range rows {
+		if j.Bool(r["ready"]) {
+			out.ready++
+		} else {
+			out.active++
+		}
+	}
+
+	return out
 }
 
 func decorateColonyDetails(ctx context.Context, a *session.Session, cid int, colonies, rows []map[string]any) []float64 {
 	now := time.Now().UTC()
 	var ages []float64
 	for i, c := range colonies {
-		if age, ok := decorateColonyDetail(ctx, a, cid, c, rows[i], now); ok {
+		if age, ok := decorateColonyDetail(ctx, a, colonyDecorate{cid: cid, colony: c, row: rows[i], now: now}); ok {
 			ages = append(ages, age)
 		}
 	}
@@ -285,21 +327,27 @@ func decorateColonyDetails(ctx context.Context, a *session.Session, cid int, col
 	return ages
 }
 
-func decorateColonyDetail(ctx context.Context, a *session.Session, cid int, colony, row map[string]any, now time.Time) (float64, bool) {
-	layout, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "planets", esiID(j.Int(colony["planet_id"]))), &cid, nil, nil)
+type colonyDecorate struct {
+	cid         int
+	colony, row map[string]any
+	now         time.Time
+}
+
+func decorateColonyDetail(ctx context.Context, a *session.Session, in colonyDecorate) (float64, bool) {
+	layout, err := a.ESI.Get(ctx, esiPath("characters", esiID(in.cid), "planets", esiID(j.Int(in.colony["planet_id"]))), &in.cid, nil, nil)
 	if err != nil {
 		return 0, false
 	}
 	pins := j.Maps(j.Map(layout.Data)["pins"])
-	if expiry := colonyExtractorExpiry(pins, now); expiry != "" {
-		row["extractor_expires_in"] = expiry
+	if expiry := colonyExtractorExpiry(pins, in.now); expiry != "" {
+		in.row["extractor_expires_in"] = expiry
 	}
 	stored, err := colonyStored(ctx, a, pins)
 	if err != nil {
 		return layout.AgeSeconds, true
 	}
 	if len(stored) > 0 {
-		row["stored"] = stored
+		in.row["stored"] = stored
 	}
 
 	return layout.AgeSeconds, true

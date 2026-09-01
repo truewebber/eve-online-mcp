@@ -95,29 +95,29 @@ func (g *Guard) CheckScope(capability string, granted []string) error {
 	return nil
 }
 
-func (g *Guard) Authorize(ctx context.Context, tool, capability string, args map[string]any, preview map[string]any, confirmToken string, granted []string) (Decision, error) {
+type Authz struct {
+	Tool, Capability string
+	Args, Preview    map[string]any
+	Token            string
+	Scopes           []string
+}
+
+func (g *Guard) Authorize(ctx context.Context, in Authz) (Decision, error) {
 	if relErr := g.releaseMailHold(errMailHoldAbandoned); relErr != nil {
 		g.logMailHold(relErr)
 	}
-	err := g.CheckCapability(capability)
+	err := g.CheckCapability(in.Capability)
 	if err != nil {
 		return Decision{}, err
 	}
-	err = g.CheckScope(capability, granted)
+	err = g.CheckScope(in.Capability, in.Scopes)
 	if err != nil {
 		return Decision{}, err
 	}
-	if capability == CapMailSend {
-		if confirmToken != "" {
-			err = g.holdMailCap(ctx)
-		} else {
-			err = g.checkMailCap(ctx)
-		}
-		if err != nil {
-			return Decision{}, err
-		}
+	if err := g.gateMailCap(ctx, in); err != nil {
+		return Decision{}, err
 	}
-	digest, err := digestArgs(args)
+	digest, err := digestArgs(in.Args)
 	if err != nil {
 		if relErr := g.releaseMailHold(err); relErr != nil {
 			g.logMailHold(relErr)
@@ -125,39 +125,11 @@ func (g *Guard) Authorize(ctx context.Context, tool, capability string, args map
 
 		return Decision{}, err
 	}
-	if confirmToken != "" {
-		err := g.consumeConfirm(ctx, tool, digest, confirmToken)
-		if err != nil {
-			if relErr := g.releaseMailHold(err); relErr != nil {
-				g.logMailHold(relErr)
-			}
-
-			return Decision{}, err
-		}
-
-		return Decision{}, nil
+	if in.Token != "" {
+		return g.confirmWrite(ctx, in, digest)
 	}
-	token, err := randomToken()
-	if err != nil {
-		return Decision{}, err
-	}
-	if g.persist != nil {
-		err := g.persist.PutConfirm(ctx, Confirm{
-			Token: token, SessionID: g.sessionID, Tool: tool,
-			ArgsDigest: digest, CreatedAt: time.Now().UTC(),
-		})
-		if err != nil {
-			return Decision{}, wrap("Authorize", err)
-		}
-	}
-	ttlSec := int(ConfirmTTL / time.Second)
 
-	return Decision{Required: map[string]any{
-		"status": "confirmation_required", "tool": tool, "capability": capability,
-		"will_do": preview, "confirm_token": token,
-		"expires_in_seconds": ttlSec,
-		"next_step":          fmt.Sprintf("Show 'will_do' to the user and get their explicit go-ahead, then call %s again with identical arguments plus confirm_token='%s'.", tool, token),
-	}}, nil
+	return g.previewWrite(ctx, in, digest)
 }
 
 func (g *Guard) Record(ctx context.Context, rec Record) error {
@@ -203,6 +175,57 @@ func (g *Guard) Status(ctx context.Context) map[string]any {
 		"confirm_ttl_seconds":       int(ConfirmTTL / time.Second),
 		"confirm":                   "Each mutating tool returns a preview and confirm_token on the first call; a second call with identical arguments plus the token executes it. Mail is capped at 5 per rolling hour.",
 	}
+}
+
+func (g *Guard) gateMailCap(ctx context.Context, in Authz) error {
+	if in.Capability != CapMailSend {
+		return nil
+	}
+	if in.Token != "" {
+		return g.holdMailCap(ctx)
+	}
+
+	return g.checkMailCap(ctx)
+}
+
+func (g *Guard) confirmWrite(ctx context.Context, in Authz, digest string) (Decision, error) {
+	err := g.consumeConfirm(ctx, in.Tool, digest, in.Token)
+	if err != nil {
+		if relErr := g.releaseMailHold(err); relErr != nil {
+			g.logMailHold(relErr)
+		}
+
+		return Decision{}, err
+	}
+
+	return Decision{}, nil
+}
+
+func (g *Guard) previewWrite(ctx context.Context, in Authz, digest string) (Decision, error) {
+	token, err := randomToken()
+	if err != nil {
+		return Decision{}, err
+	}
+	if g.persist != nil {
+		err := g.persist.PutConfirm(ctx, Confirm{
+			Token: token, SessionID: g.sessionID, Tool: in.Tool,
+			ArgsDigest: digest, CreatedAt: time.Now().UTC(),
+		})
+		if err != nil {
+			return Decision{}, wrap("Authorize", err)
+		}
+	}
+	ttlSec := int(ConfirmTTL / time.Second)
+
+	return Decision{Required: map[string]any{
+		"status": "confirmation_required", "tool": in.Tool, "capability": in.Capability,
+		"will_do": in.Preview, "confirm_token": token,
+		"expires_in_seconds": ttlSec,
+		"next_step": fmt.Sprintf(
+			"Show 'will_do' to the user and get their explicit go-ahead, then call %s again with identical arguments plus confirm_token='%s'.",
+			in.Tool, token,
+		),
+	}}, nil
 }
 
 func (g *Guard) appendRecord(ctx context.Context, rec Record) error {

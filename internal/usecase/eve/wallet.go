@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
 	"github.com/truewebber/eve-online-mcp/internal/j"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 
@@ -45,14 +46,20 @@ func walletHistory(ctx context.Context, a *session.Session, in walletHistIn) (an
 	cid := token.CharacterID
 	out := map[string]any{fCharacter: token.CharacterName, fPeriod: "last ~30 days (ESI retention limit)"}
 	if kind == fJournal || kind == vBoth {
-		sec, err := journalSection(ctx, a, cid, in.RefType, in.Offset, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
+		sec, err := journalSection(ctx, a, journalQuery{
+			cid: cid, refType: in.RefType, offset: in.Offset,
+			limit: limitOr(in.Limit, limitDefault), conciseMode: concise(in.ResponseFormat),
+		})
 		if err != nil {
 			return nil, err
 		}
 		out["journal_section"] = sec
 	}
 	if kind == fTransactions || kind == vBoth {
-		sec, err := transactionSection(ctx, a, esiPath("characters", esiID(cid), "wallet", "transactions"), cid, in.Offset, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
+		sec, err := transactionSection(ctx, a, txQuery{
+			path: esiPath("characters", esiID(cid), "wallet", "transactions"), cid: cid,
+			offset: in.Offset, limit: limitOr(in.Limit, limitDefault), conciseMode: concise(in.ResponseFormat),
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -74,48 +81,70 @@ func walletHistory(ctx context.Context, a *session.Session, in walletHistIn) (an
 	return out, nil
 }
 
-func journalSection(ctx context.Context, a *session.Session, cid int, refType string, offset, limit int, conciseMode bool) (map[string]any, error) {
-	result, err := a.ESI.GetAllPages(ctx, esiPath("characters", esiID(cid), "wallet", "journal"), &cid, nil, pagesShort)
+type journalQuery struct {
+	cid           int
+	refType       string
+	offset, limit int
+	conciseMode   bool
+}
+
+func journalSection(ctx context.Context, a *session.Session, in journalQuery) (map[string]any, error) {
+	result, err := a.ESI.GetAllPages(ctx, esiPath("characters", esiID(in.cid), "wallet", "journal"), &in.cid, nil, pagesShort)
 	if err != nil {
 		return nil, wrap("journalSection", err)
 	}
 
-	return summarizeJournal(result.Data, result.StaleNote(), result.Truncated, pagesShort, refType, offset, limit, conciseMode, "")
+	return summarizeJournal(journalSummary{
+		data: result.Data, stale: result.StaleNote(), truncated: result.Truncated,
+		pageCap: pagesShort, refType: in.refType, offset: in.offset, limit: in.limit,
+		conciseMode: in.conciseMode,
+	})
 }
 
 type journalTot struct{ in, out, n float64 }
 
-func summarizeJournal(data any, stale string, truncated bool, pageCap int, refType string, offset, limit int, conciseMode bool, divisionNote string) (map[string]any, error) {
-	entries := j.Maps(data)
+type journalSummary struct {
+	data          any
+	stale         string
+	truncated     bool
+	pageCap       int
+	refType       string
+	offset, limit int
+	conciseMode   bool
+	divisionNote  string
+}
+
+func summarizeJournal(in journalSummary) (map[string]any, error) {
+	entries := j.Maps(in.data)
 	available := journalRefTypes(entries)
-	if refType != "" {
-		filtered := filterJournalByRef(entries, refType)
+	if in.refType != "" {
+		filtered := filterJournalByRef(entries, in.refType)
 		if len(filtered) == 0 {
-			msg := fmt.Sprintf("No journal entries with ref_type %q in the window. Codes actually present: %v", refType, available)
-			if divisionNote != "" {
-				msg = fmt.Sprintf("No journal entries with ref_type %q in %s. Codes actually present: %v", refType, divisionNote, available)
+			msg := fmt.Sprintf("No journal entries with ref_type %q in the window. Codes actually present: %v", in.refType, available)
+			if in.divisionNote != "" {
+				msg = fmt.Sprintf("No journal entries with ref_type %q in %s. Codes actually present: %v", in.refType, in.divisionNote, available)
 			}
 
 			return map[string]any{fJournal: []any{}, fError: msg}, nil
 		}
 		entries = filtered
 	}
-	totals, byCat := tallyJournal(entries)
+	tally := tallyJournal(entries)
 	sort.Slice(entries, func(i, k int) bool { return j.Str(entries[i][fDate]) > j.Str(entries[k][fDate]) })
 	rows := journalRows(entries)
-	paged := pageByOffset(rows, offset, limit, "Pass offset to continue, or narrow with `ref_type`.")
+	paged := pageByOffset(rows, in.offset, in.limit, "Pass offset to continue, or narrow with `ref_type`.")
 	var gin, gout float64
-	for _, b := range totals {
+	for _, b := range tally.totals {
 		gin += b.in
 		gout += b.out
 	}
 	out := merge(map[string]any{
 		"total_income": isk(gin), "total_spending": isk(gout), "net": isk(gin + gout),
-		"by_category": byCat, fDataAge: stale,
-		fJournal: project(paged.Rows, []string{fDate, fRefType, "amount", fDescription}, conciseMode),
+		"by_category": tally.cats, fDataAge: in.stale,
+		fJournal: project(paged.Rows, []string{fDate, fRefType, "amount", fDescription}, in.conciseMode),
 	}, paged.fields)
-	if truncated {
-		out["totals_caveat"] = fmt.Sprintf("Hit the %d-page read cap: the totals and by_category above cover the newest %s entries, not the full window.", pageCap, formatInt(len(entries)))
+	if in.truncated {
+		out["totals_caveat"] = fmt.Sprintf("Hit the %d-page read cap: the totals and by_category above cover the newest %s entries, not the full window.", in.pageCap, formatInt(len(entries)))
 	}
 
 	return out, nil
@@ -149,7 +178,12 @@ func filterJournalByRef(entries []map[string]any, refType string) []map[string]a
 	return filtered
 }
 
-func tallyJournal(entries []map[string]any) (map[string]*journalTot, []map[string]any) {
+type journalTally struct {
+	totals map[string]*journalTot
+	cats   []map[string]any
+}
+
+func tallyJournal(entries []map[string]any) journalTally {
 	totals := map[string]*journalTot{}
 	for _, e := range entries {
 		amount := j.Float(e["amount"])
@@ -191,7 +225,7 @@ func tallyJournal(entries []map[string]any) (map[string]*journalTot, []map[strin
 		byCat = byCat[:15]
 	}
 
-	return totals, byCat
+	return journalTally{totals: totals, cats: byCat}
 }
 
 func journalRows(entries []map[string]any) []map[string]any {
@@ -207,19 +241,41 @@ func journalRows(entries []map[string]any) []map[string]any {
 	return rows
 }
 
-func transactionSection(ctx context.Context, a *session.Session, path string, cid int, offset, limit int, conciseMode bool) (map[string]any, error) {
-	result, err := a.ESI.GetCursorPages(ctx, path, &cid, nil, "from_id", "transaction_id", txLookback, txPages)
+type txQuery struct {
+	path          string
+	cid           int
+	offset, limit int
+	conciseMode   bool
+}
+
+func transactionSection(ctx context.Context, a *session.Session, in txQuery) (map[string]any, error) {
+	result, err := a.ESI.GetCursorPages(ctx, in.path, esi.CursorQuery{
+		CharacterID: &in.cid, CursorParam: "from_id", CursorKey: "transaction_id",
+		BatchSize: txLookback, MaxPages: txPages,
+	})
 	if err != nil {
 		return nil, wrap("transactionSection", err)
 	}
 
-	return summarizeTransactions(ctx, a, cid, result.Data, result.StaleNote(), result.Truncated, offset, limit, conciseMode)
+	return summarizeTransactions(ctx, a, txSummary{
+		cid: in.cid, data: result.Data, stale: result.StaleNote(), truncated: result.Truncated,
+		offset: in.offset, limit: in.limit, conciseMode: in.conciseMode,
+	})
 }
 
-func summarizeTransactions(ctx context.Context, a *session.Session, cid int, data any, stale string, truncated bool, offset, limit int, conciseMode bool) (map[string]any, error) {
-	entries := j.Maps(data)
+type txSummary struct {
+	cid           int
+	data          any
+	stale         string
+	truncated     bool
+	offset, limit int
+	conciseMode   bool
+}
+
+func summarizeTransactions(ctx context.Context, a *session.Session, in txSummary) (map[string]any, error) {
+	entries := j.Maps(in.data)
 	if len(entries) == 0 {
-		return map[string]any{fTransactions: []any{}, fNote: "No market trades in the retained window.", fDataAge: stale}, nil
+		return map[string]any{fTransactions: []any{}, fNote: "No market trades in the retained window.", fDataAge: in.stale}, nil
 	}
 	typeSet, placeSet := map[int]struct{}{}, map[int]struct{}{}
 	for _, t := range entries {
@@ -230,7 +286,7 @@ func summarizeTransactions(ctx context.Context, a *session.Session, cid int, dat
 	if err != nil {
 		return nil, wrap("summarizeTransactions", err)
 	}
-	placeNames, err := a.Resolver.Names(ctx, setToList(placeSet), &cid)
+	placeNames, err := a.Resolver.Names(ctx, setToList(placeSet), &in.cid)
 	if err != nil {
 		return nil, wrap("summarizeTransactions", err)
 	}
@@ -256,15 +312,15 @@ func summarizeTransactions(ctx context.Context, a *session.Session, cid int, dat
 			"unit_price": isk(t["unit_price"]), fLocation: nameOr(placeNames, j.Int(t["location_id"])),
 		})
 	}
-	paged := pageByOffset(rows, offset, limit, "")
+	paged := pageByOffset(rows, in.offset, in.limit, "")
 	out := merge(map[string]any{
 		"total_bought": isk(bought), "total_sold": isk(sold), "gross_margin": isk(sold - bought),
 		"covers":        fmt.Sprintf("%v to %v (%s trades)", rows[len(rows)-1][fDate], rows[0][fDate], formatInt(len(entries))),
 		"margin_caveat": "Sold minus bought over the trades in `covers`, not per-item profit.",
-		fDataAge:        stale,
-		fTransactions:   project(paged.Rows, []string{fDate, fSide, fItem, fQuantity, fTotal}, conciseMode),
+		fDataAge:        in.stale,
+		fTransactions:   project(paged.Rows, []string{fDate, fSide, fItem, fQuantity, fTotal}, in.conciseMode),
 	}, paged.fields)
-	if truncated {
+	if in.truncated {
 		out["totals_caveat"] = fmt.Sprintf("Only the newest %s trades were read, so the totals cover `covers` and not the full retention window.", formatInt(len(entries)))
 	}
 

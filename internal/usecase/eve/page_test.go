@@ -10,7 +10,7 @@ import (
 func TestPageByCursorLimitAndESIFull(t *testing.T) {
 	t.Parallel()
 	rows := []map[string]any{{fMailID: 30}, {fMailID: 20}, {fMailID: 10}}
-	clipped := pageByCursor(rows, 2, fMailID, "Pass next_cursor as last_mail_id.", rows)
+	clipped := pageByCursor(cursorPageIn{Shown: rows, Limit: 2, Key: fMailID, Hint: "Pass next_cursor as last_mail_id.", ESI: rows})
 	if len(clipped.Rows) != 2 || clipped.NextCursor != 20 {
 		t.Fatalf("limit cursor %+v", clipped)
 	}
@@ -21,11 +21,11 @@ func TestPageByCursorLimitAndESIFull(t *testing.T) {
 	for i := range full {
 		full[i] = map[string]any{fMailID: 1000 + i}
 	}
-	all := pageByCursor(full, esiCursorPage, fMailID, "", full)
+	all := pageByCursor(cursorPageIn{Shown: full, Limit: esiCursorPage, Key: fMailID, ESI: full})
 	if all.NextCursor != 1000+esiCursorPage-1 {
 		t.Fatalf("full ESI page cursor %d", all.NextCursor)
 	}
-	short := pageByCursor(rows, 10, fMailID, "", rows)
+	short := pageByCursor(cursorPageIn{Shown: rows, Limit: 10, Key: fMailID, ESI: rows})
 	if short.NextCursor != 0 {
 		t.Fatalf("short page cursor %d", short.NextCursor)
 	}

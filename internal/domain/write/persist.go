@@ -12,9 +12,19 @@ var (
 )
 
 const (
-	OutcomeOK    = "ok"
-	OutcomeError = "error"
-	ToolMailSend = "eve_mail_send"
+	OutcomeOK           = "ok"
+	OutcomeError        = "error"
+	ToolMailSend        = "eve_mail_send"
+	ToolMailMark        = "eve_mail_mark"
+	ToolMailDelete      = "eve_mail_delete"
+	ToolMailCompose     = "eve_mail_compose"
+	ToolCalendarRespond = "eve_calendar_respond"
+	ToolContactsSet     = "eve_contacts_set"
+	ToolContactsDelete  = "eve_contacts_delete"
+	ToolFittingSave     = "eve_fitting_save"
+	ToolFittingDelete   = "eve_fitting_delete"
+	ToolUISetWaypoint   = "eve_ui_set_waypoint"
+	ToolUIOpenWindow    = "eve_ui_open_window"
 )
 
 // One-shot: consume on the mutating call, not on preview.

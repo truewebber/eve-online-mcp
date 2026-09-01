@@ -71,7 +71,7 @@ func openEnv(t *testing.T) *env {
 		MCPPath:     "/mcp",
 		CallbackURL: baseURL.JoinPath("auth", "callback").String(),
 	}
-	runtime, oauthServer := wire(t, db, host, httpClient, logger)
+	runtime, oauthServer := wire(t, wireIn{db: db, host: host, httpClient: httpClient, logger: logger})
 	characterID, sessionID := seedCharacter(t, runtime)
 	token, err := oauthServer.IssueAccess(characterID, sessionID)
 	if err != nil {
@@ -101,42 +101,43 @@ func openThrowaway(t *testing.T, logger log.Logger) *postgres.DB {
 	return db
 }
 
-func wire(
-	t *testing.T,
-	db *postgres.DB,
-	host oauth.Host,
-	httpClient *nhttp.Client,
-	logger log.Logger,
-) (*session.Session, *oauth.Server) {
+type wireIn struct {
+	db         *postgres.DB
+	host       oauth.Host
+	httpClient *nhttp.Client
+	logger     log.Logger
+}
+
+func wire(t *testing.T, in wireIn) (*session.Session, *oauth.Server) {
 	t.Helper()
-	pool := db.Pool()
+	pool := in.db.Pool()
 	opts := session.Options{
 		UserAgent:  testUserAgent,
-		Characters: characterpgx.New(pool, logger),
-		Sessions:   sessionpgx.New(pool, logger),
+		Characters: characterpgx.New(pool, in.logger),
+		Sessions:   sessionpgx.New(pool, in.logger),
 		Clients:    oauthclientpgx.New(pool),
 		Logins:     loginstatepgx.New(pool),
 		Codes:      authcodepgx.New(pool),
 		Confirms:   confirmpgx.New(pool),
 		Mutations:  mutationpgx.New(pool),
-		HTTP:       httpClient,
+		HTTP:       in.httpClient,
 		WithinTx: func(ctx context.Context, fn func(context.Context) error) error {
 			return postgres.WithinTx(ctx, pool, fn)
 		},
-		Logger: logger,
+		Logger: in.logger,
 	}
 	opts.ESI = esihttp.New(esi.Options{
 		UserAgent:  testUserAgent,
 		CompatDate: esitest.CompatDate,
-	}, httpClient, logger)
+	}, in.httpClient, in.logger)
 	ssoMock := mocks.NewMockSSOClient(gomock.NewController(t))
 	ssoMock.EXPECT().PrepareLogin(gomock.Any()).DoAndReturn(
 		ssohttp.New(sso.Options{
 			ClientID:    "test-eve-client",
-			CallbackURL: host.CallbackURL,
+			CallbackURL: in.host.CallbackURL,
 			UserAgent:   testUserAgent,
 			Scopes:      write.RequestedScopes(),
-		}, httpClient, logger).PrepareLogin,
+		}, in.httpClient, in.logger).PrepareLogin,
 	).AnyTimes()
 	ssoMock.EXPECT().AccessToken(gomock.Any(), gomock.Any()).Return(&sso.CharacterToken{
 		CharacterID:     esitest.FixtureCharacterID,
@@ -156,7 +157,7 @@ func wire(
 	if err != nil {
 		t.Fatal(err)
 	}
-	oauthServer, err := oauth.Open(host, runtime, oauth.Options{HMACKey: []byte(testHMACKey)}, logger)
+	oauthServer, err := oauth.Open(in.host, runtime, oauth.Options{HMACKey: []byte(testHMACKey)}, in.logger)
 	if err != nil {
 		t.Fatal(err)
 	}

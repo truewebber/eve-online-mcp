@@ -26,11 +26,12 @@ import (
 )
 
 const (
-	ssoHost        = "login.eveonline.com"
-	pathAuthorize  = "/v2/oauth/authorize"
-	pathOAuthToken = "/v2/oauth/token" //nolint:gosec // G101: CCP endpoint path, not a secret
-	pathRevoke     = "/v2/oauth/revoke"
-	pathJWKS       = "/oauth/jwks"
+	ssoHost             = "login.eveonline.com"
+	pathAuthorize       = "/v2/oauth/authorize"
+	pathOAuthToken      = "/v2/oauth/token" //nolint:gosec // G101: CCP endpoint path, not a secret
+	pathRevoke          = "/v2/oauth/revoke"
+	pathJWKS            = "/oauth/jwks"
+	eveCharacterSubject = "CHARACTER:EVE:"
 )
 
 func fail(msg string) error { return sso.Error{Msg: msg} }
@@ -282,61 +283,105 @@ func (c *Client) tokenRequest(ctx context.Context, data url.Values, clientID, se
 }
 
 func (c *Client) tokenFromPayload(ctx context.Context, payload map[string]any, fallback *sso.CharacterToken) (*sso.CharacterToken, error) {
+	pair, err := tokenPair(payload, fallback)
+	if err != nil {
+		return nil, err
+	}
+	claims, err := c.decode(ctx, pair.access)
+	if err != nil {
+		return nil, err
+	}
+	characterID, err := characterIDFromClaims(claims)
+	if err != nil {
+		return nil, err
+	}
+
+	return &sso.CharacterToken{
+		CharacterID:     characterID,
+		CharacterName:   tokenName(claims, fallback),
+		RefreshToken:    pair.refresh,
+		Scopes:          scopesFromClaims(claims),
+		OwnerHash:       tokenOwner(claims, fallback),
+		AccessToken:     pair.access,
+		AccessExpiresAt: time.Now().Add(time.Duration(expiresIn(payload) * float64(time.Second))),
+	}, nil
+}
+
+type tokenSecrets struct {
+	access, refresh string
+}
+
+func tokenPair(payload map[string]any, fallback *sso.CharacterToken) (tokenSecrets, error) {
 	access := j.Str(payload["access_token"])
 	refresh := j.Str(payload[formRefreshToken])
 	if refresh == "" && fallback != nil {
 		refresh = fallback.RefreshToken
 	}
 	if access == "" || refresh == "" {
-		return nil, fail("SSO response was missing access_token or refresh_token.")
+		return tokenSecrets{}, fail("SSO response was missing access_token or refresh_token.")
 	}
-	claims, err := c.decode(ctx, access)
-	if err != nil {
-		return nil, err
-	}
+
+	return tokenSecrets{access: access, refresh: refresh}, nil
+}
+
+func characterIDFromClaims(claims jwt.MapClaims) (int, error) {
 	subject := j.Str(claims["sub"])
-	if !strings.HasPrefix(subject, "CHARACTER:EVE:") {
-		return nil, fail(fmt.Sprintf("Unexpected token subject: %q", subject))
+	if !strings.HasPrefix(subject, eveCharacterSubject) {
+		return 0, fail(fmt.Sprintf("Unexpected token subject: %q", subject))
 	}
 	var characterID int
-	if _, err := fmt.Sscanf(strings.TrimPrefix(subject, "CHARACTER:EVE:"), "%d", &characterID); err != nil || characterID == 0 {
-		return nil, fail(fmt.Sprintf("Unexpected token subject: %q", subject))
+	if _, err := fmt.Sscanf(strings.TrimPrefix(subject, eveCharacterSubject), "%d", &characterID); err != nil || characterID == 0 {
+		return 0, fail(fmt.Sprintf("Unexpected token subject: %q", subject))
 	}
-	var scopes []string
+
+	return characterID, nil
+}
+
+func scopesFromClaims(claims jwt.MapClaims) []string {
 	switch scp := claims["scp"].(type) {
 	case string:
-		scopes = []string{scp}
+		return []string{scp}
 	case []any:
+		var scopes []string
 		for _, v := range scp {
 			if s, ok := v.(string); ok {
 				scopes = append(scopes, s)
 			}
 		}
+
+		return scopes
+	default:
+		return nil
 	}
-	expiresIn := 1200.0
+}
+
+func expiresIn(payload map[string]any) float64 {
+	out := 1200.0
 	if v, ok := payload["expires_in"]; ok {
 		if t, ok := v.(float64); ok {
-			expiresIn = t
+			return t
 		}
 	}
+
+	return out
+}
+
+func tokenName(claims jwt.MapClaims, fallback *sso.CharacterToken) string {
 	name := j.Str(claims["name"])
-	owner := j.Str(claims["owner"])
 	if name == "" && fallback != nil {
-		name = fallback.CharacterName
-	}
-	if owner == "" && fallback != nil {
-		owner = fallback.OwnerHash
+		return fallback.CharacterName
 	}
 
-	return &sso.CharacterToken{
-		CharacterID:     characterID,
-		CharacterName:   name,
-		RefreshToken:    refresh,
-		Scopes:          scopes,
-		OwnerHash:       owner,
-		AccessToken:     access,
-		AccessExpiresAt: time.Now().Add(time.Duration(expiresIn * float64(time.Second))),
-	}, nil
+	return name
+}
+
+func tokenOwner(claims jwt.MapClaims, fallback *sso.CharacterToken) string {
+	owner := j.Str(claims["owner"])
+	if owner == "" && fallback != nil {
+		return fallback.OwnerHash
+	}
+
+	return owner
 }
 
 func (c *Client) decode(ctx context.Context, accessToken string) (jwt.MapClaims, error) {

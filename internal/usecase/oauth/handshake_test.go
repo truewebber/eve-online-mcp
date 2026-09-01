@@ -134,72 +134,81 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) { //nolint:tparallel // subt
 		return rec
 	}
 
-	cases := []struct {
-		name   string
-		setup  func(t *testing.T) url.Values
-		status int
-		check  func(t *testing.T, rec *httptest.ResponseRecorder)
-	}{
-		{
-			name: "good pkce",
-			setup: func(t *testing.T) url.Values {
-				t.Helper()
-				put(t, "good", time.Now().Add(2*time.Minute))
+	for _, tc := range append(exchangeOKCases(s, put, verifier), exchangeFailCases(put, post, verifier)...) {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := post(tc.setup(t))
+			if rec.Code != tc.status {
+				t.Fatalf("status %d want %d body %s", rec.Code, tc.status, rec.Body.String())
+			}
+			if tc.check != nil {
+				tc.check(t, rec)
+			}
+		})
+	}
+}
 
-				return url.Values{
-					paramGrantType:    {grantAuthCode},
-					paramCode:         {"good"},
-					paramCodeVerifier: {verifier},
-					paramRedirectURI:  {redirect},
-				}
-			},
-			status: 200,
-			check: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				t.Helper()
-				var payload map[string]any
-				if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
-					t.Fatal(err)
-				}
-				raw, ok := payload["access_token"].(string)
-				if !ok || raw == "" {
-					t.Fatalf("access_token %+v", payload)
-				}
-				info, ref, err := s.verifyAccess(raw)
-				if err != nil || info.UserID != "2112625428" || ref.SessionID == 0 {
-					t.Fatalf("jwt %+v ref %+v err %v", info, ref, err)
-				}
-			},
+type exchangeCase struct {
+	name   string
+	setup  func(t *testing.T) url.Values
+	status int
+	check  func(t *testing.T, rec *httptest.ResponseRecorder)
+}
+
+func exchangeOKCases(s *Server, put func(*testing.T, string, time.Time), verifier string) []exchangeCase {
+	return []exchangeCase{{
+		name: "good pkce",
+		setup: func(t *testing.T) url.Values {
+			t.Helper()
+			put(t, "good", time.Now().Add(2*time.Minute))
+
+			return url.Values{
+				paramGrantType:    {grantAuthCode},
+				paramCode:         {"good"},
+				paramCodeVerifier: {verifier},
+				paramRedirectURI:  {redirect},
+			}
 		},
-		{
-			name: "bad verifier",
+		status: 200,
+		check: func(t *testing.T, rec *httptest.ResponseRecorder) {
+			t.Helper()
+			var payload map[string]any
+			if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+				t.Fatal(err)
+			}
+			raw, ok := payload["access_token"].(string)
+			if !ok || raw == "" {
+				t.Fatalf("access_token %+v", payload)
+			}
+			info, ref, err := s.verifyAccess(raw)
+			if err != nil || info.UserID != "2112625428" || ref.SessionID == 0 {
+				t.Fatalf("jwt %+v ref %+v err %v", info, ref, err)
+			}
+		},
+	}}
+}
+
+func exchangeFailCases(put func(*testing.T, string, time.Time), post func(url.Values) *httptest.ResponseRecorder, verifier string) []exchangeCase {
+	code := func(name, value, verifierVal, redir string) exchangeCase {
+		return exchangeCase{
+			name: name,
 			setup: func(t *testing.T) url.Values {
 				t.Helper()
-				put(t, "bad-v", time.Now().Add(2*time.Minute))
+				put(t, value, time.Now().Add(2*time.Minute))
 
 				return url.Values{
 					paramGrantType:    {grantAuthCode},
-					paramCode:         {"bad-v"},
-					paramCodeVerifier: {"nope"},
-					paramRedirectURI:  {redirect},
+					paramCode:         {value},
+					paramCodeVerifier: {verifierVal},
+					paramRedirectURI:  {redir},
 				}
 			},
 			status: 400,
-		},
-		{
-			name: "wrong redirect",
-			setup: func(t *testing.T) url.Values {
-				t.Helper()
-				put(t, "bad-r", time.Now().Add(2*time.Minute))
+		}
+	}
 
-				return url.Values{
-					paramGrantType:    {grantAuthCode},
-					paramCode:         {"bad-r"},
-					paramCodeVerifier: {verifier},
-					paramRedirectURI:  {"http://localhost:9/other"},
-				}
-			},
-			status: 400,
-		},
+	return []exchangeCase{
+		code("bad verifier", "bad-v", "nope", redirect),
+		code("wrong redirect", "bad-r", verifier, "http://localhost:9/other"),
 		{
 			name: "expired",
 			setup: func(t *testing.T) url.Values {
@@ -235,16 +244,5 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) { //nolint:tparallel // subt
 			},
 			status: 400,
 		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			rec := post(tc.setup(t))
-			if rec.Code != tc.status {
-				t.Fatalf("status %d want %d body %s", rec.Code, tc.status, rec.Body.String())
-			}
-			if tc.check != nil {
-				tc.check(t, rec)
-			}
-		})
 	}
 }

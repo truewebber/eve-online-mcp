@@ -70,38 +70,50 @@ func toolSentence(err error) string {
 	if v, ok := errors.AsType[ValidationError](err); ok {
 		return v.Field + " " + v.Invariant
 	}
+	if s := sentenceFromIs(err); s != "" {
+		return s
+	}
+
+	return sentenceFromAs(err)
+}
+
+func sentenceFromIs(err error) string {
+	for _, row := range []struct {
+		err error
+		s   string
+	}{
+		{session.ErrNoSession, sentenceAuth},
+		{session.ErrDeadSession, sentenceAuth},
+		{session.ErrMissingScope, sentenceScope},
+		{write.ErrMissingWriteScope, sentenceScope},
+		{sso.ErrInvalidGrant, sentenceGrant},
+		{session.ErrNPCCorp, sentenceNPC},
+		{session.ErrMissingCorpRole, sentenceRole},
+		{session.ErrNoCorporation, sentenceCorp},
+		{write.ErrMailCap, sentenceMail},
+		{write.ErrConfirmUnknown, sentenceConfirm},
+		{write.ErrConfirmArgs, sentenceConfirmArgs},
+		{write.ErrConfirmTool, sentenceConfirmTool},
+		{write.ErrUnknownCapability, sentenceCapability},
+		{esi.ErrAllowanceSpent, sentenceAllowance},
+		{esi.ErrBudgetSpent, sentenceBudget},
+		{ErrCSPAUnpriced, sentenceCSPAUnpriced},
+	} {
+		if errors.Is(err, row.err) {
+			return row.s
+		}
+	}
+
+	return ""
+}
+
+func sentenceFromAs(err error) string {
 	switch {
-	case errors.Is(err, session.ErrNoSession), errors.Is(err, session.ErrDeadSession):
-		return sentenceAuth
-	case errors.Is(err, session.ErrMissingScope), errors.Is(err, write.ErrMissingWriteScope):
-		return sentenceScope
-	case errors.Is(err, sso.ErrInvalidGrant):
-		return sentenceGrant
-	case errors.Is(err, session.ErrNPCCorp):
-		return sentenceNPC
-	case errors.Is(err, session.ErrMissingCorpRole):
-		return sentenceRole
-	case errors.Is(err, session.ErrNoCorporation):
-		return sentenceCorp
-	case errors.Is(err, write.ErrMailCap):
-		return sentenceMail
-	case errors.Is(err, write.ErrConfirmUnknown):
-		return sentenceConfirm
-	case errors.Is(err, write.ErrConfirmArgs):
-		return sentenceConfirmArgs
-	case errors.Is(err, write.ErrConfirmTool):
-		return sentenceConfirmTool
-	case errors.Is(err, write.ErrUnknownCapability):
-		return sentenceCapability
-	case errors.Is(err, esi.ErrAllowanceSpent):
-		return sentenceAllowance
-	case errors.Is(err, esi.ErrBudgetSpent):
-		return sentenceBudget
 	case errors.As(err, new(esi.RateLimitedError)):
 		return sentenceESILimit
 	case errors.As(err, new(esi.Error)):
 		return sentenceESI
-	case errors.Is(err, ErrCSPAUnpriced), errors.As(err, new(PreviewReadError)):
+	case errors.As(err, new(PreviewReadError)):
 		return sentenceCSPAUnpriced
 	case errors.As(err, new(CSPAExceedsError)):
 		return sentenceCSPAExceeds

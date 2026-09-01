@@ -14,12 +14,23 @@ func TestCatalogParserOk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	checkCatalogOkMeta(t, cat)
+	checkCatalogOkTools(t, cat)
+	checkCatalogOkPaging(t, cat)
+}
+
+func checkCatalogOkMeta(t *testing.T, cat catalog) {
+	t.Helper()
 	if cat.Instructions != "Hello from the contract." {
 		t.Fatalf("instructions %q", cat.Instructions)
 	}
 	if cat.Shared["limit"] == "" || cat.Shared["offset"] == "" {
 		t.Fatalf("shared %+v", cat.Shared)
 	}
+}
+
+func checkCatalogOkTools(t *testing.T, cat catalog) {
+	t.Helper()
 	status, ok := cat.Tools["eve_server_status"]
 	if !ok || status.Params == nil || len(status.Params) != 0 {
 		t.Fatalf("status %+v", status)
@@ -37,6 +48,10 @@ func TestCatalogParserOk(t *testing.T) {
 	if assets.Params["location"].Required {
 		t.Fatal("location required")
 	}
+}
+
+func checkCatalogOkPaging(t *testing.T, cat catalog) {
+	t.Helper()
 	if cat.Paging["eve_mail_list"].Param != paramLastMailID {
 		t.Fatalf("cursor %+v", cat.Paging["eve_mail_list"])
 	}

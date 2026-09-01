@@ -114,50 +114,37 @@ func TestNoBoundSyntaxInTags(t *testing.T) {
 
 func TestPatchBoundsMatchCatalog(t *testing.T) {
 	t.Parallel()
-	assets, err := jsonschema.For[assetsListIn](nil)
+	assets := schemaFor[assetsListIn](t)
+	requireMinMax(t, assets.Properties[fItems], 1, argItemsMax)
+	requireMinOnly(t, assets.Properties[paramMinValue], 0)
+	requireMinOnly(t, assets.Properties[fOffset], 0)
+	requireMinOnly(t, schemaFor[mailListIn](t).Properties[fLastMailID], 1)
+	requireMinOnly(t, schemaFor[assetsBlueprintsIn](t).Properties[fPage], 1)
+	requireMinMax(t, schemaFor[contactsSetIn](t).Properties[fStanding], argStandingMin, argStandingMax)
+}
+
+func schemaFor[T any](t *testing.T) *jsonschema.Schema {
+	t.Helper()
+	schema, err := jsonschema.For[T](nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	patchBounds(assets)
-	items := assets.Properties[fItems]
-	if items == nil || items.Minimum == nil || *items.Minimum != 1 || items.Maximum == nil || *items.Maximum != argItemsMax {
-		t.Fatalf("items bounds %+v", items)
+	patchBounds(schema)
+
+	return schema
+}
+
+func requireMinMax(t *testing.T, prop *jsonschema.Schema, lo, hi float64) {
+	t.Helper()
+	if prop == nil || prop.Minimum == nil || *prop.Minimum != lo || prop.Maximum == nil || *prop.Maximum != hi {
+		t.Fatalf("bounds %+v want min %v max %v", prop, lo, hi)
 	}
-	minv := assets.Properties[paramMinValue]
-	if minv == nil || minv.Minimum == nil || *minv.Minimum != 0 || minv.Maximum != nil {
-		t.Fatalf("min_value bounds %+v", minv)
-	}
-	off := assets.Properties[fOffset]
-	if off == nil || off.Minimum == nil || *off.Minimum != 0 || off.Maximum != nil {
-		t.Fatalf("offset bounds %+v", off)
-	}
-	mail, err := jsonschema.For[mailListIn](nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	patchBounds(mail)
-	cursor := mail.Properties[fLastMailID]
-	if cursor == nil || cursor.Minimum == nil || *cursor.Minimum != 1 || cursor.Maximum != nil {
-		t.Fatalf("last_mail_id bounds %+v", cursor)
-	}
-	bps, err := jsonschema.For[assetsBlueprintsIn](nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	patchBounds(bps)
-	pg := bps.Properties[fPage]
-	if pg == nil || pg.Minimum == nil || *pg.Minimum != 1 {
-		t.Fatalf("page bounds %+v", pg)
-	}
-	contacts, err := jsonschema.For[contactsSetIn](nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	patchBounds(contacts)
-	standing := contacts.Properties[fStanding]
-	if standing == nil || standing.Minimum == nil || *standing.Minimum != argStandingMin ||
-		standing.Maximum == nil || *standing.Maximum != argStandingMax {
-		t.Fatalf("standing bounds %+v", standing)
+}
+
+func requireMinOnly(t *testing.T, prop *jsonschema.Schema, lo float64) {
+	t.Helper()
+	if prop == nil || prop.Minimum == nil || *prop.Minimum != lo || prop.Maximum != nil {
+		t.Fatalf("min-only bounds %+v want %v", prop, lo)
 	}
 }
 
@@ -299,8 +286,22 @@ func reqString(name string) wantParam { return wantParam{name, schemaString, tru
 func reqInt(name string) wantParam { return wantParam{name, schemaInteger, true, ""} }
 
 func toolSurface() []toolWant {
-	list := []wantParam{optLimit(), optFormat()}
+	account := accountSurface()
+	hangar := hangarSurface()
+	corp := corpSurface()
+	writes := writeSurface()
+	out := make([]toolWant, 0, len(account)+len(hangar)+len(corp)+len(writes))
+	out = append(out, account...)
+	out = append(out, hangar...)
+	out = append(out, corp...)
+	out = append(out, writes...)
 
+	return out
+}
+
+func listFmt() []wantParam { return []wantParam{optLimit(), optFormat()} }
+
+func accountSurface() []toolWant {
 	return []toolWant{
 		{name: "eve_server_status"},
 		{name: "eve_auth_status"},
@@ -328,17 +329,22 @@ func toolSurface() []toolWant {
 			reqString(fItem), optString(fRegion), optBool("whole_region"),
 			{"history_days", schemaInteger, false, ""},
 		}},
-		{name: "eve_market_orders", params: list},
+		{name: "eve_market_orders", params: listFmt()},
 		{name: "eve_market_contracts", params: []wantParam{optBool("outstanding_only"), optPage(), optLimit(), optFormat()}},
+	}
+}
+
+func hangarSurface() []toolWant {
+	return []toolWant{
 		{name: "eve_mail_list", params: []wantParam{optBool("unread_only"), {fLastMailID, schemaInteger, false, ""}, optLimit(), optFormat()}},
 		{name: "eve_mail_read", params: []wantParam{reqInt(fMailID)}},
-		{name: "eve_social_notifications", params: list},
+		{name: "eve_social_notifications", params: listFmt()},
 		{name: "eve_calendar_list", params: []wantParam{
 			{fFromEvent, schemaInteger, false, ""}, optBool("unanswered_only"),
 			optBool("detail"), optBool("attendees"), optLimit(), optFormat(),
 		}},
 		{name: "eve_social_killmails", params: []wantParam{optPage(), optLimit(), optFormat()}},
-		{name: "eve_fitting_list", params: list},
+		{name: "eve_fitting_list", params: listFmt()},
 		{name: "eve_universe_search", params: []wantParam{
 			reqString(fQuery), optString(fieldCategories), optBool(fStrict), optLimit(),
 		}},
@@ -349,6 +355,11 @@ func toolSurface() []toolWant {
 			optString("avoid"), optBool("show_hops"),
 		}},
 		{name: "eve_universe_hotspots", params: []wantParam{optLimit()}},
+	}
+}
+
+func corpSurface() []toolWant {
+	return []toolWant{
 		{name: "eve_corp_overview"},
 		{name: "eve_corp_assets_list", params: []wantParam{
 			optString(fLocation), {paramMinValue, schemaNumber, false, ""}, optLimit(), optOffset(),
@@ -366,7 +377,12 @@ func toolSurface() []toolWant {
 		{name: "eve_corp_contracts", params: []wantParam{optBool("outstanding_only"), optPage(), optLimit(), optFormat()}},
 		{name: "eve_corp_killmails", params: []wantParam{optPage(), optLimit(), optFormat()}},
 		{name: "eve_corp_structures", params: []wantParam{optPage(), optLimit(), optFormat()}},
-		{name: "eve_corp_members", params: list},
+		{name: "eve_corp_members", params: listFmt()},
+	}
+}
+
+func writeSurface() []toolWant {
+	return []toolWant{
 		{name: "eve_ui_set_waypoint", params: []wantParam{
 			reqString("destination"), optBool("clear_other_waypoints"),
 			optBool("add_to_beginning"), optConfirm(),

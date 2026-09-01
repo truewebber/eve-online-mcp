@@ -99,7 +99,9 @@ func eveUniverseSearch(ctx context.Context, a *session.Session, in universeSearc
 	if err := a.RequireScope(token, "esi-search.search_structures.v1", "the search index"); err != nil {
 		return nil, wrap("eveUniverseSearch", err)
 	}
-	hit, err := searchWithFallback(ctx, a, token.CharacterID, wanted, in.Query, boolDef(in.Strict, false))
+	hit, err := searchWithFallback(ctx, a, searchQuery{
+		characterID: token.CharacterID, categories: wanted, query: in.Query, strict: boolDef(in.Strict, false),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -544,11 +546,18 @@ type searchHit struct {
 	age  float64
 }
 
-func searchWithFallback(ctx context.Context, a *session.Session, characterID int, categories []string, query string, strict bool) (searchHit, error) {
-	attempt := strings.TrimSpace(query)
+type searchQuery struct {
+	characterID int
+	categories  []string
+	query       string
+	strict      bool
+}
+
+func searchWithFallback(ctx context.Context, a *session.Session, in searchQuery) (searchHit, error) {
+	attempt := strings.TrimSpace(in.query)
 	for {
-		result, err := a.ESI.Get(ctx, esiPath("characters", esiID(characterID), "search"), &characterID, map[string]any{
-			"categories": categories, "search": attempt, fStrict: strict,
+		result, err := a.ESI.Get(ctx, esiPath("characters", esiID(in.characterID), "search"), &in.characterID, map[string]any{
+			"categories": in.categories, "search": attempt, fStrict: in.strict,
 		}, nil)
 		if err != nil {
 			return searchHit{used: attempt}, wrap("searchWithFallback", err)
@@ -565,7 +574,7 @@ func searchWithFallback(ctx context.Context, a *session.Session, characterID int
 				hit = true
 			}
 		}
-		if hit || strict || len(attempt) <= 3 {
+		if hit || in.strict || len(attempt) <= 3 {
 			return searchHit{raw: raw, used: attempt, age: result.AgeSeconds}, nil
 		}
 		attempt = attempt[:len(attempt)-1]

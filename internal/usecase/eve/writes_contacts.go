@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
+	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 	"github.com/truewebber/eve-online-mcp/internal/j"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 
@@ -39,11 +40,11 @@ type contactApplyResult struct {
 
 func registerContacts(s *mcp.Server) {
 	addTool(s, &mcp.Tool{
-		Name:        "eve_contacts_set",
+		Name:        write.ToolContactsSet,
 		Description: "Add or update contacts with a standing.\n\nA negative standing colours that player red in the overview. Treat it as a visible social act.",
 	}, sessionTool(eveContactsSet))
 	addTool(s, &mcp.Tool{
-		Name:        "eve_contacts_delete",
+		Name:        write.ToolContactsDelete,
 		Description: "Remove contacts from this character's contact list.\n\nDeleting a contact also clears any standing set on them. That is a visible social change, so confirm the names before the second call. It does not block or report anyone.",
 	}, sessionTool(eveContactsDelete))
 }
@@ -53,57 +54,35 @@ func eveContactsSet(ctx context.Context, a *session.Session, in contactsSetIn) (
 	if err != nil {
 		return nil, wrap("eveContactsSet", err)
 	}
-	matches, failure, err := resolveContacts(ctx, a, in.Names)
+	found, err := resolveContacts(ctx, a, in.Names)
 	if err != nil {
 		return nil, err
 	}
-	if failure != nil {
-		return failure, nil
-	}
-	watched := boolDef(in.Watched, false)
-	var contactIDs []int
-	var resolved []string
-	watchable := map[int]struct{}{}
-	for _, m := range matches {
-		contactIDs = append(contactIDs, m.ID)
-		resolved = append(resolved, m.Name)
-		if m.Category == fCharacters {
-			watchable[m.ID] = struct{}{}
-		}
+	if found.failure != nil {
+		return found.failure, nil
 	}
 	existing, err := a.ESI.GetAllPages(ctx, esiPath("characters", esiID(token.CharacterID), "contacts"), &token.CharacterID, nil, pagesESI)
 	if err != nil {
 		return nil, wrap("eveContactsSet", err)
 	}
-	known := map[int]struct{}{}
-	for _, c := range j.Maps(existing.Data) {
-		known[j.Int(c["contact_id"])] = struct{}{}
-	}
-	var updating, neu []int
-	for _, id := range contactIDs {
-		if _, ok := known[id]; ok {
-			updating = append(updating, id)
-		} else {
-			neu = append(neu, id)
-		}
-	}
-	args := map[string]any{fContactIDs: contactIDs, fStanding: in.Standing, fWatched: watched, fCharacterID: token.CharacterID}
-	preview := map[string]any{
-		fAction:    "Set contact standings (visible in the character's overview)",
-		fCharacter: token.CharacterName, fContacts: resolved, fStanding: in.Standing,
-		fWatched: watched, "new_contacts": len(neu), "updated_contacts": len(updating),
-	}
-	if watched && len(watchable) != len(contactIDs) {
-		preview["watched_note"] = fmt.Sprintf("Only %d of %d are characters; the rest are corporations or alliances, which cannot be watched.", len(watchable), len(contactIDs))
-	}
-	blocked, err := a.Guard.Authorize(ctx, "eve_contacts_set", fContacts, args, preview, in.ConfirmToken, token.Scopes)
+	plan := planContactSet(found.matches, knownContactIDs(existing.Data))
+	watched := boolDef(in.Watched, false)
+	args := map[string]any{fContactIDs: plan.ids, fStanding: in.Standing, fWatched: watched, fCharacterID: token.CharacterID}
+	preview := contactSetPreview(token.CharacterName, plan, in.Standing, watched)
+	blocked, err := a.Guard.Authorize(ctx, write.Authz{
+		Tool: write.ToolContactsSet, Capability: write.CapContacts,
+		Args: args, Preview: preview, Token: in.ConfirmToken, Scopes: token.Scopes,
+	})
 	if err != nil {
 		return nil, wrap("eveContactsSet", err)
 	}
 	if blocked.Required != nil {
 		return blocked.Required, nil
 	}
-	applied, err := applyContactOps(ctx, a, token.CharacterID, in.Standing, buildContactOps(updating, neu, watched, watchable))
+	applied, err := applyContactOps(ctx, a, contactApplyIn{
+		characterID: token.CharacterID, standing: in.Standing,
+		ops: buildContactOps(plan.updating, plan.neu, watched, plan.watchable),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +90,53 @@ func eveContactsSet(ctx context.Context, a *session.Session, in contactsSetIn) (
 		return applied.fail, nil
 	}
 
-	return map[string]any{fStatus: vDone, fContacts: resolved, fStanding: in.Standing}, nil
+	return map[string]any{fStatus: vDone, fContacts: plan.names, fStanding: in.Standing}, nil
+}
+
+type contactPlan struct {
+	ids, updating, neu []int
+	names              []string
+	watchable          map[int]struct{}
+}
+
+func knownContactIDs(data any) map[int]struct{} {
+	known := map[int]struct{}{}
+	for _, c := range j.Maps(data) {
+		known[j.Int(c["contact_id"])] = struct{}{}
+	}
+
+	return known
+}
+
+func planContactSet(matches []esi.NameMatch, known map[int]struct{}) contactPlan {
+	out := contactPlan{watchable: map[int]struct{}{}}
+	for _, m := range matches {
+		out.ids = append(out.ids, m.ID)
+		out.names = append(out.names, m.Name)
+		if m.Category == fCharacters {
+			out.watchable[m.ID] = struct{}{}
+		}
+		if _, ok := known[m.ID]; ok {
+			out.updating = append(out.updating, m.ID)
+		} else {
+			out.neu = append(out.neu, m.ID)
+		}
+	}
+
+	return out
+}
+
+func contactSetPreview(character string, plan contactPlan, standing float64, watched bool) map[string]any {
+	preview := map[string]any{
+		fAction:    "Set contact standings (visible in the character's overview)",
+		fCharacter: character, fContacts: plan.names, fStanding: standing,
+		fWatched: watched, "new_contacts": len(plan.neu), "updated_contacts": len(plan.updating),
+	}
+	if watched && len(plan.watchable) != len(plan.ids) {
+		preview["watched_note"] = fmt.Sprintf("Only %d of %d are characters; the rest are corporations or alliances, which cannot be watched.", len(plan.watchable), len(plan.ids))
+	}
+
+	return preview
 }
 
 func eveContactsDelete(ctx context.Context, a *session.Session, in contactsDeleteIn) (any, error) {
@@ -119,13 +144,14 @@ func eveContactsDelete(ctx context.Context, a *session.Session, in contactsDelet
 	if err != nil {
 		return nil, wrap("eveContactsDelete", err)
 	}
-	matches, failure, err := resolveContacts(ctx, a, in.Names)
+	found, err := resolveContacts(ctx, a, in.Names)
 	if err != nil {
 		return nil, err
 	}
-	if failure != nil {
-		return failure, nil
+	if found.failure != nil {
+		return found.failure, nil
 	}
+	matches := found.matches
 	var ids []int
 	var resolved []string
 	for _, m := range matches {
@@ -134,7 +160,10 @@ func eveContactsDelete(ctx context.Context, a *session.Session, in contactsDelet
 	}
 	args := map[string]any{fContactIDs: ids, fCharacterID: token.CharacterID}
 	preview := map[string]any{fAction: "Delete contacts and the standings set on them", fCharacter: token.CharacterName, fContacts: resolved}
-	blocked, err := a.Guard.Authorize(ctx, "eve_contacts_delete", fContacts, args, preview, in.ConfirmToken, token.Scopes)
+	blocked, err := a.Guard.Authorize(ctx, write.Authz{
+		Tool: write.ToolContactsDelete, Capability: write.CapContacts,
+		Args: args, Preview: preview, Token: in.ConfirmToken, Scopes: token.Scopes,
+	})
 	if err != nil {
 		return nil, wrap("eveContactsDelete", err)
 	}
@@ -142,7 +171,7 @@ func eveContactsDelete(ctx context.Context, a *session.Session, in contactsDelet
 		return blocked.Required, nil
 	}
 	_, err = a.ESI.Delete(ctx, esiPath("characters", esiID(token.CharacterID), "contacts"), &token.CharacterID, map[string]any{fContactIDs: ids}, nil)
-	recordWrite(ctx, a, "eve_contacts_delete", fContacts, args, err)
+	recordWrite(ctx, a, writeLog{tool: write.ToolContactsDelete, capability: write.CapContacts, args: args, err: err})
 	if err != nil {
 		return nil, wrap("eveContactsDelete", err)
 	}
@@ -150,11 +179,16 @@ func eveContactsDelete(ctx context.Context, a *session.Session, in contactsDelet
 	return map[string]any{fStatus: vDone, "removed": resolved}, nil
 }
 
-func resolveContacts(ctx context.Context, a *session.Session, namesIn []string) ([]esi.NameMatch, map[string]any, error) {
+type contactResolved struct {
+	matches []esi.NameMatch
+	failure map[string]any
+}
+
+func resolveContacts(ctx context.Context, a *session.Session, namesIn []string) (contactResolved, error) {
 	only := []string{fCharacters, fCorporations, fAlliances}
 	resolutions, err := a.Resolver.ResolveNames(ctx, namesIn, nil, only)
 	if err != nil {
-		return nil, nil, wrap("resolveContacts", err)
+		return contactResolved{}, wrap("resolveContacts", err)
 	}
 	var matches []esi.NameMatch
 	var unknown []string
@@ -172,7 +206,7 @@ func resolveContacts(ctx context.Context, a *session.Session, namesIn []string) 
 		}
 	}
 	if len(unknown) > 0 {
-		return nil, unresolvedResult(unknown...), nil
+		return contactResolved{failure: unresolvedResult(unknown...)}, nil
 	}
 	if len(ambiguous) > 0 {
 		var parts []string
@@ -180,10 +214,10 @@ func resolveContacts(ctx context.Context, a *session.Session, namesIn []string) 
 			parts = append(parts, m.Describe())
 		}
 
-		return nil, ambiguousResult(parts), nil
+		return contactResolved{failure: ambiguousResult(parts)}, nil
 	}
 
-	return matches, nil, nil
+	return contactResolved{matches: matches}, nil
 }
 
 func buildContactOps(updating, neu []int, watched bool, watchable map[int]struct{}) []contactOp {
@@ -219,11 +253,17 @@ func buildContactOps(updating, neu []int, watched bool, watchable map[int]struct
 	return ops
 }
 
-func applyContactOps(ctx context.Context, a *session.Session, characterID int, standing float64, ops []contactOp) (contactApplyResult, error) {
+type contactApplyIn struct {
+	characterID int
+	standing    float64
+	ops         []contactOp
+}
+
+func applyContactOps(ctx context.Context, a *session.Session, in contactApplyIn) (contactApplyResult, error) {
 	appliedU, appliedA := []int{}, []int{}
-	path := esiPath("characters", esiID(characterID), "contacts")
-	for _, op := range ops {
-		err := runContactOp(ctx, a, characterID, path, standing, op)
+	path := esiPath("characters", esiID(in.characterID), "contacts")
+	for _, op := range in.ops {
+		err := runContactOp(ctx, a, contactOpRun{characterID: in.characterID, path: path, standing: in.standing, op: op})
 		if err != nil {
 			if len(appliedU)+len(appliedA) == 0 {
 				return contactApplyResult{}, err
@@ -237,7 +277,7 @@ func applyContactOps(ctx context.Context, a *session.Session, characterID int, s
 				fError:     "Partially applied. Call eve_contacts_set again with the same arguments.",
 				fKind:      "EsiError",
 				fStatus:    status,
-				"standing": standing,
+				"standing": in.standing,
 				"updated":  len(appliedU),
 				"added":    len(appliedA),
 			}}, nil
@@ -252,16 +292,23 @@ func applyContactOps(ctx context.Context, a *session.Session, characterID int, s
 	return contactApplyResult{appliedU: appliedU, appliedA: appliedA}, nil
 }
 
-func runContactOp(ctx context.Context, a *session.Session, characterID int, path string, standing float64, op contactOp) error {
+type contactOpRun struct {
+	characterID int
+	path        string
+	standing    float64
+	op          contactOp
+}
+
+func runContactOp(ctx context.Context, a *session.Session, in contactOpRun) error {
 	var call func(context.Context, string, *int, map[string]any, any) (any, error)
-	if op.verb == vUpdate {
+	if in.op.verb == vUpdate {
 		call = a.ESI.Put
 	} else {
 		call = a.ESI.Post
 	}
-	args := map[string]any{fContactIDs: op.ids, fStanding: standing, fWatched: op.flag, fCharacterID: characterID, "phase": op.verb}
-	_, err := call(ctx, path, &characterID, map[string]any{fStanding: standing, fWatched: op.flag}, op.ids)
-	recordWrite(ctx, a, "eve_contacts_set", fContacts, args, err)
+	args := map[string]any{fContactIDs: in.op.ids, fStanding: in.standing, fWatched: in.op.flag, fCharacterID: in.characterID, "phase": in.op.verb}
+	_, err := call(ctx, in.path, &in.characterID, map[string]any{fStanding: in.standing, fWatched: in.op.flag}, in.op.ids)
+	recordWrite(ctx, a, writeLog{tool: write.ToolContactsSet, capability: write.CapContacts, args: args, err: err})
 	if err != nil {
 		return err
 	}

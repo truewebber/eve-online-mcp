@@ -130,9 +130,9 @@ type finding struct {
 }
 
 func (f finding) String() string {
-	doc, got := quotePair(f.Doc, f.Got)
+	q := quotePair(f.Doc, f.Got)
 
-	return fmt.Sprintf("%s %s: %s %s; %s %s", f.Tool, f.Field, docsTOOLS, doc, sideList, got)
+	return fmt.Sprintf("%s %s: %s %s; %s %s", f.Tool, f.Field, docsTOOLS, q.Doc, sideList, q.Got)
 }
 
 func parseTOOLS(text string) (catalog, error) {
@@ -147,29 +147,29 @@ func parseTOOLS(text string) (catalog, error) {
 		line := lines[i]
 		switch {
 		case isPipeTable(line) && tableKind(line) == "shared":
-			shared, next := parseSharedTable(lines, i)
-			maps.Copy(out.Shared, shared)
-			i = next
+			shared := parseSharedTable(lines, i)
+			maps.Copy(out.Shared, shared.Val)
+			i = shared.Next
 		case strings.HasPrefix(line, serverInstructions):
-			block, next, err := parseInstructionFence(lines, i+1)
+			block, err := parseInstructionFence(lines, i+1)
 			if err != nil {
 				return catalog{}, err
 			}
-			out.Instructions = block
-			i = next
+			out.Instructions = block.Val
+			i = block.Next
 		case strings.HasPrefix(line, "### Pagination by tool"):
-			paging, next := parsePagingTable(lines, i+1)
-			out.Paging = paging
-			i = next
+			paging := parsePagingTable(lines, i+1)
+			out.Paging = paging.Val
+			i = paging.Next
 		case reBareEveHeading.MatchString(line) && !reToolHeading.MatchString(line):
 			return catalog{}, fmt.Errorf("%w: %s", errBadHeading, line)
 		case reToolHeading.MatchString(line):
-			spec, next, err := parseDocTool(lines, i, out.Shared)
+			scanned, err := parseDocTool(lines, i, out.Shared)
 			if err != nil {
 				return catalog{}, err
 			}
-			out.Tools[spec.Name] = spec
-			i = next
+			out.Tools[scanned.Val.Name] = scanned.Val
+			i = scanned.Next
 		case strings.HasPrefix(line, notInCatalog):
 			return out, nil
 		default:
@@ -302,7 +302,7 @@ func diffTool(want toolSpec, live map[string]any, paging pageClass) []finding {
 	slices.Sort(names)
 	for _, name := range names {
 		seen[name] = struct{}{}
-		out = append(out, diffParam(want.Name, name, want.Params[name], jMap(props[name]), required[name])...)
+		out = append(out, diffParam(paramCmp{tool: want.Name, name: name, want: want.Params[name], prop: jMap(props[name]), required: required[name]})...)
 	}
 	var extra []string
 	for name := range props {
@@ -319,49 +319,56 @@ func diffTool(want toolSpec, live map[string]any, paging pageClass) []finding {
 	return out
 }
 
-func diffParam(tool, name string, want paramSpec, prop map[string]any, required bool) []finding {
-	if len(prop) == 0 {
-		return []finding{{Tool: tool, Field: name, Doc: want.DocType, Got: sideAbsent}}
+type paramCmp struct {
+	tool, name string
+	want       paramSpec
+	prop       map[string]any
+	required   bool
+}
+
+func diffParam(in paramCmp) []finding {
+	if len(in.prop) == 0 {
+		return []finding{{Tool: in.tool, Field: in.name, Doc: in.want.DocType, Got: sideAbsent}}
 	}
 	var out []finding
-	gotType := schemaTypeOf(prop)
-	if want.SchemaType != "" && gotType != want.SchemaType {
-		out = append(out, finding{Tool: tool, Field: name + "." + fieldType, Doc: want.SchemaType, Got: gotType})
+	gotType := schemaTypeOf(in.prop)
+	if in.want.SchemaType != "" && gotType != in.want.SchemaType {
+		out = append(out, finding{Tool: in.tool, Field: in.name + "." + fieldType, Doc: in.want.SchemaType, Got: gotType})
 	}
-	if want.ItemType != "" {
-		items := jMap(prop[fieldItems])
+	if in.want.ItemType != "" {
+		items := jMap(in.prop[fieldItems])
 		gotItem := schemaTypeOf(items)
-		if gotItem != want.ItemType {
-			out = append(out, finding{Tool: tool, Field: name + "." + fieldItems, Doc: want.ItemType, Got: emptyAsAbsent(gotItem)})
+		if gotItem != in.want.ItemType {
+			out = append(out, finding{Tool: in.tool, Field: in.name + "." + fieldItems, Doc: in.want.ItemType, Got: emptyAsAbsent(gotItem)})
 		}
 	}
-	if want.Required != required {
+	if in.want.Required != in.required {
 		out = append(out, finding{
-			Tool: tool, Field: name + "." + fieldRequired,
-			Doc: strconv.FormatBool(want.Required), Got: strconv.FormatBool(required),
+			Tool: in.tool, Field: in.name + "." + fieldRequired,
+			Doc: strconv.FormatBool(in.want.Required), Got: strconv.FormatBool(in.required),
 		})
 	}
-	gotDesc := jStr(prop[fieldDescription])
-	if normalizeWS(want.Description) != normalizeWS(gotDesc) {
-		out = append(out, finding{Tool: tool, Field: name + "." + fieldDescription, Doc: want.Description, Got: gotDesc})
+	gotDesc := jStr(in.prop[fieldDescription])
+	if normalizeWS(in.want.Description) != normalizeWS(gotDesc) {
+		out = append(out, finding{Tool: in.tool, Field: in.name + "." + fieldDescription, Doc: in.want.Description, Got: gotDesc})
 	}
-	gotBound := boundFromSchema(prop)
-	if !sameBound(want.Bounds, gotBound) {
-		out = append(out, finding{Tool: tool, Field: name + "." + fieldBounds, Doc: formatBound(want.Bounds), Got: formatBound(gotBound)})
+	gotBound := boundFromSchema(in.prop)
+	if !sameBound(in.want.Bounds, gotBound) {
+		out = append(out, finding{Tool: in.tool, Field: in.name + "." + fieldBounds, Doc: formatBound(in.want.Bounds), Got: formatBound(gotBound)})
 	}
-	if len(want.Fields) == 0 {
+	if len(in.want.Fields) == 0 {
 		return out
 	}
-	items := jMap(prop[fieldItems])
+	items := jMap(in.prop[fieldItems])
 	nested := jMap(items[fieldProperties])
 	nestedReq := requiredSet(items["required"])
 	var fields []string
-	for f := range want.Fields {
+	for f := range in.want.Fields {
 		fields = append(fields, f)
 	}
 	slices.Sort(fields)
 	for _, f := range fields {
-		out = append(out, diffParam(tool, name+"."+f, want.Fields[f], jMap(nested[f]), nestedReq[f])...)
+		out = append(out, diffParam(paramCmp{tool: in.tool, name: in.name + "." + f, want: in.want.Fields[f], prop: jMap(nested[f]), required: nestedReq[f]})...)
 	}
 
 	return out
@@ -380,64 +387,82 @@ func diffPaging(tool string, paging pageClass, props map[string]any) []finding {
 	return nil
 }
 
-func parseDocTool(lines []string, start int, shared map[string]string) (toolSpec, int, error) {
+type docScan[T any] struct {
+	Val  T
+	Next int
+}
+
+func parseDocTool(lines []string, start int, shared map[string]string) (docScan[toolSpec], error) {
 	m := reToolHeading.FindStringSubmatch(lines[start])
 	spec := toolSpec{Name: m[1], Params: map[string]paramSpec{}}
 	i := start + 1
 	var desc []string
 	for i < len(lines) {
 		line := lines[i]
-		if strings.HasPrefix(line, notInCatalog) || reToolHeading.MatchString(line) || reBareEveHeading.MatchString(line) {
+		if docToolEnds(line) {
 			break
 		}
-		if strings.HasPrefix(line, "*Source:") || strings.HasPrefix(line, "*Source :") {
+		if docToolSkipSource(line) {
 			i++
 
 			continue
 		}
 		if strings.HasPrefix(line, "_No parameters._") {
 			spec.Description = strings.TrimSpace(strings.Join(desc, "\n"))
-			return spec, i + 1, nil
-		}
-		if isPipeTable(line) && tableKind(line) == "params" {
-			spec.Description = strings.TrimSpace(strings.Join(desc, "\n"))
-			params, next, err := parseParamTable(lines, i, shared)
-			if err != nil {
-				return toolSpec{}, 0, fmt.Errorf("%s: %w", spec.Name, err)
-			}
-			spec.Params = params
-			i = next
-			for i < len(lines) && strings.TrimSpace(lines[i]) == "" {
-				i++
-			}
-			if i < len(lines) && strings.Contains(lines[i], "Each `modules` entry") {
-				fields, after, err := parseFieldTable(lines, i+1)
-				if err != nil {
-					return toolSpec{}, 0, fmt.Errorf("%s modules: %w", spec.Name, err)
-				}
-				mod := spec.Params["modules"]
-				mod.Fields = fields
-				spec.Params["modules"] = mod
-				i = after
-			}
 
-			return spec, i, nil
+			return docScan[toolSpec]{Val: spec, Next: i + 1}, nil
 		}
 		if isPipeTable(line) {
-			return toolSpec{}, 0, fmt.Errorf("%s: %w", spec.Name, errBadTable)
+			return finishDocToolTable(lines, i, spec, desc, shared)
 		}
 		desc = append(desc, line)
 		i++
 	}
 	spec.Description = strings.TrimSpace(strings.Join(desc, "\n"))
 
-	return spec, i, nil
+	return docScan[toolSpec]{Val: spec, Next: i}, nil
 }
 
-func parseSharedTable(lines []string, start int) (map[string]string, int) {
-	rows, next := readTable(lines, start)
+func docToolEnds(line string) bool {
+	return strings.HasPrefix(line, notInCatalog) || reToolHeading.MatchString(line) || reBareEveHeading.MatchString(line)
+}
+
+func docToolSkipSource(line string) bool {
+	return strings.HasPrefix(line, "*Source:") || strings.HasPrefix(line, "*Source :")
+}
+
+func finishDocToolTable(lines []string, i int, spec toolSpec, desc []string, shared map[string]string) (docScan[toolSpec], error) {
+	if tableKind(lines[i]) != "params" {
+		return docScan[toolSpec]{}, fmt.Errorf("%s: %w", spec.Name, errBadTable)
+	}
+	spec.Description = strings.TrimSpace(strings.Join(desc, "\n"))
+	params, err := parseParamTable(lines, i, shared)
+	if err != nil {
+		return docScan[toolSpec]{}, fmt.Errorf("%s: %w", spec.Name, err)
+	}
+	spec.Params = params.Val
+	i = params.Next
+	for i < len(lines) && strings.TrimSpace(lines[i]) == "" {
+		i++
+	}
+	if i < len(lines) && strings.Contains(lines[i], "Each `modules` entry") {
+		fields, err := parseFieldTable(lines, i+1)
+		if err != nil {
+			return docScan[toolSpec]{}, fmt.Errorf("%s modules: %w", spec.Name, err)
+		}
+		mod := spec.Params["modules"]
+		mod.Fields = fields.Val
+		spec.Params["modules"] = mod
+		i = fields.Next
+	}
+
+	return docScan[toolSpec]{Val: spec, Next: i}, nil
+}
+
+func parseSharedTable(lines []string, start int) docScan[map[string]string] {
+	table := readTable(lines, start)
 	out := map[string]string{}
-	for _, row := range rows {
+	for _, row := range table.Val {
 		if len(row) < minSharedCols {
 			continue
 		}
@@ -448,31 +473,31 @@ func parseSharedTable(lines []string, start int) (map[string]string, int) {
 		out[name] = strings.TrimSpace(row[1])
 	}
 
-	return out, next
+	return docScan[map[string]string]{Val: out, Next: table.Next}
 }
 
-func parseParamTable(lines []string, start int, shared map[string]string) (map[string]paramSpec, int, error) {
+func parseParamTable(lines []string, start int, shared map[string]string) (docScan[map[string]paramSpec], error) {
 	header := splitRow(lines[start])
 	if !hasBoundsColumn(header) {
-		return nil, 0, errBadTable
+		return docScan[map[string]paramSpec]{}, errBadTable
 	}
-	rows, next := readTable(lines, start)
+	table := readTable(lines, start)
 	out := map[string]paramSpec{}
-	for _, row := range rows {
+	for _, row := range table.Val {
 		if len(row) < 5 || stripTicks(row[0]) == "Parameter" {
 			continue
 		}
 		p, err := paramFromRow(row, shared)
 		if err != nil {
-			return nil, 0, err
+			return docScan[map[string]paramSpec]{}, err
 		}
 		out[p.Name] = p
 	}
 
-	return out, next, nil
+	return docScan[map[string]paramSpec]{Val: out, Next: table.Next}, nil
 }
 
-func parseFieldTable(lines []string, start int) (map[string]paramSpec, int, error) {
+func parseFieldTable(lines []string, start int) (docScan[map[string]paramSpec], error) {
 	for start < len(lines) && !isPipeTable(lines[start]) {
 		if strings.TrimSpace(lines[start]) == "" {
 			start++
@@ -483,17 +508,17 @@ func parseFieldTable(lines []string, start int) (map[string]paramSpec, int, erro
 		break
 	}
 	if start >= len(lines) || !isPipeTable(lines[start]) {
-		return nil, start, nil
+		return docScan[map[string]paramSpec]{Val: nil, Next: start}, nil
 	}
-	rows, next := readTable(lines, start)
+	table := readTable(lines, start)
 	out := map[string]paramSpec{}
-	for _, row := range rows {
+	for _, row := range table.Val {
 		if len(row) < 4 || stripTicks(row[0]) == "Field" {
 			continue
 		}
 		req, err := parseRequired(row[2])
 		if err != nil {
-			return nil, 0, err
+			return docScan[map[string]paramSpec]{}, err
 		}
 		docType := strings.TrimSpace(row[1])
 		p := paramSpec{
@@ -503,26 +528,26 @@ func parseFieldTable(lines []string, start int) (map[string]paramSpec, int, erro
 		out[p.Name] = p
 	}
 
-	return out, next, nil
+	return docScan[map[string]paramSpec]{Val: out, Next: table.Next}, nil
 }
 
-func parsePagingTable(lines []string, start int) (map[string]pageClass, int) {
+func parsePagingTable(lines []string, start int) docScan[map[string]pageClass] {
 	for start < len(lines) && !isPipeTable(lines[start]) {
 		start++
 	}
 	if start >= len(lines) {
-		return map[string]pageClass{}, start
+		return docScan[map[string]pageClass]{Val: map[string]pageClass{}, Next: start}
 	}
-	rows, next := readTable(lines, start)
+	table := readTable(lines, start)
 	out := map[string]pageClass{}
-	for _, row := range rows {
+	for _, row := range table.Val {
 		if len(row) < 3 || strings.Contains(row[0], "Shape") {
 			continue
 		}
-		kind, def := pagingKind(row[0])
+		shape := pagingKind(row[0])
 		toolsCell := row[len(row)-1]
 		for _, hit := range reTickParam.FindAllStringSubmatch(toolsCell, -1) {
-			out[hit[1]] = pageClass{Kind: kind, Param: hit[2]}
+			out[hit[1]] = pageClass{Kind: shape.Kind, Param: hit[2]}
 		}
 		stripped := reTickParam.ReplaceAllString(toolsCell, "")
 		for _, hit := range reTickName.FindAllStringSubmatch(stripped, -1) {
@@ -533,20 +558,20 @@ func parsePagingTable(lines []string, start int) (map[string]pageClass, int) {
 			if _, ok := out[name]; ok {
 				continue
 			}
-			out[name] = pageClass{Kind: kind, Param: def}
+			out[name] = pageClass{Kind: shape.Kind, Param: shape.Def}
 		}
 	}
 
-	return out, next
+	return docScan[map[string]pageClass]{Val: out, Next: table.Next}
 }
 
-func parseInstructionFence(lines []string, start int) (string, int, error) {
+func parseInstructionFence(lines []string, start int) (docScan[string], error) {
 	i := start
 	for i < len(lines) && strings.TrimSpace(lines[i]) != "```" {
 		i++
 	}
 	if i >= len(lines) {
-		return "", 0, errNoInstructions
+		return docScan[string]{}, errNoInstructions
 	}
 	i++
 	var b strings.Builder
@@ -556,10 +581,10 @@ func parseInstructionFence(lines []string, start int) (string, int, error) {
 		i++
 	}
 	if i >= len(lines) {
-		return "", 0, errNoInstructions
+		return docScan[string]{}, errNoInstructions
 	}
 
-	return strings.TrimSpace(b.String()), i + 1, nil
+	return docScan[string]{Val: strings.TrimSpace(b.String()), Next: i + 1}, nil
 }
 
 func paramFromRow(row []string, shared map[string]string) (paramSpec, error) {
@@ -635,15 +660,15 @@ func parseBound(raw string) (bound, error) {
 
 		return out, nil
 	}
-	lo, hi, ok := splitRange(norm)
+	ends, ok := splitRange(norm)
 	if !ok {
 		return bound{}, fmt.Errorf("%w: %q", errBadBounds, raw)
 	}
-	a, err := strconv.ParseFloat(lo, 64)
+	a, err := strconv.ParseFloat(ends.Lo, 64)
 	if err != nil {
 		return bound{}, fmt.Errorf("%w: %q", errBadBounds, raw)
 	}
-	b, err := strconv.ParseFloat(hi, 64)
+	b, err := strconv.ParseFloat(ends.Hi, 64)
 	if err != nil {
 		return bound{}, fmt.Errorf("%w: %q", errBadBounds, raw)
 	}
@@ -652,18 +677,22 @@ func parseBound(raw string) (bound, error) {
 	return out, nil
 }
 
-func splitRange(s string) (string, string, bool) {
+type boundEnds struct {
+	Lo, Hi string
+}
+
+func splitRange(s string) (boundEnds, bool) {
 	start := 0
 	if strings.HasPrefix(s, "-") {
 		start = 1
 	}
 	i := strings.Index(s[start:], "-")
 	if i < 0 {
-		return "", "", false
+		return boundEnds{}, false
 	}
 	i += start
 
-	return s[:i], s[i+1:], true
+	return boundEnds{Lo: s[:i], Hi: s[i+1:]}, true
 }
 
 func mapDocType(doc string) string {
@@ -683,17 +712,21 @@ func mapDocType(doc string) string {
 	}
 }
 
-func pagingKind(shape string) (string, string) {
+type pageShape struct {
+	Kind, Def string
+}
+
+func pagingKind(shape string) pageShape {
 	s := strings.ToLower(shape)
 	switch {
 	case strings.Contains(s, "cursor"):
-		return pageCursor, ""
+		return pageShape{Kind: pageCursor}
 	case strings.Contains(s, "numbered"):
-		return pageNumbered, paramPage
+		return pageShape{Kind: pageNumbered, Def: paramPage}
 	case strings.Contains(s, "folded"):
-		return pageFolded, paramOffset
+		return pageShape{Kind: pageFolded, Def: paramOffset}
 	default:
-		return pageNone, ""
+		return pageShape{Kind: pageNone}
 	}
 }
 
@@ -888,7 +921,7 @@ func hasBoundsColumn(header []string) bool {
 	return false
 }
 
-func readTable(lines []string, start int) ([][]string, int) {
+func readTable(lines []string, start int) docScan[[][]string] {
 	var rows [][]string
 	i := start
 	for i < len(lines) && isPipeTable(lines[i]) {
@@ -899,7 +932,7 @@ func readTable(lines []string, start int) ([][]string, int) {
 		i++
 	}
 
-	return rows, i
+	return docScan[[][]string]{Val: rows, Next: i}
 }
 
 func splitRow(line string) []string {
@@ -952,19 +985,23 @@ func quoteSide(s string) string {
 	return strconv.Quote(s)
 }
 
-func quotePair(doc, got string) (string, string) {
+type quoted struct {
+	Doc, Got string
+}
+
+func quotePair(doc, got string) quoted {
 	if doc == sideAbsent || got == sideAbsent || (len(doc) < quoteShort && len(got) < quoteShort) {
-		return quoteSide(doc), quoteSide(got)
+		return quoted{Doc: quoteSide(doc), Got: quoteSide(got)}
 	}
 	n := 0
 	for n < len(doc) && n < len(got) && doc[n] == got[n] {
 		n++
 	}
 	if n < quotePrefixMin {
-		return quoteSide(doc), quoteSide(got)
+		return quoted{Doc: quoteSide(doc), Got: quoteSide(got)}
 	}
 
-	return quoteSide("…" + doc[n:]), quoteSide("…" + got[n:])
+	return quoted{Doc: quoteSide("…" + doc[n:]), Got: quoteSide("…" + got[n:])}
 }
 
 func emptyAsAbsent(s string) string {

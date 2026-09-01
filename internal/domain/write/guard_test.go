@@ -15,6 +15,10 @@ import (
 
 const testDestination = "Jita"
 
+func authz(tool, capability string, args, preview map[string]any, token string, scopes []string) write.Authz {
+	return write.Authz{Tool: tool, Capability: capability, Args: args, Preview: preview, Token: token, Scopes: scopes}
+}
+
 type confirmBox struct {
 	tokens map[string]write.Confirm
 	rows   []write.Mutation
@@ -112,7 +116,7 @@ func TestAuthorizePreviewAndConfirm(t *testing.T) {
 	preview := map[string]any{"will_set": testDestination}
 	scopes := write.Capabilities()["waypoint"].Scopes
 
-	out, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, preview, "", scopes)
+	out, err := g.Authorize(ctx, authz("eve_ui_set_waypoint", "waypoint", args, preview, "", scopes))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,11 +128,11 @@ func TestAuthorizePreviewAndConfirm(t *testing.T) {
 		t.Fatalf("preview %+v", out)
 	}
 
-	done, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, preview, token, scopes)
+	done, err := g.Authorize(ctx, authz("eve_ui_set_waypoint", "waypoint", args, preview, token, scopes))
 	if err != nil || done.Required != nil {
 		t.Fatalf("confirm %v %v", done, err)
 	}
-	_, err = g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, preview, token, scopes)
+	_, err = g.Authorize(ctx, authz("eve_ui_set_waypoint", "waypoint", args, preview, token, scopes))
 	if !errors.As(err, new(write.BlockedError)) {
 		t.Fatalf("replay want BlockedError, got %v", err)
 	}
@@ -141,7 +145,7 @@ func TestConfirmToolMismatchKeepsToken(t *testing.T) {
 	args := map[string]any{"destination": testDestination}
 	scopes := append([]string{}, write.Capabilities()["waypoint"].Scopes...)
 	scopes = append(scopes, write.Capabilities()[write.CapMailSend].Scopes...)
-	out, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, "", write.Capabilities()["waypoint"].Scopes)
+	out, err := g.Authorize(ctx, authz("eve_ui_set_waypoint", "waypoint", args, nil, "", write.Capabilities()["waypoint"].Scopes))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,12 +153,12 @@ func TestConfirmToolMismatchKeepsToken(t *testing.T) {
 	if !ok || token == "" {
 		t.Fatalf("preview %+v", out)
 	}
-	_, err = g.Authorize(ctx, "eve_mail_send", write.CapMailSend, args, nil, token, scopes)
+	_, err = g.Authorize(ctx, authz("eve_mail_send", write.CapMailSend, args, nil, token, scopes))
 	var blocked write.BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "eve_ui_set_waypoint") {
 		t.Fatalf("mismatch %v", err)
 	}
-	done, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, token, write.Capabilities()["waypoint"].Scopes)
+	done, err := g.Authorize(ctx, authz("eve_ui_set_waypoint", "waypoint", args, nil, token, write.Capabilities()["waypoint"].Scopes))
 	if err != nil || done.Required != nil {
 		t.Fatalf("token should still work: %v %v", done, err)
 	}
@@ -165,7 +169,7 @@ func TestConfirmDigestMismatchDiscards(t *testing.T) {
 	ctx := context.Background()
 	g, _ := testGuard(t)
 	scopes := write.Capabilities()["waypoint"].Scopes
-	out, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", map[string]any{"d": testDestination}, nil, "", scopes)
+	out, err := g.Authorize(ctx, authz("eve_ui_set_waypoint", "waypoint", map[string]any{"d": testDestination}, nil, "", scopes))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,12 +177,12 @@ func TestConfirmDigestMismatchDiscards(t *testing.T) {
 	if !ok || token == "" {
 		t.Fatalf("preview %+v", out)
 	}
-	_, err = g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", map[string]any{"d": "Amarr"}, nil, token, scopes)
+	_, err = g.Authorize(ctx, authz("eve_ui_set_waypoint", "waypoint", map[string]any{"d": "Amarr"}, nil, token, scopes))
 	var blocked write.BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "arguments changed") {
 		t.Fatalf("digest %v", err)
 	}
-	_, err = g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", map[string]any{"d": testDestination}, nil, token, scopes)
+	_, err = g.Authorize(ctx, authz("eve_ui_set_waypoint", "waypoint", map[string]any{"d": testDestination}, nil, token, scopes))
 	if !errors.As(err, &blocked) {
 		t.Fatalf("discarded token still worked: %v", err)
 	}
@@ -189,7 +193,7 @@ func TestConfirmExpiry(t *testing.T) {
 	ctx := context.Background()
 	g, box := testGuard(t)
 	args := map[string]any{"d": testDestination}
-	out, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, "", write.Capabilities()["waypoint"].Scopes)
+	out, err := g.Authorize(ctx, authz("eve_ui_set_waypoint", "waypoint", args, nil, "", write.Capabilities()["waypoint"].Scopes))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +204,7 @@ func TestConfirmExpiry(t *testing.T) {
 	stored := box.tokens[token]
 	stored.CreatedAt = time.Now().Add(-10 * time.Minute)
 	box.tokens[token] = stored
-	_, err = g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", args, nil, token, write.Capabilities()["waypoint"].Scopes)
+	_, err = g.Authorize(ctx, authz("eve_ui_set_waypoint", "waypoint", args, nil, token, write.Capabilities()["waypoint"].Scopes))
 	var blocked write.BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "expired") {
 		t.Fatalf("expiry %v", err)
@@ -216,7 +220,7 @@ func TestSixthMailIsBlocked(t *testing.T) {
 	for range 5 {
 		recordMail(t, g, nil)
 	}
-	_, err := g.Authorize(ctx, "eve_mail_send", write.CapMailSend, nil, nil, "", scopes)
+	_, err := g.Authorize(ctx, authz("eve_mail_send", write.CapMailSend, nil, nil, "", scopes))
 	var blocked write.BlockedError
 	if !errors.As(err, &blocked) || !strings.Contains(blocked.Msg, "Mail budget exhausted") {
 		t.Fatalf("sixth mail %v", err)
@@ -234,7 +238,7 @@ func TestPreviewDoesNotRecord(t *testing.T) {
 	ctx := context.Background()
 	g, box := testGuard(t)
 	scopes := write.Capabilities()["waypoint"].Scopes
-	_, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", map[string]any{"d": testDestination}, nil, "", scopes)
+	_, err := g.Authorize(ctx, authz("eve_ui_set_waypoint", "waypoint", map[string]any{"d": testDestination}, nil, "", scopes))
 	if err != nil {
 		t.Fatal(err)
 	}

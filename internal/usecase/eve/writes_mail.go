@@ -57,25 +57,25 @@ type composeRecipients struct {
 
 func registerMailOrganize(s *mcp.Server) {
 	addTool(s, &mcp.Tool{
-		Name:        "eve_mail_mark",
+		Name:        write.ToolMailMark,
 		Description: "Change the read flag on one mail. This does not return the mail's contents — use eve_mail_read for that. Unread mail is what eve_mail_list can filter on; this is how a mail leaves that list.",
 	}, sessionTool(eveMailMark))
 	addTool(s, &mcp.Tool{
-		Name:        "eve_mail_delete",
+		Name:        write.ToolMailDelete,
 		Description: "Delete one mail. Permanent — deleted EVE mail cannot be recovered. The preview shows sender, subject and date so the user can confirm.",
 	}, sessionTool(eveMailDelete))
 }
 
 func registerMailSend(s *mcp.Server) {
 	addTool(s, &mcp.Tool{
-		Name:        "eve_mail_send",
+		Name:        write.ToolMailSend,
 		Description: "Send an in-game EVE mail from this character to other players.\n\nThe most consequential tool on this server. The mail cannot be recalled. Show the preview to the user word for word — the full body and the priced CSPA charge — and get an explicit yes before confirming. Capped at 5 mails per hour; eve_auth_status reports how many are left. If the user is in front of their client, eve_mail_compose does the same job and leaves the sending to them.",
 	}, sessionTool(eveMailSend))
 }
 
 func registerMailCompose(s *mcp.Server) {
 	addTool(s, &mcp.Tool{
-		Name:        "eve_mail_compose",
+		Name:        write.ToolMailCompose,
 		Description: "Open a pre-filled mail in the player's client without sending it.\n\nThe safe half of mail: recipients, subject and body are filled in, the compose window opens in the running game client, and the Send button stays the player's. Nothing leaves the character, no CSPA charge is possible, and it does not count against the hourly send cap. Prefer it over eve_mail_send whenever the user is at their keyboard — eve_mail_send is for a mail that has to go out without them touching the client.\n\nNeeds the EVE client logged in on this character. There is no way to tell from here whether it is, so report that the window was requested, never that a mail was delivered.",
 	}, sessionTool(eveMailCompose))
 }
@@ -92,7 +92,10 @@ func eveMailMark(ctx context.Context, a *session.Session, in mailMarkIn) (any, e
 		label = fRead
 	}
 	preview := map[string]any{fAction: fmt.Sprintf("Mark mail #%d as %s", in.MailID, label), fCharacter: token.CharacterName}
-	blocked, err := a.Guard.Authorize(ctx, "eve_mail_mark", "mail_organize", args, preview, in.ConfirmToken, token.Scopes)
+	blocked, err := a.Guard.Authorize(ctx, write.Authz{
+		Tool: write.ToolMailMark, Capability: write.CapMailOrganize,
+		Args: args, Preview: preview, Token: in.ConfirmToken, Scopes: token.Scopes,
+	})
 	if err != nil {
 		return nil, wrap("eveMailMark", err)
 	}
@@ -100,7 +103,7 @@ func eveMailMark(ctx context.Context, a *session.Session, in mailMarkIn) (any, e
 		return blocked.Required, nil
 	}
 	_, err = a.ESI.Put(ctx, esiPath("characters", esiID(token.CharacterID), "mail", esiID(in.MailID)), &token.CharacterID, nil, map[string]any{fRead: read})
-	recordWrite(ctx, a, "eve_mail_mark", "mail_organize", args, err)
+	recordWrite(ctx, a, writeLog{tool: write.ToolMailMark, capability: write.CapMailOrganize, args: args, err: err})
 	if err != nil {
 		return nil, wrap("eveMailMark", err)
 	}
@@ -127,7 +130,10 @@ func eveMailDelete(ctx context.Context, a *session.Session, in mailDeleteIn) (an
 		fAction: "Permanently delete a mail", fCharacter: token.CharacterName,
 		fSubject: mail[fSubject], fFrom: sender, fTimestamp: mail[fTimestamp],
 	}
-	blocked, err := a.Guard.Authorize(ctx, "eve_mail_delete", "mail_organize", args, preview, in.ConfirmToken, token.Scopes)
+	blocked, err := a.Guard.Authorize(ctx, write.Authz{
+		Tool: write.ToolMailDelete, Capability: write.CapMailOrganize,
+		Args: args, Preview: preview, Token: in.ConfirmToken, Scopes: token.Scopes,
+	})
 	if err != nil {
 		return nil, wrap("eveMailDelete", err)
 	}
@@ -135,7 +141,7 @@ func eveMailDelete(ctx context.Context, a *session.Session, in mailDeleteIn) (an
 		return blocked.Required, nil
 	}
 	_, err = a.ESI.Delete(ctx, esiPath("characters", esiID(token.CharacterID), "mail", esiID(in.MailID)), &token.CharacterID, nil, nil)
-	recordWrite(ctx, a, "eve_mail_delete", "mail_organize", args, err)
+	recordWrite(ctx, a, writeLog{tool: write.ToolMailDelete, capability: write.CapMailOrganize, args: args, err: err})
 	if err != nil {
 		return nil, wrap("eveMailDelete", err)
 	}
@@ -165,16 +171,19 @@ func eveMailSend(ctx context.Context, a *session.Session, in mailSendIn) (any, e
 	if charge > float64(in.ApprovedCost) {
 		return nil, CSPAExceedsError{Cost: charge, Approved: in.ApprovedCost}
 	}
-	subj, body := clipMail(in.Subject, in.Body)
-	payload := map[string]any{fRecipients: resolved.recipients, fSubject: subj, fBody: body, fApprovedCost: in.ApprovedCost}
-	args := map[string]any{fRecipients: resolved.recipients, fSubject: subj, fBody: body, fApprovedCost: in.ApprovedCost, fCharacterID: token.CharacterID}
+	clipped := clipMail(in.Subject, in.Body)
+	payload := map[string]any{fRecipients: resolved.recipients, fSubject: clipped.subject, fBody: clipped.body, fApprovedCost: in.ApprovedCost}
+	args := map[string]any{fRecipients: resolved.recipients, fSubject: clipped.subject, fBody: clipped.body, fApprovedCost: in.ApprovedCost, fCharacterID: token.CharacterID}
 	preview := map[string]any{
 		fAction: "SEND AN IN-GAME MAIL — another player will receive this and it cannot be recalled",
-		fFrom:   token.CharacterName, "to": resolved.resolvedNames, fSubject: subj, fBody: body,
+		fFrom:   token.CharacterName, "to": resolved.resolvedNames, fSubject: clipped.subject, fBody: clipped.body,
 		"approved_cspa_cost_isk": in.ApprovedCost,
 		"priced_cspa_cost_isk":   charge,
 	}
-	blocked, err := a.Guard.Authorize(ctx, "eve_mail_send", "mail_send", args, preview, in.ConfirmToken, token.Scopes)
+	blocked, err := a.Guard.Authorize(ctx, write.Authz{
+		Tool: write.ToolMailSend, Capability: write.CapMailSend,
+		Args: args, Preview: preview, Token: in.ConfirmToken, Scopes: token.Scopes,
+	})
 	if err != nil {
 		return nil, wrap("eveMailSend", err)
 	}
@@ -182,7 +191,7 @@ func eveMailSend(ctx context.Context, a *session.Session, in mailSendIn) (any, e
 		return blocked.Required, nil
 	}
 	mailID, err := a.ESI.Post(ctx, esiPath("characters", esiID(token.CharacterID), "mail"), &token.CharacterID, nil, payload)
-	recordWrite(ctx, a, write.ToolMailSend, write.CapMailSend, args, err)
+	recordWrite(ctx, a, writeLog{tool: write.ToolMailSend, capability: write.CapMailSend, args: args, err: err})
 	if err != nil {
 		return nil, wrap("eveMailSend", err)
 	}
@@ -214,7 +223,10 @@ func eveMailCompose(ctx context.Context, a *session.Session, in mailComposeIn) (
 		args["to_corp_or_alliance_id"] = resolved.groupID
 	}
 	preview := composePreview(token.CharacterName, resolved, in.Subject, in.Body)
-	blocked, err := a.Guard.Authorize(ctx, "eve_mail_compose", "openwindow", args, preview, in.ConfirmToken, token.Scopes)
+	blocked, err := a.Guard.Authorize(ctx, write.Authz{
+		Tool: write.ToolMailCompose, Capability: write.CapOpenWindow,
+		Args: args, Preview: preview, Token: in.ConfirmToken, Scopes: token.Scopes,
+	})
 	if err != nil {
 		return nil, wrap("eveMailCompose", err)
 	}
@@ -222,7 +234,7 @@ func eveMailCompose(ctx context.Context, a *session.Session, in mailComposeIn) (
 		return blocked.Required, nil
 	}
 	_, err = a.ESI.Post(ctx, "/ui/openwindow/newmail", &token.CharacterID, nil, body)
-	recordWrite(ctx, a, "eve_mail_compose", "openwindow", args, err)
+	recordWrite(ctx, a, writeLog{tool: write.ToolMailCompose, capability: write.CapOpenWindow, args: args, err: err})
 	if err != nil {
 		return nil, wrap("eveMailCompose", err)
 	}
@@ -272,7 +284,11 @@ func composePreview(character string, resolved composeRecipients, subject, body 
 	return preview
 }
 
-func clipMail(subject, body string) (string, string) {
+type mailClip struct {
+	subject, body string
+}
+
+func clipMail(subject, body string) mailClip {
 	if len(subject) > mailSubjectMax {
 		subject = subject[:mailSubjectMax]
 	}
@@ -280,7 +296,7 @@ func clipMail(subject, body string) (string, string) {
 		body = body[:mailBodyMax]
 	}
 
-	return subject, body
+	return mailClip{subject: subject, body: body}
 }
 
 func recipientType(category string) string {

@@ -261,13 +261,20 @@ func applyLimit(rows []map[string]any, limit int, hint string) limitedPage {
 	}}
 }
 
-func pageByCursor(shown []map[string]any, limit int, key, hint string, esi []map[string]any) cursorPage {
-	clipped := applyLimit(shown, limit, hint)
+type cursorPageIn struct {
+	Shown     []map[string]any
+	Limit     int
+	Key, Hint string
+	ESI       []map[string]any
+}
+
+func pageByCursor(in cursorPageIn) cursorPage {
+	clipped := applyLimit(in.Shown, in.Limit, in.Hint)
 	next := 0
-	if len(clipped.Rows) == limitOr(limit, limitDefault) && len(clipped.Rows) > 0 {
-		next = j.Int(clipped.Rows[len(clipped.Rows)-1][key])
-	} else if len(esi) >= esiCursorPage && len(esi) > 0 {
-		next = j.Int(esi[len(esi)-1][key])
+	if len(clipped.Rows) == limitOr(in.Limit, limitDefault) && len(clipped.Rows) > 0 {
+		next = j.Int(clipped.Rows[len(clipped.Rows)-1][in.Key])
+	} else if len(in.ESI) >= esiCursorPage && len(in.ESI) > 0 {
+		next = j.Int(in.ESI[len(in.ESI)-1][in.Key])
 	}
 	if next != 0 {
 		clipped.fields[fNextCursor] = next

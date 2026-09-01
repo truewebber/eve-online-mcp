@@ -22,29 +22,33 @@ func newNameCache() *nameCache {
 	return &nameCache{ll: list.New(), items: map[int]*list.Element{}}
 }
 
-func (c *nameCache) get(ids []int) (map[int]string, []int) {
+type nameHit struct {
+	names   map[int]string
+	missing []int
+}
+
+func (c *nameCache) get(ids []int) nameHit {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	out := map[int]string{}
-	var missing []int
+	out := nameHit{names: map[int]string{}}
 	for _, id := range ids {
 		el, ok := c.items[id]
 		if !ok {
-			missing = append(missing, id)
+			out.missing = append(out.missing, id)
 
 			continue
 		}
 		item, ok := el.Value.(*nameItem)
 		if !ok {
-			missing = append(missing, id)
+			out.missing = append(out.missing, id)
 
 			continue
 		}
 		c.ll.MoveToFront(el)
-		out[id] = item.name
+		out.names[id] = item.name
 	}
 
-	return out, missing
+	return out
 }
 
 func (c *nameCache) put(id int, name string) {

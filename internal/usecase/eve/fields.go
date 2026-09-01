@@ -31,6 +31,7 @@ const (
 	fEstimatedValue      = "estimated_value"
 	fExpires             = "expires"
 	fFittingID           = "fitting_id"
+	fFittings            = "fittings"
 	fFrom                = "from"
 	fItem                = "item"
 	fItems               = "items"

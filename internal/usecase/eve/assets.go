@@ -93,7 +93,10 @@ func eveAssetsList(ctx context.Context, a *session.Session, in assetsListIn) (an
 		return nil, wrap("eveAssetsList", err)
 	}
 	buckets := assetBuckets(assets, roots, prices)
-	rows := assetLocationRows(buckets, placeNames, typeNames, prices, in.Location, in.MinValue, limitOr(in.Items, limitTopItems))
+	rows := assetLocationRows(assetLocIn{
+		buckets: buckets, placeNames: placeNames, typeNames: typeNames, prices: prices,
+		location: in.Location, minValue: in.MinValue, itemsN: limitOr(in.Items, limitTopItems),
+	})
 	sort.Slice(rows, func(i, k int) bool { return j.Float(rows[i]["value_isk"]) > j.Float(rows[k]["value_isk"]) })
 	paged := pageByOffset(rows, in.Offset, limitOr(in.Limit, limitShort), "Pass offset to continue, or filter with `location` / `min_value`.")
 	total := 0.0
@@ -135,23 +138,32 @@ func assetBuckets(assets []map[string]any, roots map[int]int, prices map[int]map
 	return buckets
 }
 
-func assetLocationRows(buckets map[int]*assetBucket, placeNames, typeNames map[int]string, prices map[int]map[string]float64, location string, minValue float64, itemsN int) []map[string]any {
-	needle := strings.ToLower(strings.TrimSpace(location))
+type assetLocIn struct {
+	buckets               map[int]*assetBucket
+	placeNames, typeNames map[int]string
+	prices                map[int]map[string]float64
+	location              string
+	minValue              float64
+	itemsN                int
+}
+
+func assetLocationRows(in assetLocIn) []map[string]any {
+	needle := strings.ToLower(strings.TrimSpace(in.location))
 	var rows []map[string]any
-	for placeID, b := range buckets {
-		place := placeNames[placeID]
+	for placeID, b := range in.buckets {
+		place := in.placeNames[placeID]
 		if place == "" {
 			place = fmt.Sprintf("Unknown #%d", placeID)
 		}
 		if needle != "" && !strings.Contains(strings.ToLower(place), needle) {
 			continue
 		}
-		if b.value < minValue {
+		if b.value < in.minValue {
 			continue
 		}
 		rows = append(rows, map[string]any{
 			fLocation: place, fValue: isk(b.value), "value_isk": mathRound(b.value, decimalPlaces),
-			fDistinctTypes: len(b.types), fUnits: b.units, "location_id": placeID, "top_items": topItemLines(b.types, typeNames, prices, itemsN),
+			fDistinctTypes: len(b.types), fUnits: b.units, "location_id": placeID, "top_items": topItemLines(b.types, in.typeNames, in.prices, in.itemsN),
 		})
 	}
 
@@ -233,7 +245,10 @@ func eveAssetsFind(ctx context.Context, a *session.Session, in assetsFindIn) (an
 	if err != nil {
 		return nil, wrap("eveAssetsFind", err)
 	}
-	rows := assetFindRows(matches, roots, byID, typeNames, placeNames, prices)
+	rows := assetFindRows(assetFindInRows{
+		matches: matches, roots: roots, byID: byID,
+		typeNames: typeNames, placeNames: placeNames, prices: prices,
+	})
 	sort.Slice(rows, func(i, k int) bool { return j.Int(rows[i][fQuantity]) > j.Int(rows[k][fQuantity]) })
 	paged := pageByOffset(rows, in.Offset, limitOr(in.Limit, limitMedium), "")
 	total := 0
@@ -260,22 +275,30 @@ func assetFindMatches(items []map[string]any, typeNames map[int]string, name str
 	return matches
 }
 
-func assetFindRows(matches []map[string]any, roots map[int]int, byID map[int]map[string]any, typeNames, placeNames map[int]string, prices map[int]map[string]float64) []map[string]any {
-	rows := make([]map[string]any, 0, len(matches))
-	for _, item := range matches {
-		root := roots[j.Int(item["item_id"])]
-		container := byID[j.Int(item["location_id"])]
+type assetFindInRows struct {
+	matches               []map[string]any
+	roots                 map[int]int
+	byID                  map[int]map[string]any
+	typeNames, placeNames map[int]string
+	prices                map[int]map[string]float64
+}
+
+func assetFindRows(in assetFindInRows) []map[string]any {
+	rows := make([]map[string]any, 0, len(in.matches))
+	for _, item := range in.matches {
+		root := in.roots[j.Int(item["item_id"])]
+		container := in.byID[j.Int(item["location_id"])]
 		qty := j.Int(item[fQuantity])
 		if qty == 0 {
 			qty = 1
 		}
 		var inside any
 		if container != nil {
-			inside = typeNames[j.Int(container[fTypeID])]
+			inside = in.typeNames[j.Int(container[fTypeID])]
 		}
 		rows = append(rows, map[string]any{
-			fItem: typeNames[j.Int(item[fTypeID])], fQuantity: qty,
-			fLocation: nameOr(placeNames, root), fEstimatedValue: isk(unitPrice(prices, j.Int(item[fTypeID])) * float64(qty)),
+			fItem: in.typeNames[j.Int(item[fTypeID])], fQuantity: qty,
+			fLocation: nameOr(in.placeNames, root), fEstimatedValue: isk(unitPrice(in.prices, j.Int(item[fTypeID])) * float64(qty)),
 			"inside": inside, "slot": item["location_flag"],
 			"packaged": !j.Bool(item["is_singleton"]), "item_id": item["item_id"],
 		})

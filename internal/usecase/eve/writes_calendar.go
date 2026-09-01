@@ -3,6 +3,7 @@ package eve
 import (
 	"context"
 
+	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 	"github.com/truewebber/eve-online-mcp/internal/j"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 
@@ -17,7 +18,7 @@ type calendarRespondIn struct {
 
 func registerCalendar(s *mcp.Server) {
 	addTool(s, &mcp.Tool{
-		Name:        "eve_calendar_respond",
+		Name:        write.ToolCalendarRespond,
 		Description: "Respond to a calendar event invitation on this character.\n\nThe organiser and other invitees see accepted, declined or tentative in-game. This only RSVPs; it does not create, edit or delete events. Confirm before sending an answer the player will have to live with.",
 	}, sessionTool(eveCalendarRespond))
 }
@@ -42,7 +43,10 @@ func eveCalendarRespond(ctx context.Context, a *session.Session, in calendarResp
 		fCharacter: token.CharacterName, "event": event[fTitle], fDate: event[fDate],
 		"owner": event["owner_name"], fResponse: response,
 	}
-	blocked, err := a.Guard.Authorize(ctx, "eve_calendar_respond", "calendar", args, preview, in.ConfirmToken, token.Scopes)
+	blocked, err := a.Guard.Authorize(ctx, write.Authz{
+		Tool: write.ToolCalendarRespond, Capability: write.CapCalendar,
+		Args: args, Preview: preview, Token: in.ConfirmToken, Scopes: token.Scopes,
+	})
 	if err != nil {
 		return nil, wrap("eveCalendarRespond", err)
 	}
@@ -50,7 +54,7 @@ func eveCalendarRespond(ctx context.Context, a *session.Session, in calendarResp
 		return blocked.Required, nil
 	}
 	_, err = a.ESI.Put(ctx, esiPath("characters", esiID(token.CharacterID), "calendar", esiID(in.EventID)), &token.CharacterID, nil, map[string]any{fResponse: response})
-	recordWrite(ctx, a, "eve_calendar_respond", "calendar", args, err)
+	recordWrite(ctx, a, writeLog{tool: write.ToolCalendarRespond, capability: write.CapCalendar, args: args, err: err})
 	if err != nil {
 		return nil, wrap("eveCalendarRespond", err)
 	}

@@ -1,6 +1,6 @@
 # T28 — One function, one job; one result
 
-- Status: `todo`
+- Status: `done`
 - Size: L
 - Depends on: T27
 - RULES: §15 (one function, one job), §10 (a function returns one
@@ -114,15 +114,15 @@ confirm rather than redo.
 
 ## Acceptance
 
-- [ ] No function returns two business values
-- [ ] No function takes more than four parameters plus `ctx`
-- [ ] `funlen`, `gocyclo`, `cyclop`, `gocognit` and `nestif` are enabled
+- [x] No function returns two business values
+- [x] No function takes more than four parameters plus `ctx`
+- [x] `funlen`, `gocyclo`, `cyclop`, `gocognit` and `nestif` are enabled
       and `make lint` is clean
-- [ ] `git diff` adds no `//nolint` directive
-- [ ] No file in `internal/` is longer than 600 lines
-- [ ] The test diff contains only call-shape updates — no changed
+- [x] `git diff` adds no `//nolint` directive
+- [x] No file in `internal/` is longer than 600 lines
+- [x] The test diff contains only call-shape updates — no changed
       assertion, no deleted case, no new test
-- [ ] `go test ./...` and `make test-store` pass
+- [x] `go test ./...` and `make test-store` pass
 
 ## Verify
 

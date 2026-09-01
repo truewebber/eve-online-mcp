@@ -44,30 +44,80 @@ func run() int {
 }
 
 func start(logger log.Logger) error {
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "help", "-h", "--help":
-			logger.Info(usage)
+	if helpRequested() {
+		logger.Info(usage)
 
-			return nil
-		}
+		return nil
 	}
-
 	cfg, err := loadConfig()
 	if err != nil {
 		return err
 	}
-
 	db, err := postgres.Open(context.Background(), cfg.DatabaseURL, logger)
 	if err != nil {
 		return fmt.Errorf("open postgres: %w", err)
 	}
 	defer db.Close()
+	runtime, err := openRuntime(cfg, db, logger)
+	if err != nil {
+		return err
+	}
+	host := oauthHost(cfg)
+	oauthServer, err := oauth.Open(host, runtime.session, oauth.Options{
+		HMACKey:           cfg.hmacKey,
+		ExtraRedirects:    cfg.ExtraRedirects,
+		TrustConnectingIP: cfg.TrustConnectingIP,
+	}, logger)
+	if err != nil {
+		return fmt.Errorf("open oauth: %w", err)
+	}
+	go sweep.New(runtime.sweep).Start(context.Background())
+
+	return listen(serveIn{cfg: cfg, db: db, host: host, oauth: oauthServer, logger: logger})
+}
+
+func helpRequested() bool {
+	if len(os.Args) < minCLIArgs {
+		return false
+	}
+	switch os.Args[1] {
+	case "help", "-h", "--help":
+		return true
+	default:
+		return false
+	}
+}
+
+type runtime struct {
+	session *session.Session
+	sweep   sweep.Options
+}
+
+func openRuntime(cfg config, db *postgres.DB, logger log.Logger) (runtime, error) {
+	opts := sessionOptions(cfg, db, logger)
+	opened, err := session.Open(opts)
+	if err != nil {
+		return runtime{}, fmt.Errorf("open session: %w", err)
+	}
+
+	return runtime{session: opened, sweep: sweep.Options{
+		Lock:      sweep.NewPoolLock(db.Pool()),
+		Logins:    opts.Logins,
+		Codes:     opts.Codes,
+		Confirms:  opts.Confirms,
+		Sessions:  opts.Sessions,
+		Mutations: opts.Mutations,
+		Clients:   opts.Clients,
+		SSO:       opts.SSO,
+		Logger:    logger,
+	}}, nil
+}
+
+func sessionOptions(cfg config, db *postgres.DB, logger log.Logger) session.Options {
 	pool := db.Pool()
-	chars := characterpgx.New(pool, logger)
 	opts := session.Options{
 		UserAgent:  cfg.UserAgent,
-		Characters: chars,
+		Characters: characterpgx.New(pool, logger),
 		Sessions:   sessionpgx.New(pool, logger),
 		Clients:    oauthclientpgx.New(pool),
 		Logins:     loginstatepgx.New(pool),
@@ -91,45 +141,37 @@ func start(logger log.Logger) error {
 		UserAgent:    cfg.UserAgent,
 		Scopes:       write.RequestedScopes(),
 	}, opts.HTTP, logger)
-	runtime, err := session.Open(opts)
-	if err != nil {
-		return fmt.Errorf("open session: %w", err)
-	}
-	host := oauth.Host{
+
+	return opts
+}
+
+func oauthHost(cfg config) oauth.Host {
+	return oauth.Host{
 		Listen:      cfg.Listen,
 		PublicURL:   cfg.PublicURL,
 		MCPPath:     "/mcp",
 		CallbackURL: cfg.CallbackURL,
 	}
-	oauthServer, err := oauth.Open(host, runtime, oauth.Options{
-		HMACKey:           cfg.hmacKey,
-		ExtraRedirects:    cfg.ExtraRedirects,
-		TrustConnectingIP: cfg.TrustConnectingIP,
-	}, logger)
-	if err != nil {
-		return fmt.Errorf("open oauth: %w", err)
-	}
-	go sweep.New(sweep.Options{
-		Lock:      sweep.NewPoolLock(pool),
-		Logins:    opts.Logins,
-		Codes:     opts.Codes,
-		Confirms:  opts.Confirms,
-		Sessions:  opts.Sessions,
-		Mutations: opts.Mutations,
-		Clients:   opts.Clients,
-		SSO:       opts.SSO,
-		Logger:    logger,
-	}).Start(context.Background())
+}
 
-	h := httpsvc.New(oauthServer, host, logger)
+type serveIn struct {
+	cfg    config
+	db     *postgres.DB
+	host   oauth.Host
+	oauth  *oauth.Server
+	logger log.Logger
+}
+
+func listen(in serveIn) error {
+	h := httpsvc.New(in.oauth, in.host, in.logger)
 	if err := httpsvc.ListenAndServe(h, httpsvc.ListenOptions{
-		Listen:            cfg.Listen,
-		InternalListen:    cfg.InternalListen,
-		MCPPath:           host.MCPPath,
+		Listen:            in.cfg.Listen,
+		InternalListen:    in.cfg.InternalListen,
+		MCPPath:           in.host.MCPPath,
 		Version:           version,
-		TrustConnectingIP: cfg.TrustConnectingIP,
-		Ready:             db.Ping,
-		Logger:            logger,
+		TrustConnectingIP: in.cfg.TrustConnectingIP,
+		Ready:             in.db.Ping,
+		Logger:            in.logger,
 	}); err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
@@ -137,7 +179,9 @@ func start(logger log.Logger) error {
 	return nil
 }
 
-const usage = `eve-mcp — MCP server that exposes EVE Online accounts to LLM clients
+const (
+	minCLIArgs = 2
+	usage      = `eve-mcp — MCP server that exposes EVE Online accounts to LLM clients
 
 Usage:
   eve-mcp                  run the server (config from env / ./.env)
@@ -150,3 +194,4 @@ PUBLIC_URL is required when the public bind is not loopback.
 See .env.example for the full list. Clients connect to http://127.0.0.1:8765/mcp
 and sign in with their EVE account in the browser.
 `
+)
