@@ -71,30 +71,51 @@ type Host struct {
 	PublicURL   string
 	MCPPath     string
 	CallbackURL string
+	base        url.URL
 }
 
 func (h Host) BaseURL() string {
+	u := h.root()
+
+	return u.String()
+}
+
+func (h Host) URL(elem ...string) string {
+	u := h.root()
+
+	return u.JoinPath(elem...).String()
+}
+
+func (h Host) withBase() Host {
+	h.base = h.computeBase()
+
+	return h
+}
+
+func (h Host) computeBase() url.URL {
 	if h.PublicURL != "" {
-		return strings.TrimRight(h.PublicURL, "/")
+		u, err := url.Parse(strings.TrimRight(h.PublicURL, "/"))
+		if err == nil && u.Host != "" {
+			return *u
+		}
 	}
 	host, port, err := net.SplitHostPort(h.Listen)
 	if err != nil {
-		return "http://127.0.0.1:8765"
+		return url.URL{Scheme: schemeHTTP, Host: "127.0.0.1:8765"}
 	}
 	if host == "0.0.0.0" || host == "::" || host == "" {
 		host = "127.0.0.1"
 	}
 
-	return (&url.URL{Scheme: schemeHTTP, Host: net.JoinHostPort(host, port)}).String()
+	return url.URL{Scheme: schemeHTTP, Host: net.JoinHostPort(host, port)}
 }
 
-func (h Host) URL(elem ...string) string {
-	u, err := url.Parse(h.BaseURL())
-	if err != nil {
-		return ""
+func (h Host) root() url.URL {
+	if h.base.Scheme != "" {
+		return h.base
 	}
 
-	return u.JoinPath(elem...).String()
+	return h.computeBase()
 }
 
 type Options struct {
@@ -117,6 +138,7 @@ func Open(pub Host, runtime *session.Session, opts Options, logger log.Logger) (
 	if pub.MCPPath == "" {
 		pub.MCPPath = "/mcp"
 	}
+	pub = pub.withBase()
 	if len(opts.HMACKey) < hmacMinBytes {
 		return nil, ErrHMACTooShort
 	}

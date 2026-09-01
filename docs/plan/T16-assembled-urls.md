@@ -1,6 +1,6 @@
 # T16 — URLs are assembled, never concatenated
 
-- Status: `todo`
+- Status: `done`
 - Size: S
 - Depends on: T15
 - RULES: §8 (URLs are assembled), §16 (only the host is configured)
@@ -101,14 +101,14 @@ that could.
 
 ## Acceptance
 
-- [ ] No URL in the tree is produced by `+` or `fmt.Sprintf`
-- [ ] Each HTTP client holds one parsed `url.URL`; no base URL is parsed
+- [x] No URL in the tree is produced by `+` or `fmt.Sprintf`
+- [x] Each HTTP client holds one parsed `url.URL`; no base URL is parsed
       per request
-- [ ] Every endpoint path is a constant in the code, not config
-- [ ] `filepath.Join` appears only on file paths
-- [ ] Path-traversal and escaping tests exist for both clients
-- [ ] The callback URL is unchanged, asserted by a test
-- [ ] `go test ./...` and `make lint` pass
+- [x] Every endpoint path is a constant in the code, not config
+- [x] `filepath.Join` appears only on file paths
+- [x] Path-traversal and escaping tests exist for both clients
+- [x] The callback URL is unchanged, asserted by a test
+- [x] `go test ./...` and `make lint` pass
 
 ## Verify
 

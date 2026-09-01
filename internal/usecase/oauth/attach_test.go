@@ -134,6 +134,32 @@ func TestFinishMCPUpsertsCharacter(t *testing.T) {
 	}
 }
 
+func TestFinishMCPPreservesClientQuery(t *testing.T) {
+	t.Parallel()
+	db := openDB(t)
+	s := testServer(t, db)
+	loc, err := s.finishMCP(t.Context(), &loginstate.Login{
+		MCPClientID: "c", RedirectURI: "http://localhost:1/cb?foo=1&bar=two",
+		MCPState: "st",
+	}, &sso.CharacterToken{
+		CharacterID: 8, CharacterName: janeDoe, RefreshToken: "rt",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := url.Parse(loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := got.Query()
+	if q.Get("foo") != "1" || q.Get("bar") != "two" {
+		t.Fatalf("client query lost: %q", loc)
+	}
+	if q.Get(paramCode) == "" || q.Get("state") != "st" {
+		t.Fatalf("code/state %q", loc)
+	}
+}
+
 func TestFinishMCPCreatesCharacter(t *testing.T) {
 	t.Parallel()
 	db := openDB(t)

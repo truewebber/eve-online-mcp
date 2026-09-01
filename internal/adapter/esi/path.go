@@ -1,12 +1,18 @@
 package esi
 
 import (
-	"path"
+	"net/url"
 	"strconv"
+	"strings"
 )
 
 func Path(elem ...string) string {
-	return path.Join("/", path.Join(elem...))
+	parts := make([]string, len(elem))
+	for i, e := range elem {
+		parts[i] = url.PathEscape(e)
+	}
+
+	return "/" + strings.Join(parts, "/")
 }
 
 func ID(id int) string {

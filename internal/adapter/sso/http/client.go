@@ -27,16 +27,14 @@ import (
 )
 
 const (
-	ssoHost  = "login.eveonline.com"
-	ssoV2    = "v2"
-	ssoOAuth = "oauth"
+	ssoHost        = "login.eveonline.com"
+	pathAuthorize  = "/v2/oauth/authorize"
+	pathOAuthToken = "/v2/oauth/token" //nolint:gosec // G101: CCP endpoint path, not a secret
+	pathRevoke     = "/v2/oauth/revoke"
+	pathJWKS       = "/oauth/jwks"
 )
 
 func fail(msg string) error { return sso.Error{Msg: msg} }
-
-func ssoEndpoint(elem ...string) *url.URL {
-	return (&url.URL{Scheme: "https", Host: ssoHost}).JoinPath(elem...)
-}
 
 func knownIssuer(iss string) bool {
 	switch iss {
@@ -74,6 +72,7 @@ type jwksState struct {
 
 type Client struct {
 	opts         sso.Options
+	base         url.URL
 	http         *nhttp.Client
 	tokens       *tokenStore
 	refreshLocks sync.Map
@@ -84,6 +83,7 @@ type Client struct {
 func New(opts sso.Options, httpClient *nhttp.Client, logger log.Logger) *Client {
 	return &Client{
 		opts:   opts,
+		base:   url.URL{Scheme: "https", Host: ssoHost},
 		http:   httpClient,
 		tokens: newTokenStore(nil, 0, logger),
 		jwks:   &jwksState{},
@@ -94,6 +94,7 @@ func New(opts sso.Options, httpClient *nhttp.Client, logger log.Logger) *Client 
 func (c *Client) ForCharacter(characterID int, chars character.Repository) sso.Client {
 	return &Client{
 		opts:   c.opts,
+		base:   c.base,
 		http:   c.http,
 		tokens: newTokenStore(chars, characterID, c.logger),
 		jwks:   c.jwks,
@@ -141,11 +142,9 @@ func (c *Client) PrepareLogin(scopes []string) (*sso.PreparedLogin, error) {
 		"code_challenge":        {challenge},
 		"code_challenge_method": {"S256"},
 	}
-	u := ssoEndpoint(ssoV2, ssoOAuth, "authorize")
-	u.RawQuery = q.Encode()
 
 	return &sso.PreparedLogin{
-		URL:      u.String(),
+		URL:      c.endpoint(pathAuthorize, q),
 		State:    state,
 		Verifier: verifier,
 		Scopes:   scopes,
@@ -206,7 +205,7 @@ func (c *Client) Revoke(ctx context.Context, characterID int) {
 		"token":           {token.RefreshToken},
 		formClientID:      {c.opts.ClientID},
 	}
-	req, err := nhttp.NewRequestWithContext(ctx, nhttp.MethodPost, ssoEndpoint(ssoV2, ssoOAuth, "revoke").String(), strings.NewReader(data.Encode()))
+	req, err := nhttp.NewRequestWithContext(ctx, nhttp.MethodPost, c.endpoint(pathRevoke, nil), strings.NewReader(data.Encode()))
 	if err != nil {
 		c.logger.Error("sso: revoke request", "character_id", characterID, "err", err)
 		c.tokens.Remove(ctx, characterID)
@@ -225,6 +224,16 @@ func (c *Client) Revoke(ctx context.Context, characterID int) {
 		resp.Body.Close()
 	}
 	c.tokens.Remove(ctx, characterID)
+}
+
+func (c *Client) endpoint(path string, q url.Values) string {
+	u := c.base
+	u.Path = path
+	if q != nil {
+		u.RawQuery = q.Encode()
+	}
+
+	return u.String()
 }
 
 func (c *Client) refresh(ctx context.Context, token *sso.CharacterToken) (*sso.CharacterToken, error) {
@@ -299,7 +308,7 @@ func (c *Client) tokenRequest(ctx context.Context, data url.Values, clientID, se
 	if secret != "" {
 		data.Del(formClientID)
 	}
-	req, err := nhttp.NewRequestWithContext(ctx, nhttp.MethodPost, ssoEndpoint(ssoV2, ssoOAuth, "token").String(), strings.NewReader(data.Encode()))
+	req, err := nhttp.NewRequestWithContext(ctx, nhttp.MethodPost, c.endpoint(pathOAuthToken, nil), strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, wrap("tokenRequest", err)
 	}
@@ -433,7 +442,7 @@ func (c *Client) signingKey(ctx context.Context, accessToken string) (any, error
 	c.jwks.mu.Lock()
 	defer c.jwks.mu.Unlock()
 	if c.jwks.keys == nil || time.Since(c.jwks.at) > time.Hour {
-		keys, err := fetchJWKS(ctx, c.http)
+		keys, err := c.fetchJWKS(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -448,12 +457,12 @@ func (c *Client) signingKey(ctx context.Context, accessToken string) (any, error
 	return key, nil
 }
 
-func fetchJWKS(ctx context.Context, httpClient *nhttp.Client) (map[string]any, error) {
-	req, err := nhttp.NewRequestWithContext(ctx, nhttp.MethodGet, ssoEndpoint(ssoOAuth, "jwks").String(), nil)
+func (c *Client) fetchJWKS(ctx context.Context) (map[string]any, error) {
+	req, err := nhttp.NewRequestWithContext(ctx, nhttp.MethodGet, c.endpoint(pathJWKS, nil), nil)
 	if err != nil {
 		return nil, wrap("fetchJWKS", err)
 	}
-	resp, err := httpClient.Do(req)
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, wrap("fetchJWKS", err)
 	}

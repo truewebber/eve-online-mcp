@@ -26,6 +26,7 @@ var (
 	errHMACRequired = errors.New("HMAC_KEY is required (openssl rand -hex 32)")
 	errHMACTooShort = errors.New("HMAC_KEY must decode to at least 32 bytes (openssl rand -hex 32)")
 	errHMACHex      = errors.New("HMAC_KEY must be hex (openssl rand -hex 32)")
+	errPublicURL    = errors.New("PUBLIC_URL must be an absolute URL")
 )
 
 // The instance owns exactly one EVE application; users sign in via browser.
@@ -106,20 +107,21 @@ func (c *config) validate() error {
 		return fmt.Errorf("INTERNAL_LISTEN must be host:port: %w", err)
 	}
 
-	c.PublicURL = strings.TrimRight(c.PublicURL, "/")
+	var public url.URL
 	if c.PublicURL != "" {
 		u, err := url.Parse(c.PublicURL)
 		if err != nil {
 			return fmt.Errorf("PUBLIC_URL: %w", err)
 		}
-		c.CallbackURL = u.JoinPath("auth", "callback").String()
+		if u.Host == "" || u.Scheme == "" {
+			return errPublicURL
+		}
+		public = *u
+		c.PublicURL = strings.TrimRight(c.PublicURL, "/")
 	} else {
-		c.CallbackURL = (&url.URL{
-			Scheme: "http",
-			Host:   net.JoinHostPort("127.0.0.1", port),
-			Path:   "/auth/callback",
-		}).String()
+		public = url.URL{Scheme: "http", Host: net.JoinHostPort("127.0.0.1", port)}
 	}
+	c.CallbackURL = public.JoinPath("auth", "callback").String()
 
 	c.UserAgent = "github.com/truewebber/eve-online-mcp/" + version
 	if c.Contact != "" {

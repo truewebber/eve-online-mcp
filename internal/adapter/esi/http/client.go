@@ -45,6 +45,7 @@ var errNoTokenSource = errors.New("authenticated ESI call without a token source
 
 type Client struct {
 	opts         esi.Options
+	base         url.URL
 	http         *nhttp.Client
 	auth         esi.TokenSource
 	cache        *responseCache
@@ -66,6 +67,7 @@ func New(opts esi.Options, httpClient *nhttp.Client, logger log.Logger) *Client 
 
 	return &Client{
 		opts:        opts,
+		base:        esiBase(opts.BaseURL),
 		http:        ownHTTP(httpClient),
 		cache:       newResponseCache(),
 		sem:         make(chan struct{}, opts.MaxConcurrency),
@@ -87,6 +89,7 @@ func ownHTTP(c *nhttp.Client) *nhttp.Client {
 func (c *Client) ForUser(auth esi.TokenSource) esi.Client {
 	return &Client{
 		opts:        c.opts,
+		base:        c.base,
 		http:        c.http,
 		auth:        auth,
 		cache:       c.cache,
@@ -398,17 +401,14 @@ func (c *Client) write(ctx context.Context, method, path string, characterID *in
 	return decode(resp.StatusCode, bodyBytes), nil
 }
 
-func (c *Client) endpoint(esiPath string, params map[string]any) (*url.URL, error) {
-	base, err := url.Parse(c.opts.BaseURL)
-	if err != nil {
-		return nil, wrap("endpoint", err)
-	}
-	u := base.JoinPath(strings.TrimPrefix(esiPath, "/"))
+func (c *Client) endpoint(esiPath string, params map[string]any) *url.URL {
+	u := c.base
+	out := u.JoinPath(strings.TrimPrefix(esiPath, "/"))
 	if q := encodeParams(params); q != "" {
-		u.RawQuery = q
+		out.RawQuery = q
 	}
 
-	return u, nil
+	return out
 }
 
 func (c *Client) request(ctx context.Context, method, path string, params map[string]any, headers nhttp.Header, jsonBody any, attempt int) (*nhttp.Response, error) {
@@ -418,10 +418,7 @@ func (c *Client) request(ctx context.Context, method, path string, params map[st
 	if err := c.bucket.take(); err != nil {
 		return nil, err
 	}
-	u, err := c.endpoint(path, params)
-	if err != nil {
-		return nil, err
-	}
+	u := c.endpoint(path, params)
 	var body io.Reader
 	if jsonBody != nil {
 		raw, err := json.Marshal(jsonBody)
@@ -836,4 +833,13 @@ func isSlice(v any) bool {
 
 func lessAny(a, b any) bool {
 	return j.Float(a) < j.Float(b)
+}
+
+func esiBase(raw string) url.URL {
+	u, err := url.Parse(raw)
+	if err == nil && u.Host != "" {
+		return *u
+	}
+
+	return url.URL{Scheme: "https", Host: "esi.evetech.net"}
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	nhttp "net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -60,11 +61,11 @@ func openEnv(t *testing.T) *env {
 	}
 	httpClient := &nhttp.Client{Transport: &esitest.Fallback{Inner: tr}}
 	hs := httptest.NewUnstartedServer(nhttp.NotFoundHandler())
-	base := "http://" + hs.Listener.Addr().String()
+	baseURL := url.URL{Scheme: "http", Host: hs.Listener.Addr().String()}
 	host := oauth.Host{
-		PublicURL:   base,
+		PublicURL:   baseURL.String(),
 		MCPPath:     "/mcp",
-		CallbackURL: base + "/auth/callback",
+		CallbackURL: baseURL.JoinPath("auth", "callback").String(),
 	}
 	runtime, oauthServer := wire(t, db, host, httpClient, logger)
 	characterID := seedCharacter(t, runtime, oauthServer)
