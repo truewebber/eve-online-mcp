@@ -16,6 +16,7 @@ type assetsListIn struct {
 	Location       string  `json:"location,omitempty"        jsonschema:"Case-insensitive substring of a station or structure name, e.g. 'Jita' or 'Amarr VIII'. Empty means every location."`
 	MinValue       float64 `json:"min_value,omitempty"       jsonschema:"Hide locations holding less than this many ISK."`
 	Limit          int     `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+	Offset         int     `json:"offset,omitempty"          jsonschema:"Skip this many rows of the result before returning any. The result carries the total, so this is how you continue a long list."`
 	Items          int     `json:"items,omitempty"           jsonschema:"Maximum items to list inside each location in detailed mode."`
 	ResponseFormat string  `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
@@ -23,10 +24,12 @@ type assetsListIn struct {
 type assetsFindIn struct {
 	Name           string `json:"name"                      jsonschema:"Case-insensitive substring of the item type name, e.g. 'Drake' or 'Tritanium'."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+	Offset         int    `json:"offset,omitempty"          jsonschema:"Skip this many rows of the result before returning any. The result carries the total, so this is how you continue a long list."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
 type assetsBlueprintsIn struct {
+	Page           int    `json:"page,omitempty"            jsonschema:"Which page of results to fetch, starting at 1. The result says which page it is and how many exist. Only reach for page 2 if the user asked for more than page 1 showed."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
@@ -92,7 +95,7 @@ func eveAssetsList(ctx context.Context, a *session.Session, in assetsListIn) (an
 	buckets := assetBuckets(assets, roots, prices)
 	rows := assetLocationRows(buckets, placeNames, typeNames, prices, in.Location, in.MinValue, limitOr(in.Items, limitTopItems))
 	sort.Slice(rows, func(i, k int) bool { return j.Float(rows[i]["value_isk"]) > j.Float(rows[k]["value_isk"]) })
-	visible, meta := page(rows, limitOr(in.Limit, limitShort), "Raise `limit`, or filter with `location` / `min_value`.")
+	paged := pageByOffset(rows, in.Offset, limitOr(in.Limit, limitShort), "Pass offset to continue, or filter with `location` / `min_value`.")
 	total := 0.0
 	for _, b := range buckets {
 		total += b.value
@@ -103,8 +106,8 @@ func eveAssetsList(ctx context.Context, a *session.Session, in assetsListIn) (an
 		"total_locations": len(buckets), "matching_locations": len(rows),
 		fValuationBasis: valuationCCPAvg,
 		fDataAge:        result.StaleNote(),
-		fLocations:      project(visible, []string{fLocation, fValue, fDistinctTypes, fUnits}, concise(in.ResponseFormat)),
-	}, meta), nil
+		fLocations:      project(paged.Rows, []string{fLocation, fValue, fDistinctTypes, fUnits}, concise(in.ResponseFormat)),
+	}, paged.fields), nil
 }
 
 func assetBuckets(assets []map[string]any, roots map[int]int, prices map[int]map[string]float64) map[int]*assetBucket {
@@ -232,7 +235,7 @@ func eveAssetsFind(ctx context.Context, a *session.Session, in assetsFindIn) (an
 	}
 	rows := assetFindRows(matches, roots, byID, typeNames, placeNames, prices)
 	sort.Slice(rows, func(i, k int) bool { return j.Int(rows[i][fQuantity]) > j.Int(rows[k][fQuantity]) })
-	visible, meta := page(rows, limitOr(in.Limit, limitMedium), "")
+	paged := pageByOffset(rows, in.Offset, limitOr(in.Limit, limitMedium), "")
 	total := 0
 	for _, r := range rows {
 		total += j.Int(r[fQuantity])
@@ -241,8 +244,8 @@ func eveAssetsFind(ctx context.Context, a *session.Session, in assetsFindIn) (an
 	return merge(map[string]any{
 		fCharacter: token.CharacterName, fQuery: in.Name,
 		"total_units": total, "total_stacks": len(rows), fDataAge: result.StaleNote(),
-		fMatches: project(visible, []string{fItem, fQuantity, fLocation, fEstimatedValue}, concise(in.ResponseFormat)),
-	}, meta), nil
+		fMatches: project(paged.Rows, []string{fItem, fQuantity, fLocation, fEstimatedValue}, concise(in.ResponseFormat)),
+	}, paged.fields), nil
 }
 
 func assetFindMatches(items []map[string]any, typeNames map[int]string, name string) []map[string]any {
@@ -293,13 +296,13 @@ func eveAssetsBlueprints(ctx context.Context, a *session.Session, in assetsBluep
 		return nil, wrap("eveAssetsBlueprints", err)
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.GetAllPages(ctx, esiPath("characters", esiID(cid), "blueprints"), &cid, nil, pagesESI)
+	result, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "blueprints"), &cid, esiPageQuery(in.Page, nil), nil)
 	if err != nil {
 		return nil, wrap("eveAssetsBlueprints", err)
 	}
 	bps := j.Maps(result.Data)
 	if len(bps) == 0 {
-		return map[string]any{fCharacter: token.CharacterName, fBlueprints: []any{}, fNote: "None owned.", fDataAge: result.StaleNote()}, nil
+		return merge(map[string]any{fCharacter: token.CharacterName, fBlueprints: []any{}, fNote: "None owned.", fDataAge: result.StaleNote()}, pageByNumber(nil, in.Page, result.PageCount(), limitOr(in.Limit, limitLong)).fields), nil
 	}
 	var typeIDs, placeIDs []int
 	for _, b := range bps {
@@ -340,13 +343,13 @@ func eveAssetsBlueprints(ctx context.Context, a *session.Session, in assetsBluep
 
 		return j.Int(rows[i][fMaterialEfficiency]) > j.Int(rows[k][fMaterialEfficiency])
 	})
-	visible, meta := page(rows, limitOr(in.Limit, limitLong), "")
+	paged := pageByNumber(rows, in.Page, result.PageCount(), limitOr(in.Limit, limitLong))
 
 	return merge(map[string]any{
 		fCharacter: token.CharacterName, "originals": orig, "copies": copies,
 		fDataAge:    result.StaleNote(),
-		fBlueprints: project(visible, []string{fBlueprint, fKind, fMaterialEfficiency, fTimeEfficiency, fRunsLeft}, concise(in.ResponseFormat)),
-	}, meta), nil
+		fBlueprints: project(paged.Rows, []string{fBlueprint, fKind, fMaterialEfficiency, fTimeEfficiency, fRunsLeft}, concise(in.ResponseFormat)),
+	}, paged.fields), nil
 }
 
 func valuesOf(m map[int]int) []int {

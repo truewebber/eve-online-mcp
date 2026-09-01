@@ -21,6 +21,7 @@ var (
 
 type mailListIn struct {
 	UnreadOnly     *bool  `json:"unread_only,omitempty"     jsonschema:"Only list mail that has not been read yet."`
+	LastMailID     int    `json:"last_mail_id,omitempty"    jsonschema:"Return mail older than this id — pass back the next_cursor from a previous call to reach further into the past. Empty starts at the newest."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
@@ -35,6 +36,7 @@ type notesIn struct {
 }
 
 type kmIn struct {
+	Page           int    `json:"page,omitempty"            jsonschema:"Which page of results to fetch, starting at 1. The result says which page it is and how many exist. Only reach for page 2 if the user asked for more than page 1 showed."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
@@ -92,11 +94,12 @@ func eveMailList(ctx context.Context, a *session.Session, in mailListIn) (any, e
 		return nil, wrap("eveMailList", err)
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "mail"), &cid, nil, nil)
+	result, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "mail"), &cid, esiCursorQuery(fLastMailID, in.LastMailID), nil)
 	if err != nil {
 		return nil, wrap("eveMailList", err)
 	}
-	mails := j.Maps(result.Data)
+	esiMails := j.Maps(result.Data)
+	mails := esiMails
 	unread := 0
 	for _, m := range mails {
 		if !j.Bool(m["is_read"]) {
@@ -137,12 +140,12 @@ func eveMailList(ctx context.Context, a *session.Session, in mailListIn) (any, e
 			fTimestamp: m[fTimestamp], fRead: j.Bool(m["is_read"]), "labels": m["labels"],
 		})
 	}
-	visible, meta := page(rows, limitOr(in.Limit, limitDefault), "")
+	paged := pageByCursor(rows, limitOr(in.Limit, limitDefault), fMailID, "Pass next_cursor as last_mail_id.", esiMails)
 
 	return merge(map[string]any{
 		fCharacter: token.CharacterName, fUnread: unread, fDataAge: result.StaleNote(),
-		"mails": project(visible, []string{fMailID, fFrom, fSubject, fTimestamp, fRead}, concise(in.ResponseFormat)),
-	}, meta), nil
+		"mails": project(paged.Rows, []string{fMailID, fFrom, fSubject, fTimestamp, fRead}, concise(in.ResponseFormat)),
+	}, paged.fields), nil
 }
 
 func eveMailRead(ctx context.Context, a *session.Session, in mailReadIn) (any, error) {
@@ -239,12 +242,12 @@ func eveSocialNotifications(ctx context.Context, a *session.Session, in notesIn)
 			fRead: read, "detail": det,
 		})
 	}
-	visible, meta := page(rows, limitOr(in.Limit, limitDefault), "")
+	paged := applyLimit(rows, limitOr(in.Limit, limitDefault), "")
 
 	return merge(map[string]any{
 		fCharacter: token.CharacterName, fUnread: unread, fDataAge: result.StaleNote(),
-		"notifications": project(visible, []string{fType, fFrom, fTimestamp, fRead}, concise(in.ResponseFormat)),
-	}, meta), nil
+		"notifications": project(paged.Rows, []string{fType, fFrom, fTimestamp, fRead}, concise(in.ResponseFormat)),
+	}, paged.fields), nil
 }
 
 func eveSocialKillmails(ctx context.Context, a *session.Session, in kmIn) (any, error) {
@@ -259,7 +262,7 @@ func eveSocialKillmails(ctx context.Context, a *session.Session, in kmIn) (any, 
 		return nil, wrap("eveSocialKillmails", err)
 	}
 
-	return formatKillmails(ctx, a, token.CharacterName, token.CharacterID, 0, esiPath("characters", esiID(token.CharacterID), "killmails", "recent"), limitOr(in.Limit, limitKillmails), concise(in.ResponseFormat))
+	return formatKillmails(ctx, a, token.CharacterName, token.CharacterID, 0, esiPath("characters", esiID(token.CharacterID), "killmails", "recent"), in.Page, limitOr(in.Limit, limitKillmails), concise(in.ResponseFormat))
 }
 
 func eveFittingList(ctx context.Context, a *session.Session, in fitIn) (any, error) {
@@ -312,12 +315,12 @@ func eveFittingList(ctx context.Context, a *session.Session, in fitIn) (any, err
 			"module_count": len(j.Slice(f[fItems])), fDescription: d, fModules: mods,
 		})
 	}
-	visible, meta := page(rows, limitOr(in.Limit, limitShort), "")
+	paged := applyLimit(rows, limitOr(in.Limit, limitShort), "")
 
 	return merge(map[string]any{
 		fCharacter: token.CharacterName, fDataAge: result.StaleNote(),
-		"fittings": project(visible, []string{fFittingID, fName, "ship", "module_count"}, concise(in.ResponseFormat)),
-	}, meta), nil
+		"fittings": project(paged.Rows, []string{fFittingID, fName, "ship", "module_count"}, concise(in.ResponseFormat)),
+	}, paged.fields), nil
 }
 
 func eveCalendarList(ctx context.Context, a *session.Session, in calendarListIn) (any, error) {
@@ -352,23 +355,18 @@ func eveCalendarList(ctx context.Context, a *session.Session, in calendarListIn)
 			return nil, err
 		}
 	}
-	limit := limitOr(in.Limit, limitDefault)
-	visible, meta := page(events, limit, "Pass next_cursor as from_event.")
-	if cursor := calendarCursor(listed.events, visible, listed.full, limit); cursor != 0 {
-		meta[fNextCursor] = cursor
-	}
+	paged := pageByCursor(events, limitOr(in.Limit, limitDefault), fEventID, "Pass next_cursor as from_event.", listed.events)
 	keep := []string{fEventID, fTitle, fEventDate, fResponse, "importance"}
 
 	return merge(map[string]any{
 		fCharacter: token.CharacterName, fDataAge: esi.Result{AgeSeconds: oldestAge(ages)}.StaleNote(),
-		fEvents: project(visible, keep, concise(in.ResponseFormat)),
-	}, meta), nil
+		fEvents: project(paged.Rows, keep, concise(in.ResponseFormat)),
+	}, paged.fields), nil
 }
 
 type calendarPage struct {
 	events []map[string]any
 	age    float64
-	full   bool
 }
 
 func fetchCalendarPage(ctx context.Context, a *session.Session, characterID, fromEvent int) (calendarPage, error) {
@@ -388,7 +386,7 @@ func fetchCalendarPage(ctx context.Context, a *session.Session, characterID, fro
 		})
 	}
 
-	return calendarPage{events: events, age: result.AgeSeconds, full: len(j.Maps(result.Data)) >= calendarESIPage}, nil
+	return calendarPage{events: events, age: result.AgeSeconds}, nil
 }
 
 func unansweredCalendar(events []map[string]any) []map[string]any {
@@ -451,17 +449,6 @@ func attachCalendarAttendees(ctx context.Context, a *session.Session, characterI
 	return events, ages, nil
 }
 
-func calendarCursor(esiEvents, visible []map[string]any, fullPage bool, limit int) int {
-	if len(visible) == limit && len(visible) > 0 {
-		return j.Int(visible[len(visible)-1][fEventID])
-	}
-	if fullPage && len(esiEvents) > 0 {
-		return j.Int(esiEvents[len(esiEvents)-1][fEventID])
-	}
-
-	return 0
-}
-
 type killmailFetch struct {
 	kills  []map[string]any
 	failed []any
@@ -473,22 +460,18 @@ type killmailSummary struct {
 	losses int
 }
 
-func formatKillmails(ctx context.Context, a *session.Session, character string, characterID, corpID int, path string, limit int, conciseMode bool) (any, error) {
+func formatKillmails(ctx context.Context, a *session.Session, character string, characterID, corpID int, path string, page, limit int, conciseMode bool) (any, error) {
 	var cid *int
 	if characterID != 0 {
 		cid = &characterID
 	}
-	result, err := a.ESI.Get(ctx, path, cid, nil, nil)
+	result, err := a.ESI.Get(ctx, path, cid, esiPageQuery(page, nil), nil)
 	if err != nil {
 		return nil, wrap("formatKillmails", err)
 	}
-	available := j.Maps(result.Data)
-	refs := available
-	if len(refs) > limit {
-		refs = refs[:limit]
-	}
+	refs := j.Maps(result.Data)
 	if len(refs) == 0 {
-		return map[string]any{fCharacter: character, fKillmails: []any{}, fNote: "Nothing recent.", fDataAge: result.StaleNote()}, nil
+		return merge(map[string]any{fCharacter: character, fKillmails: []any{}, fNote: "Nothing recent.", fDataAge: result.StaleNote()}, pageByNumber(nil, page, result.PageCount(), limit).fields), nil
 	}
 	fetched := fetchKillmailBodies(ctx, a, refs)
 	built, err := buildKillmailRows(ctx, a, fetched.kills, characterID, corpID)
@@ -496,18 +479,12 @@ func formatKillmails(ctx context.Context, a *session.Session, character string, 
 		return nil, err
 	}
 	sort.Slice(built.rows, func(i, k int) bool { return j.Str(built.rows[i]["time"]) > j.Str(built.rows[k]["time"]) })
-	visible, meta := page(built.rows, limit, "")
-	if len(available) > limit {
-		meta = map[string]any{
-			fReturned: len(visible), "total_available": len(available), fTruncated: true,
-			"how_to_see_more": fmt.Sprintf("Raise `limit` (currently %d).", limit),
-		}
-	}
+	paged := pageByNumber(built.rows, page, result.PageCount(), limit)
 	out := merge(map[string]any{
 		fCharacter: character, "kills": built.kills, "losses": built.losses,
 		"hull_value_caveat": "Hull only — fitted modules and cargo are not included.",
-		fKillmails:          project(visible, []string{"role", "time", fSystem, "victim", "ship_lost"}, conciseMode),
-	}, meta)
+		fKillmails:          project(paged.Rows, []string{"role", "time", fSystem, "victim", "ship_lost"}, conciseMode),
+	}, paged.fields)
 	if len(fetched.failed) > 0 {
 		out["unavailable"] = len(fetched.failed)
 		out["unavailable_note"] = fmt.Sprintf("%d of %d killmails could not be fetched from ESI, so kills/losses below undercount by that many. Try again shortly.", len(fetched.failed), len(refs))

@@ -41,7 +41,7 @@ const (
 	mailComposeRecipientsMax = 50
 	mailSubjectMax           = 1000
 	mailBodyMax              = 10000
-	calendarESIPage          = 50
+	esiCursorPage            = 50
 	cspaRecipientsMax        = 100
 
 	typeDescPreview    = 500

@@ -72,7 +72,7 @@ func eveCharacterSkills(ctx context.Context, a *session.Session, in characterSki
 	}
 	view := filterCharacterSkills(skills, names, in.Search, boolDef(in.TrainedOnly, true))
 	sort.Slice(view.rows, func(i, k int) bool { return j.Str(view.rows[i][fSkill]) < j.Str(view.rows[k][fSkill]) })
-	visible, meta := page(view.rows, limitOr(in.Limit, limitMedium), "Narrow with `search`, or raise `limit`.")
+	paged := applyLimit(view.rows, limitOr(in.Limit, limitMedium), "Narrow with `search`, or raise `limit`.")
 	at5 := 0
 	for _, s := range skills {
 		if j.Int(s["trained_skill_level"]) == skillLevelV {
@@ -83,8 +83,8 @@ func eveCharacterSkills(ctx context.Context, a *session.Session, in characterSki
 		fCharacter: token.CharacterName, "total_sp": payload["total_sp"],
 		"unallocated_sp": payload["unallocated_sp"], "skills_known": len(skills),
 		"at_level_5": at5, "matching": len(view.rows), fDataAge: result.StaleNote(),
-		"skills": project(visible, []string{fSkill, "level"}, concise(in.ResponseFormat)),
-	}, meta)
+		"skills": project(paged.Rows, []string{fSkill, "level"}, concise(in.ResponseFormat)),
+	}, paged.fields)
 	if view.capped > 0 {
 		out["alpha_clone_warning"] = fmt.Sprintf("%d skills have active_level below trained level — this account looks like it is on an Alpha clone, so trained levels are capped.", view.capped)
 	}
@@ -314,10 +314,10 @@ func eveCharacterStandings(ctx context.Context, a *session.Session, in character
 		return nil, wrap("eveCharacterStandings", err)
 	}
 	rows := formatCharacterStandings(standings, names)
-	visible, meta := page(rows, limitOr(in.Limit, limitMedium), "")
+	paged := applyLimit(rows, limitOr(in.Limit, limitMedium), "")
 	out := merge(map[string]any{
-		fCharacter: token.CharacterName, "loyalty_points": formatLoyaltyPoints(lpData, names), "standings": visible,
-	}, meta)
+		fCharacter: token.CharacterName, "loyalty_points": formatLoyaltyPoints(lpData, names), "standings": paged.Rows,
+	}, paged.fields)
 	applyStandingsNotes(out, standingsErr, lpErr, lpGranted, token.CharacterName, lpScope)
 	if age := standingsAge(standingsRes, standingsErr, lpRes, lpErr, lpGranted); age != "" {
 		out[fDataAge] = age

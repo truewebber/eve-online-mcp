@@ -21,13 +21,13 @@ const testRecipient = "Tritanium"
 func TestCalendarListCursorRoundTrip(t *testing.T) {
 	t.Parallel()
 	a := fixtureSession(t)
-	first, err := eveCalendarList(t.Context(), a, calendarListIn{Limit: calendarESIPage})
+	first, err := eveCalendarList(t.Context(), a, calendarListIn{Limit: esiCursorPage})
 	if err != nil {
 		t.Fatal(err)
 	}
 	body := asMap(t, first)
 	events := j.Maps(body[fEvents])
-	if len(events) != calendarESIPage {
+	if len(events) != esiCursorPage {
 		t.Fatalf("first page %d events", len(events))
 	}
 	cursor := j.Int(body[fNextCursor])

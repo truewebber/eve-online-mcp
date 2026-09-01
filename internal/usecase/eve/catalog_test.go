@@ -127,6 +127,28 @@ func TestPatchBoundsMatchCatalog(t *testing.T) {
 	if minv == nil || minv.Minimum == nil || *minv.Minimum != 0 || minv.Maximum != nil {
 		t.Fatalf("min_value bounds %+v", minv)
 	}
+	off := assets.Properties[fOffset]
+	if off == nil || off.Minimum == nil || *off.Minimum != 0 || off.Maximum != nil {
+		t.Fatalf("offset bounds %+v", off)
+	}
+	mail, err := jsonschema.For[mailListIn](nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patchBounds(mail)
+	cursor := mail.Properties[fLastMailID]
+	if cursor == nil || cursor.Minimum == nil || *cursor.Minimum != 1 || cursor.Maximum != nil {
+		t.Fatalf("last_mail_id bounds %+v", cursor)
+	}
+	bps, err := jsonschema.For[assetsBlueprintsIn](nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patchBounds(bps)
+	pg := bps.Properties[fPage]
+	if pg == nil || pg.Minimum == nil || *pg.Minimum != 1 {
+		t.Fatalf("page bounds %+v", pg)
+	}
 	contacts, err := jsonschema.For[contactsSetIn](nil)
 	if err != nil {
 		t.Fatal(err)
@@ -265,6 +287,8 @@ func keysOf(m map[string]any) []string {
 func optLimit() wantParam   { return wantParam{paramLimit, schemaInteger, false, ""} }
 func optFormat() wantParam  { return wantParam{paramFormat, schemaString, false, ""} }
 func optConfirm() wantParam { return wantParam{paramConfirm, schemaString, false, ""} }
+func optPage() wantParam    { return wantParam{fPage, schemaInteger, false, ""} }
+func optOffset() wantParam  { return wantParam{fOffset, schemaInteger, false, ""} }
 
 func optBool(name string) wantParam { return wantParam{name, schemaBoolean, false, ""} }
 
@@ -289,31 +313,31 @@ func toolSurface() []toolWant {
 		{name: "eve_character_clones"},
 		{name: "eve_character_standings", params: []wantParam{optLimit()}},
 		{name: "eve_assets_list", params: []wantParam{
-			optString(fLocation), {paramMinValue, schemaNumber, false, ""}, optLimit(),
+			optString(fLocation), {paramMinValue, schemaNumber, false, ""}, optLimit(), optOffset(),
 			{fItems, schemaInteger, false, ""}, optFormat(),
 		}},
-		{name: "eve_assets_find", params: []wantParam{reqString(fName), optLimit(), optFormat()}},
-		{name: "eve_assets_blueprints", params: list},
+		{name: "eve_assets_find", params: []wantParam{reqString(fName), optLimit(), optOffset(), optFormat()}},
+		{name: "eve_assets_blueprints", params: []wantParam{optPage(), optLimit(), optFormat()}},
 		{name: "eve_wallet_history", params: []wantParam{
-			optString(fKind), optString(fRefType), optLimit(), optFormat(),
+			optString(fKind), optString(fRefType), optLimit(), optOffset(), optFormat(),
 		}},
 		{name: "eve_industry_jobs", params: []wantParam{optBool("include_completed"), optLimit(), optFormat()}},
 		{name: "eve_industry_planets", params: []wantParam{optBool("detail")}},
-		{name: "eve_industry_mining", params: []wantParam{optLimit()}},
+		{name: "eve_industry_mining", params: []wantParam{optLimit(), optOffset()}},
 		{name: "eve_market_price", params: []wantParam{
 			reqString(fItem), optString(fRegion), optBool("whole_region"),
 			{"history_days", schemaInteger, false, ""},
 		}},
 		{name: "eve_market_orders", params: list},
-		{name: "eve_market_contracts", params: []wantParam{optBool("outstanding_only"), optLimit(), optFormat()}},
-		{name: "eve_mail_list", params: []wantParam{optBool("unread_only"), optLimit(), optFormat()}},
+		{name: "eve_market_contracts", params: []wantParam{optBool("outstanding_only"), optPage(), optLimit(), optFormat()}},
+		{name: "eve_mail_list", params: []wantParam{optBool("unread_only"), {fLastMailID, schemaInteger, false, ""}, optLimit(), optFormat()}},
 		{name: "eve_mail_read", params: []wantParam{reqInt(fMailID)}},
 		{name: "eve_social_notifications", params: list},
 		{name: "eve_calendar_list", params: []wantParam{
 			{fFromEvent, schemaInteger, false, ""}, optBool("unanswered_only"),
 			optBool("detail"), optBool("attendees"), optLimit(), optFormat(),
 		}},
-		{name: "eve_social_killmails", params: list},
+		{name: "eve_social_killmails", params: []wantParam{optPage(), optLimit(), optFormat()}},
 		{name: "eve_fitting_list", params: list},
 		{name: "eve_universe_search", params: []wantParam{
 			reqString(fQuery), optString(fieldCategories), optBool(fStrict), optLimit(),
@@ -327,21 +351,21 @@ func toolSurface() []toolWant {
 		{name: "eve_universe_hotspots", params: []wantParam{optLimit()}},
 		{name: "eve_corp_overview"},
 		{name: "eve_corp_assets_list", params: []wantParam{
-			optString(fLocation), {paramMinValue, schemaNumber, false, ""}, optLimit(),
+			optString(fLocation), {paramMinValue, schemaNumber, false, ""}, optLimit(), optOffset(),
 			{fItems, schemaInteger, false, ""}, optFormat(),
 		}},
-		{name: "eve_corp_assets_find", params: []wantParam{reqString(fName), optLimit(), optFormat()}},
-		{name: "eve_corp_blueprints", params: list},
+		{name: "eve_corp_assets_find", params: []wantParam{reqString(fName), optLimit(), optOffset(), optFormat()}},
+		{name: "eve_corp_blueprints", params: []wantParam{optPage(), optLimit(), optFormat()}},
 		{name: "eve_corp_wallet", params: []wantParam{
 			optString(fKind), {fDivision, schemaInteger, false, ""}, optString(fRefType),
-			optLimit(), optFormat(),
+			optLimit(), optOffset(), optFormat(),
 		}},
-		{name: "eve_corp_industry_jobs", params: []wantParam{optBool("include_completed"), optLimit(), optFormat()}},
-		{name: "eve_corp_mining", params: list},
-		{name: "eve_corp_orders", params: list},
-		{name: "eve_corp_contracts", params: []wantParam{optBool("outstanding_only"), optLimit(), optFormat()}},
-		{name: "eve_corp_killmails", params: list},
-		{name: "eve_corp_structures", params: list},
+		{name: "eve_corp_industry_jobs", params: []wantParam{optBool("include_completed"), optPage(), optLimit(), optFormat()}},
+		{name: "eve_corp_mining", params: []wantParam{optLimit(), optOffset(), optFormat()}},
+		{name: "eve_corp_orders", params: []wantParam{optPage(), optLimit(), optFormat()}},
+		{name: "eve_corp_contracts", params: []wantParam{optBool("outstanding_only"), optPage(), optLimit(), optFormat()}},
+		{name: "eve_corp_killmails", params: []wantParam{optPage(), optLimit(), optFormat()}},
+		{name: "eve_corp_structures", params: []wantParam{optPage(), optLimit(), optFormat()}},
 		{name: "eve_corp_members", params: list},
 		{name: "eve_ui_set_waypoint", params: []wantParam{
 			reqString("destination"), optBool("clear_other_waypoints"),

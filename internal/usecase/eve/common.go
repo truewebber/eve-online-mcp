@@ -60,8 +60,10 @@ func patchBounds(schema *jsonschema.Schema) {
 			prop.Minimum = new(0.0)
 		case fStanding:
 			prop.Minimum, prop.Maximum = new(argStandingMin), new(argStandingMax)
-		case fFromEvent, fEventID, fMailID, fFittingID, "page":
+		case fFromEvent, fEventID, fMailID, fFittingID, fPage, fLastMailID:
 			prop.Minimum = new(1.0)
+		case fOffset:
+			prop.Minimum = new(0.0)
 		}
 	}
 }
@@ -221,20 +223,120 @@ func emptyVal(v any) bool {
 	return false
 }
 
-func page(rows []map[string]any, limit int, hint string) ([]map[string]any, map[string]any) {
-	if limit <= 0 {
-		limit = limitDefault
-	}
+type limitedPage struct {
+	Rows   []map[string]any
+	fields map[string]any
+}
+
+type cursorPage struct {
+	Rows       []map[string]any
+	NextCursor int
+	fields     map[string]any
+}
+
+type numberedPage struct {
+	Rows       []map[string]any
+	Page       int
+	TotalPages int
+	fields     map[string]any
+}
+
+type foldedPage struct {
+	Rows   []map[string]any
+	Total  int
+	fields map[string]any
+}
+
+func applyLimit(rows []map[string]any, limit int, hint string) limitedPage {
+	limit = limitOr(limit, limitDefault)
 	if len(rows) <= limit {
-		return rows, map[string]any{fReturned: len(rows), fTruncated: false}
+		return limitedPage{Rows: rows, fields: map[string]any{fReturned: len(rows), fTruncated: false}}
 	}
 	if hint == "" {
 		hint = fmt.Sprintf("Raise `limit` (currently %d).", limit)
 	}
 
-	return rows[:limit], map[string]any{
+	return limitedPage{Rows: rows[:limit], fields: map[string]any{
 		fReturned: limit, "total_available": len(rows), fTruncated: true, "how_to_see_more": hint,
+	}}
+}
+
+func pageByCursor(shown []map[string]any, limit int, key, hint string, esi []map[string]any) cursorPage {
+	clipped := applyLimit(shown, limit, hint)
+	next := 0
+	if len(clipped.Rows) == limitOr(limit, limitDefault) && len(clipped.Rows) > 0 {
+		next = j.Int(clipped.Rows[len(clipped.Rows)-1][key])
+	} else if len(esi) >= esiCursorPage && len(esi) > 0 {
+		next = j.Int(esi[len(esi)-1][key])
 	}
+	if next != 0 {
+		clipped.fields[fNextCursor] = next
+	}
+
+	return cursorPage{Rows: clipped.Rows, NextCursor: next, fields: clipped.fields}
+}
+
+func pageByNumber(rows []map[string]any, page, totalPages, limit int) numberedPage {
+	page = pageOr(page)
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	clipped := applyLimit(rows, limit, "")
+	clipped.fields[fPage] = page
+	clipped.fields[fTotalPages] = totalPages
+
+	return numberedPage{Rows: clipped.Rows, Page: page, TotalPages: totalPages, fields: clipped.fields}
+}
+
+func pageByOffset(rows []map[string]any, offset, limit int, hint string) foldedPage {
+	if offset < 0 {
+		offset = 0
+	}
+	limit = limitOr(limit, limitDefault)
+	total := len(rows)
+	if offset > total {
+		offset = total
+	}
+	rest := rows[offset:]
+	fields := map[string]any{fReturned: len(rest), fTruncated: false, fTotal: total}
+	visible := rest
+	if len(rest) > limit {
+		visible = rest[:limit]
+		if hint == "" {
+			hint = fmt.Sprintf("Pass offset=%d, or raise `limit` (currently %d).", offset+limit, limit)
+		}
+		fields = map[string]any{
+			fReturned: limit, fTruncated: true, fTotal: total, "how_to_see_more": hint,
+		}
+	}
+
+	return foldedPage{Rows: visible, Total: total, fields: fields}
+}
+
+func pageOr(n int) int {
+	if n < 1 {
+		return 1
+	}
+
+	return n
+}
+
+func esiPageQuery(page int, extra map[string]any) map[string]any {
+	out := maps.Clone(extra)
+	if out == nil {
+		out = map[string]any{}
+	}
+	out[fPage] = pageOr(page)
+
+	return out
+}
+
+func esiCursorQuery(name string, value int) map[string]any {
+	if value < 1 {
+		return nil
+	}
+
+	return map[string]any{name: value}
 }
 
 func merge(dst map[string]any, extra map[string]any) map[string]any {

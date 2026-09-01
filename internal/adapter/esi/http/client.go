@@ -115,9 +115,7 @@ func (c *Client) GetAllPages(ctx context.Context, path string, characterID *int,
 	if params == nil {
 		params = map[string]any{}
 	}
-	firstParams := clone(params)
-	firstParams["page"] = 1
-	first, err := c.cachedGet(ctx, path, characterID, firstParams, nil)
+	first, err := c.cachedGet(ctx, path, characterID, withPage(params, 1), nil)
 	if err != nil {
 		return esi.Result{}, err
 	}
@@ -138,8 +136,7 @@ func (c *Client) GetAllPages(ctx context.Context, path string, characterID *int,
 	}
 	ch := make(chan box, capped-1)
 	for page := 2; page <= capped; page++ {
-		p := clone(params)
-		p["page"] = page
+		p := withPage(params, page)
 		go func() {
 			r, err := c.cachedGet(ctx, path, characterID, p, nil)
 			ch <- box{r, err}
@@ -843,6 +840,16 @@ func limitError(resp *nhttp.Response, path string) esi.RateLimitedError {
 		Remain:   remain,
 		ResetSec: reset,
 	}
+}
+
+func withPage(params map[string]any, page int) map[string]any {
+	out := clone(params)
+	if page < 1 {
+		page = 1
+	}
+	out["page"] = page
+
+	return out
 }
 
 func clone(m map[string]any) map[string]any {

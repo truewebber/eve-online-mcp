@@ -533,9 +533,9 @@ func eveUniverseHotspots(ctx context.Context, a *session.Session, in universeHot
 			"ship_kills": r["ship_kills"], "pod_kills": r["pod_kills"], "npc_kills": r["npc_kills"],
 		})
 	}
-	visible, meta := page(outRows, limit, "")
+	paged := applyLimit(outRows, limit, "")
 
-	return merge(map[string]any{fWindow: "last hour", fDataAge: result.StaleNote(), fSystems: visible}, meta), nil
+	return merge(map[string]any{fWindow: "last hour", fDataAge: result.StaleNote(), fSystems: paged.Rows}, paged.fields), nil
 }
 
 type searchHit struct {

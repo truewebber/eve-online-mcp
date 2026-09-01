@@ -16,6 +16,7 @@ type walletHistIn struct {
 	Kind           string `json:"kind,omitempty"            jsonschema:"'journal' is every ISK movement. 'transactions' is market trades. 'both' returns each in its own section. Default journal."`
 	RefType        string `json:"ref_type,omitempty"        jsonschema:"Journal only: keep just one reason code, e.g. 'bounty_prizes'."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+	Offset         int    `json:"offset,omitempty"          jsonschema:"Skip this many rows of the result before returning any. The result carries the total, so this is how you continue a long list."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
@@ -44,14 +45,14 @@ func walletHistory(ctx context.Context, a *session.Session, in walletHistIn) (an
 	cid := token.CharacterID
 	out := map[string]any{fCharacter: token.CharacterName, fPeriod: "last ~30 days (ESI retention limit)"}
 	if kind == fJournal || kind == vBoth {
-		sec, err := journalSection(ctx, a, cid, in.RefType, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
+		sec, err := journalSection(ctx, a, cid, in.RefType, in.Offset, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
 		if err != nil {
 			return nil, err
 		}
 		out["journal_section"] = sec
 	}
 	if kind == fTransactions || kind == vBoth {
-		sec, err := transactionSection(ctx, a, esiPath("characters", esiID(cid), "wallet", "transactions"), cid, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
+		sec, err := transactionSection(ctx, a, esiPath("characters", esiID(cid), "wallet", "transactions"), cid, in.Offset, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
 		if err != nil {
 			return nil, err
 		}
@@ -73,18 +74,18 @@ func walletHistory(ctx context.Context, a *session.Session, in walletHistIn) (an
 	return out, nil
 }
 
-func journalSection(ctx context.Context, a *session.Session, cid int, refType string, limit int, conciseMode bool) (map[string]any, error) {
+func journalSection(ctx context.Context, a *session.Session, cid int, refType string, offset, limit int, conciseMode bool) (map[string]any, error) {
 	result, err := a.ESI.GetAllPages(ctx, esiPath("characters", esiID(cid), "wallet", "journal"), &cid, nil, pagesShort)
 	if err != nil {
 		return nil, wrap("journalSection", err)
 	}
 
-	return summarizeJournal(result.Data, result.StaleNote(), result.Truncated, pagesShort, refType, limit, conciseMode, "")
+	return summarizeJournal(result.Data, result.StaleNote(), result.Truncated, pagesShort, refType, offset, limit, conciseMode, "")
 }
 
 type journalTot struct{ in, out, n float64 }
 
-func summarizeJournal(data any, stale string, truncated bool, pageCap int, refType string, limit int, conciseMode bool, divisionNote string) (map[string]any, error) {
+func summarizeJournal(data any, stale string, truncated bool, pageCap int, refType string, offset, limit int, conciseMode bool, divisionNote string) (map[string]any, error) {
 	entries := j.Maps(data)
 	available := journalRefTypes(entries)
 	if refType != "" {
@@ -102,7 +103,7 @@ func summarizeJournal(data any, stale string, truncated bool, pageCap int, refTy
 	totals, byCat := tallyJournal(entries)
 	sort.Slice(entries, func(i, k int) bool { return j.Str(entries[i][fDate]) > j.Str(entries[k][fDate]) })
 	rows := journalRows(entries)
-	visible, meta := page(rows, limit, "Raise `limit`, or narrow with `ref_type`.")
+	paged := pageByOffset(rows, offset, limit, "Pass offset to continue, or narrow with `ref_type`.")
 	var gin, gout float64
 	for _, b := range totals {
 		gin += b.in
@@ -111,8 +112,8 @@ func summarizeJournal(data any, stale string, truncated bool, pageCap int, refTy
 	out := merge(map[string]any{
 		"total_income": isk(gin), "total_spending": isk(gout), "net": isk(gin + gout),
 		"by_category": byCat, fDataAge: stale,
-		fJournal: project(visible, []string{fDate, fRefType, "amount", fDescription}, conciseMode),
-	}, meta)
+		fJournal: project(paged.Rows, []string{fDate, fRefType, "amount", fDescription}, conciseMode),
+	}, paged.fields)
 	if truncated {
 		out["totals_caveat"] = fmt.Sprintf("Hit the %d-page read cap: the totals and by_category above cover the newest %s entries, not the full window.", pageCap, formatInt(len(entries)))
 	}
@@ -206,16 +207,16 @@ func journalRows(entries []map[string]any) []map[string]any {
 	return rows
 }
 
-func transactionSection(ctx context.Context, a *session.Session, path string, cid int, limit int, conciseMode bool) (map[string]any, error) {
+func transactionSection(ctx context.Context, a *session.Session, path string, cid int, offset, limit int, conciseMode bool) (map[string]any, error) {
 	result, err := a.ESI.GetCursorPages(ctx, path, &cid, nil, "from_id", "transaction_id", txLookback, txPages)
 	if err != nil {
 		return nil, wrap("transactionSection", err)
 	}
 
-	return summarizeTransactions(ctx, a, cid, result.Data, result.StaleNote(), result.Truncated, limit, conciseMode)
+	return summarizeTransactions(ctx, a, cid, result.Data, result.StaleNote(), result.Truncated, offset, limit, conciseMode)
 }
 
-func summarizeTransactions(ctx context.Context, a *session.Session, cid int, data any, stale string, truncated bool, limit int, conciseMode bool) (map[string]any, error) {
+func summarizeTransactions(ctx context.Context, a *session.Session, cid int, data any, stale string, truncated bool, offset, limit int, conciseMode bool) (map[string]any, error) {
 	entries := j.Maps(data)
 	if len(entries) == 0 {
 		return map[string]any{fTransactions: []any{}, fNote: "No market trades in the retained window.", fDataAge: stale}, nil
@@ -255,14 +256,14 @@ func summarizeTransactions(ctx context.Context, a *session.Session, cid int, dat
 			"unit_price": isk(t["unit_price"]), fLocation: nameOr(placeNames, j.Int(t["location_id"])),
 		})
 	}
-	visible, meta := page(rows, limit, "")
+	paged := pageByOffset(rows, offset, limit, "")
 	out := merge(map[string]any{
 		"total_bought": isk(bought), "total_sold": isk(sold), "gross_margin": isk(sold - bought),
 		"covers":        fmt.Sprintf("%v to %v (%s trades)", rows[len(rows)-1][fDate], rows[0][fDate], formatInt(len(entries))),
 		"margin_caveat": "Sold minus bought over the trades in `covers`, not per-item profit.",
 		fDataAge:        stale,
-		fTransactions:   project(visible, []string{fDate, fSide, fItem, fQuantity, fTotal}, conciseMode),
-	}, meta)
+		fTransactions:   project(paged.Rows, []string{fDate, fSide, fItem, fQuantity, fTotal}, conciseMode),
+	}, paged.fields)
 	if truncated {
 		out["totals_caveat"] = fmt.Sprintf("Only the newest %s trades were read, so the totals cover `covers` and not the full retention window.", formatInt(len(entries)))
 	}

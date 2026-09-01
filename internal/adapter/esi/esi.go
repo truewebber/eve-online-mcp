@@ -81,6 +81,14 @@ func (r Result) StaleNote() string {
 	return fmt.Sprintf("%.1fh old", r.AgeSeconds/staleAfterHour)
 }
 
+func (r Result) PageCount() int {
+	if r.Pages != nil && *r.Pages > 0 {
+		return *r.Pages
+	}
+
+	return 1
+}
+
 //go:generate go tool go.uber.org/mock/mockgen -destination=../../mocks/esi.go -package=mocks -mock_names=Client=MockESIClient,TokenSource=MockESITokenSource github.com/truewebber/eve-online-mcp/internal/adapter/esi Client,TokenSource
 type TokenSource interface {
 	AccessToken(ctx context.Context, characterID int) (string, error)

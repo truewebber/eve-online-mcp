@@ -91,6 +91,7 @@ type corpAssetsListIn struct {
 	Location       string  `json:"location,omitempty"        jsonschema:"Case-insensitive substring of a station or structure name."`
 	MinValue       float64 `json:"min_value,omitempty"       jsonschema:"Hide locations holding less than this many ISK."`
 	Limit          int     `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+	Offset         int     `json:"offset,omitempty"          jsonschema:"Skip this many rows of the result before returning any. The result carries the total, so this is how you continue a long list."`
 	Items          int     `json:"items,omitempty"           jsonschema:"Maximum items per location in detailed mode."`
 	ResponseFormat string  `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
@@ -98,10 +99,12 @@ type corpAssetsListIn struct {
 type corpAssetsFindIn struct {
 	Name           string `json:"name"                      jsonschema:"Case-insensitive substring of the item type name."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+	Offset         int    `json:"offset,omitempty"          jsonschema:"Skip this many rows of the result before returning any. The result carries the total, so this is how you continue a long list."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
 type corpBlueprintsIn struct {
+	Page           int    `json:"page,omitempty"            jsonschema:"Which page of results to fetch, starting at 1. The result says which page it is and how many exist. Only reach for page 2 if the user asked for more than page 1 showed."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
@@ -111,37 +114,44 @@ type corpWalletIn struct {
 	Division       int    `json:"division,omitempty"        jsonschema:"Corporation wallet division, 1 through 7. Division 1 is the master wallet. Named divisions (if this character is a Director) come back from eve_corp_overview."`
 	RefType        string `json:"ref_type,omitempty"        jsonschema:"Journal only: keep just one reason code."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+	Offset         int    `json:"offset,omitempty"          jsonschema:"Skip this many rows of the result before returning any. The result carries the total, so this is how you continue a long list."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
 type corpIndustryJobsIn struct {
 	IncludeCompleted *bool  `json:"include_completed,omitempty" jsonschema:"Also return jobs that already delivered."`
+	Page             int    `json:"page,omitempty"              jsonschema:"Which page of results to fetch, starting at 1. The result says which page it is and how many exist. Only reach for page 2 if the user asked for more than page 1 showed."`
 	Limit            int    `json:"limit,omitempty"             jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat   string `json:"response_format,omitempty"   jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
 type corpMiningIn struct {
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+	Offset         int    `json:"offset,omitempty"          jsonschema:"Skip this many rows of the result before returning any. The result carries the total, so this is how you continue a long list."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
 type corpOrdersIn struct {
+	Page           int    `json:"page,omitempty"            jsonschema:"Which page of results to fetch, starting at 1. The result says which page it is and how many exist. Only reach for page 2 if the user asked for more than page 1 showed."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
 type corpContractsIn struct {
 	OutstandingOnly *bool  `json:"outstanding_only,omitempty" jsonschema:"Only contracts still awaiting action. Default true."`
+	Page            int    `json:"page,omitempty"             jsonschema:"Which page of results to fetch, starting at 1. The result says which page it is and how many exist. Only reach for page 2 if the user asked for more than page 1 showed."`
 	Limit           int    `json:"limit,omitempty"            jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat  string `json:"response_format,omitempty"  jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
 type corpKillmailsIn struct {
+	Page           int    `json:"page,omitempty"            jsonschema:"Which page of results to fetch, starting at 1. The result says which page it is and how many exist. Only reach for page 2 if the user asked for more than page 1 showed."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
 type corpStructuresIn struct {
+	Page           int    `json:"page,omitempty"            jsonschema:"Which page of results to fetch, starting at 1. The result says which page it is and how many exist. Only reach for page 2 if the user asked for more than page 1 showed."`
 	Limit          int    `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat string `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
@@ -325,13 +335,13 @@ func eveCorpAssetsList(ctx context.Context, a *session.Session, in corpAssetsLis
 	buckets := corpAssetBuckets(assets, roots, prices)
 	rows := corpAssetLocationRows(buckets, placeNames, typeNames, prices, in)
 	sort.Slice(rows, func(i, k int) bool { return j.Float(rows[i]["value_isk"]) > j.Float(rows[k]["value_isk"]) })
-	visible, meta := page(rows, limitOr(in.Limit, limitShort), "Raise `limit`, or filter with `location` / `min_value`.")
+	paged := pageByOffset(rows, in.Offset, limitOr(in.Limit, limitShort), "Pass offset to continue, or filter with `location` / `min_value`.")
 	out := merge(who(corp), merge(map[string]any{
 		fTotalEstimatedValue: isk(corpAssetBucketTotal(buckets)), "total_locations": len(buckets),
 		"matching_locations": len(rows), fValuationBasis: valuationCCPAvg,
 		fDataAge:   result.StaleNote(),
-		fLocations: project(visible, []string{fLocation, fValue, fDistinctTypes, fUnits}, concise(in.ResponseFormat)),
-	}, meta))
+		fLocations: project(paged.Rows, []string{fLocation, fValue, fDistinctTypes, fUnits}, concise(in.ResponseFormat)),
+	}, paged.fields))
 	if result.Truncated {
 		out["totals_caveat"] = fmt.Sprintf("Stopped after 80 pages; totals cover the first %d stacks, not the whole hangar.", len(assets))
 	}
@@ -446,12 +456,12 @@ func eveCorpAssetsFind(ctx context.Context, a *session.Session, in corpAssetsFin
 	}
 	rows := corpAssetFindRows(matches, itemsByID(items), roots, typeNames, placeNames, prices, divs[fHangar])
 	sort.Slice(rows, func(i, k int) bool { return j.Int(rows[i][fQuantity]) > j.Int(rows[k][fQuantity]) })
-	visible, meta := page(rows, limitOr(in.Limit, limitMedium), "")
+	paged := pageByOffset(rows, in.Offset, limitOr(in.Limit, limitMedium), "")
 	out := merge(who(corp), merge(map[string]any{
 		fQuery: in.Name, "total_units": sumIntField(rows, fQuantity), "total_stacks": len(rows),
 		fDataAge: result.StaleNote(),
-		fMatches: project(visible, []string{fItem, fQuantity, fLocation, fHangar, fEstimatedValue}, concise(in.ResponseFormat)),
-	}, meta))
+		fMatches: project(paged.Rows, []string{fItem, fQuantity, fLocation, fHangar, fEstimatedValue}, concise(in.ResponseFormat)),
+	}, paged.fields))
 	if result.Truncated {
 		out["totals_caveat"] = fmt.Sprintf("Search covered the first %d stacks only (80-page cap).", len(items))
 	}
@@ -532,13 +542,13 @@ func eveCorpBlueprints(ctx context.Context, a *session.Session, in corpBlueprint
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.ESI.GetAllPages(ctx, esiPath("corporations", esiID(corp.CorporationID), "blueprints"), &corp.Token.CharacterID, nil, pagesESI)
+	result, err := a.ESI.Get(ctx, esiPath("corporations", esiID(corp.CorporationID), "blueprints"), &corp.Token.CharacterID, esiPageQuery(in.Page, nil), nil)
 	if err != nil {
 		return nil, wrap("eveCorpBlueprints", err)
 	}
 	bps := j.Maps(result.Data)
 	if len(bps) == 0 {
-		return merge(who(corp), map[string]any{fBlueprints: []any{}, fNote: "The corporation holds no blueprints."}), nil
+		return merge(who(corp), merge(map[string]any{fBlueprints: []any{}, fNote: "The corporation holds no blueprints."}, pageByNumber(nil, in.Page, result.PageCount(), limitOr(in.Limit, limitLong)).fields)), nil
 	}
 	divs := corpDivisions(ctx, a, corp)
 	named, err := corpBlueprintNames(ctx, a, corp, bps)
@@ -553,12 +563,12 @@ func eveCorpBlueprints(ctx context.Context, a *session.Session, in corpBlueprint
 
 		return j.Int(listed.rows[i][fMaterialEfficiency]) > j.Int(listed.rows[k][fMaterialEfficiency])
 	})
-	visible, meta := page(listed.rows, limitOr(in.Limit, limitLong), "")
+	paged := pageByNumber(listed.rows, in.Page, result.PageCount(), limitOr(in.Limit, limitLong))
 
 	return merge(who(corp), merge(map[string]any{
 		"originals": listed.originals, "copies": listed.copies, fDataAge: result.StaleNote(),
-		fBlueprints: project(visible, []string{fBlueprint, fKind, fMaterialEfficiency, fTimeEfficiency, fRunsLeft, fHangar}, concise(in.ResponseFormat)),
-	}, meta)), nil
+		fBlueprints: project(paged.Rows, []string{fBlueprint, fKind, fMaterialEfficiency, fTimeEfficiency, fRunsLeft, fHangar}, concise(in.ResponseFormat)),
+	}, paged.fields)), nil
 }
 
 type corpNameMaps struct {
@@ -683,7 +693,7 @@ func corpWalletMovements(ctx context.Context, a *session.Session, corp *characte
 		out["journal_section"] = sec
 	}
 	if kind == fTransactions || kind == vBoth {
-		sec, err := transactionSection(ctx, a, esiPath("corporations", esiID(corp.CorporationID), "wallets", esiID(div), "transactions"), corp.Token.CharacterID, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
+		sec, err := transactionSection(ctx, a, esiPath("corporations", esiID(corp.CorporationID), "wallets", esiID(div), "transactions"), corp.Token.CharacterID, in.Offset, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
 		if err != nil {
 			return nil, err
 		}
@@ -711,7 +721,7 @@ func corpWalletJournal(ctx context.Context, a *session.Session, corp *character.
 		return nil, wrap("corpWalletJournal", err)
 	}
 
-	return summarizeJournal(res.Data, res.StaleNote(), res.Truncated, pagesShort, in.RefType, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat), fmt.Sprintf("division %d", div))
+	return summarizeJournal(res.Data, res.StaleNote(), res.Truncated, pagesShort, in.RefType, in.Offset, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat), fmt.Sprintf("division %d", div))
 }
 
 func eveCorpIndustryJobs(ctx context.Context, a *session.Session, in corpIndustryJobsIn) (any, error) {
@@ -722,7 +732,7 @@ func eveCorpIndustryJobs(ctx context.Context, a *session.Session, in corpIndustr
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.ESI.GetAllPages(ctx, esiPath("corporations", esiID(corp.CorporationID), "industry", "jobs"), &corp.Token.CharacterID, map[string]any{"include_completed": boolDef(in.IncludeCompleted, false)}, pagesESI)
+	result, err := a.ESI.Get(ctx, esiPath("corporations", esiID(corp.CorporationID), "industry", "jobs"), &corp.Token.CharacterID, esiPageQuery(in.Page, map[string]any{"include_completed": boolDef(in.IncludeCompleted, false)}), nil)
 	if err != nil {
 		return nil, wrap("eveCorpIndustryJobs", err)
 	}
@@ -731,7 +741,7 @@ func eveCorpIndustryJobs(ctx context.Context, a *session.Session, in corpIndustr
 		return nil, err
 	}
 
-	return merge(who(corp), out), nil
+	return merge(who(corp), merge(out, map[string]any{fPage: pageOr(in.Page), fTotalPages: result.PageCount()})), nil
 }
 
 func eveCorpMining(ctx context.Context, a *session.Session, in corpMiningIn) (any, error) {
@@ -789,7 +799,7 @@ func corpMiningAttachLedger(ctx context.Context, a *session.Session, corp *chara
 
 		return
 	}
-	ledger, err := corpMiningLedger(ctx, a, corp, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
+	ledger, err := corpMiningLedger(ctx, a, corp, in.Offset, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
 	if err != nil {
 		out["ledger_note"] = sectionNote(a, "corp ledger", err)
 
@@ -806,7 +816,7 @@ func eveCorpOrders(ctx context.Context, a *session.Session, in corpOrdersIn) (an
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.ESI.GetAllPages(ctx, esiPath("corporations", esiID(corp.CorporationID), "orders"), &corp.Token.CharacterID, nil, pagesESI)
+	result, err := a.ESI.Get(ctx, esiPath("corporations", esiID(corp.CorporationID), "orders"), &corp.Token.CharacterID, esiPageQuery(in.Page, nil), nil)
 	if err != nil {
 		return nil, wrap("eveCorpOrders", err)
 	}
@@ -816,7 +826,7 @@ func eveCorpOrders(ctx context.Context, a *session.Session, in corpOrdersIn) (an
 		return nil, err
 	}
 
-	return merge(who(corp), out), nil
+	return merge(who(corp), merge(out, map[string]any{fPage: pageOr(in.Page), fTotalPages: result.PageCount()})), nil
 }
 
 func eveCorpContracts(ctx context.Context, a *session.Session, in corpContractsIn) (any, error) {
@@ -827,11 +837,11 @@ func eveCorpContracts(ctx context.Context, a *session.Session, in corpContractsI
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.ESI.GetAllPages(ctx, esiPath("corporations", esiID(corp.CorporationID), "contracts"), &corp.Token.CharacterID, nil, pagesESI)
+	result, err := a.ESI.Get(ctx, esiPath("corporations", esiID(corp.CorporationID), "contracts"), &corp.Token.CharacterID, esiPageQuery(in.Page, nil), nil)
 	if err != nil {
 		return nil, wrap("eveCorpContracts", err)
 	}
-	out, err := formatContracts(ctx, a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), limitOr(in.Limit, limitDefault), concise(in.ResponseFormat), true)
+	out, err := formatContracts(ctx, a, corp.CharacterName(), corp.Token.CharacterID, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), in.Page, result.PageCount(), limitOr(in.Limit, limitDefault), concise(in.ResponseFormat), true)
 	if err != nil {
 		return nil, err
 	}
@@ -847,7 +857,7 @@ func eveCorpKillmails(ctx context.Context, a *session.Session, in corpKillmailsI
 	if err != nil {
 		return nil, err
 	}
-	out, err := formatKillmails(ctx, a, corp.CharacterName(), corp.Token.CharacterID, corp.CorporationID, esiPath("corporations", esiID(corp.CorporationID), "killmails", "recent"), limitOr(in.Limit, limitKillmails), concise(in.ResponseFormat))
+	out, err := formatKillmails(ctx, a, corp.CharacterName(), corp.Token.CharacterID, corp.CorporationID, esiPath("corporations", esiID(corp.CorporationID), "killmails", "recent"), in.Page, limitOr(in.Limit, limitKillmails), concise(in.ResponseFormat))
 	if err != nil {
 		return nil, err
 	}
@@ -863,13 +873,13 @@ func eveCorpStructures(ctx context.Context, a *session.Session, in corpStructure
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.ESI.GetAllPages(ctx, esiPath("corporations", esiID(corp.CorporationID), "structures"), &corp.Token.CharacterID, nil, pagesESI)
+	result, err := a.ESI.Get(ctx, esiPath("corporations", esiID(corp.CorporationID), "structures"), &corp.Token.CharacterID, esiPageQuery(in.Page, nil), nil)
 	if err != nil {
 		return nil, wrap("eveCorpStructures", err)
 	}
 	structures := j.Maps(result.Data)
 	if len(structures) == 0 {
-		return merge(who(corp), map[string]any{fStructures: []any{}, fNote: "This corporation owns no Upwell structures."}), nil
+		return merge(who(corp), merge(map[string]any{fStructures: []any{}, fNote: "This corporation owns no Upwell structures."}, pageByNumber(nil, in.Page, result.PageCount(), limitOr(in.Limit, limitDefault)).fields)), nil
 	}
 	names, err := a.Resolver.Names(ctx, corpStructureIDs(structures), &corp.Token.CharacterID)
 	if err != nil {
@@ -879,12 +889,12 @@ func eveCorpStructures(ctx context.Context, a *session.Session, in corpStructure
 	sort.Slice(listed.rows, func(i, k int) bool {
 		return j.Str(listed.rows[i]["fuel_expires"]) < j.Str(listed.rows[k]["fuel_expires"])
 	})
-	visible, meta := page(listed.rows, limitOr(in.Limit, limitDefault), "")
+	paged := pageByNumber(listed.rows, in.Page, result.PageCount(), limitOr(in.Limit, limitDefault))
 
 	return merge(who(corp), merge(map[string]any{
 		"structure_count": len(listed.rows), "unfuelled": listed.unfuelled, fDataAge: result.StaleNote(),
-		fStructures: project(visible, []string{fStructure, fType, fSystem, fState, "fuel_expires_in"}, concise(in.ResponseFormat)),
-	}, meta)), nil
+		fStructures: project(paged.Rows, []string{fStructure, fType, fSystem, fState, "fuel_expires_in"}, concise(in.ResponseFormat)),
+	}, paged.fields)), nil
 }
 
 func corpStructureIDs(structures []map[string]any) []int {
@@ -973,12 +983,12 @@ func eveCorpMembers(ctx context.Context, a *session.Session, in corpMembersIn) (
 	sort.Slice(rows, func(i, k int) bool {
 		return strings.ToLower(j.Str(rows[i][fName])) < strings.ToLower(j.Str(rows[k][fName]))
 	})
-	visible, meta := page(rows, limitOr(in.Limit, limitLong), "")
+	paged := applyLimit(rows, limitOr(in.Limit, limitLong), "")
 
 	return merge(who(corp), merge(map[string]any{
 		"member_count": len(rows), fDataAge: result.StaleNote(),
-		fMembers: project(visible, []string{fName}, concise(in.ResponseFormat)),
-	}, meta)), nil
+		fMembers: project(paged.Rows, []string{fName}, concise(in.ResponseFormat)),
+	}, paged.fields)), nil
 }
 
 func corpMemberIDs(data any) []int {
@@ -1255,7 +1265,7 @@ type miningLedgerAgg struct {
 	truncated                   bool
 }
 
-func corpMiningLedger(ctx context.Context, a *session.Session, corp *character.Corporation, limit int, conciseMode bool) (map[string]any, error) {
+func corpMiningLedger(ctx context.Context, a *session.Session, corp *character.Corporation, offset, limit int, conciseMode bool) (map[string]any, error) {
 	observersRes, err := a.ESI.GetAllPages(ctx, esiPath("corporation", esiID(corp.CorporationID), "mining", "observers"), &corp.Token.CharacterID, nil, pagesESI)
 	if err != nil {
 		return nil, wrap("corpMiningLedger", err)
@@ -1274,13 +1284,13 @@ func corpMiningLedger(ctx context.Context, a *session.Session, corp *character.C
 		return nil, wrap("corpMiningLedger", err)
 	}
 	rows, grand := miningOreRows(agg.totals, names, prices)
-	visible, meta := page(rows, limit, "")
+	paged := pageByOffset(rows, offset, limit, "")
 	out := merge(map[string]any{
 		fTotalEstimatedValue: isk(grand), "observer_count": len(observers),
 		"top_miners": topN(agg.byMiner, names, "miner"), "top_observers": topN(agg.byObserver, names, "observer"),
 		fValuationBasis: valuationCCPAvg,
-		fDataAge:        miningLedgerAge(observersRes, agg.oldest), fOres: visible,
-	}, meta)
+		fDataAge:        miningLedgerAge(observersRes, agg.oldest), fOres: paged.Rows,
+	}, paged.fields)
 	if agg.failed > 0 {
 		out["unavailable_observers"] = agg.failed
 	}

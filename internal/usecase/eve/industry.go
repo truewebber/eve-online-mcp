@@ -23,7 +23,8 @@ type industryPlanetsIn struct {
 }
 
 type industryMiningIn struct {
-	Limit int `json:"limit,omitempty" jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+	Limit  int `json:"limit,omitempty"  jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
+	Offset int `json:"offset,omitempty" jsonschema:"Skip this many rows of the result before returning any. The result carries the total, so this is how you continue a long list."`
 }
 
 func registerIndustry(s *mcp.Server) {
@@ -133,13 +134,13 @@ func eveIndustryMining(ctx context.Context, a *session.Session, in industryMinin
 		return nil, wrap("eveIndustryMining", err)
 	}
 	rows, grand := miningOreRows(totals, names, prices)
-	visible, meta := page(rows, limitOr(in.Limit, limitDefault), "")
+	paged := pageByOffset(rows, in.Offset, limitOr(in.Limit, limitDefault), "")
 
 	return merge(map[string]any{
 		fCharacter: token.CharacterName, fPeriod: "last ~30 days",
 		fTotalEstimatedValue: isk(grand), "top_systems": topMiningSystems(bySystem, names, limitTopItems),
-		fDataAge: result.StaleNote(), fOres: visible,
-	}, meta), nil
+		fDataAge: result.StaleNote(), fOres: paged.Rows,
+	}, paged.fields), nil
 }
 
 func sumMining(entries []map[string]any) (map[int]int, map[int]int) {
@@ -252,7 +253,7 @@ func industryJobsResult(ctx context.Context, a *session.Session, character strin
 		rows = append(rows, row)
 	}
 	sort.Slice(rows, func(i, k int) bool { return j.Str(rows[i]["end_date"]) < j.Str(rows[k]["end_date"]) })
-	visible, meta := page(rows, limit, "")
+	paged := applyLimit(rows, limit, "")
 	active, readyN := 0, 0
 	for _, r := range rows {
 		if j.Bool(r["ready"]) {
@@ -268,8 +269,8 @@ func industryJobsResult(ctx context.Context, a *session.Session, character strin
 
 	return merge(map[string]any{
 		fCharacter: character, "active_jobs": active, "ready_to_deliver": readyN,
-		fDataAge: stale, fJobs: project(visible, keep, conciseMode),
-	}, meta), nil
+		fDataAge: stale, fJobs: project(paged.Rows, keep, conciseMode),
+	}, paged.fields), nil
 }
 
 func decorateColonyDetails(ctx context.Context, a *session.Session, cid int, colonies, rows []map[string]any) []float64 {

@@ -1,6 +1,6 @@
 # T27 — Pagination across the list tools
 
-- Status: `todo`
+- Status: `done`
 - Size: L
 - Depends on: T26
 - RULES: §10 (a function returns one result), §15 (one function, one
@@ -117,18 +117,18 @@ window they read. Their internal transaction cursor stays internal.
 
 ## Acceptance
 
-- [ ] Every tool's class matches TOOLS.md's Pagination table
-- [ ] Cursor tools return `next_cursor`; passthrough tools return `page`
+- [x] Every tool's class matches TOOLS.md's Pagination table
+- [x] Cursor tools return `next_cursor`; passthrough tools return `page`
       and `total_pages`; folds return `total`
-- [ ] Every paging helper returns one result plus `error`
-- [ ] A passthrough call makes one ESI request and ignores page caps
-- [ ] Folds still honour their caps
-- [ ] Bounds are in `patchBounds`, not in tag text
-- [ ] No list tool can truncate without saying so
-- [ ] The catalogue check is **fully clean** — this is the task that
+- [x] Every paging helper returns one result plus `error`
+- [x] A passthrough call makes one ESI request and ignores page caps
+- [x] Folds still honour their caps
+- [x] Bounds are in `patchBounds`, not in tag text
+- [x] No list tool can truncate without saying so
+- [x] The catalogue check is **fully clean** — this is the task that
       empties T25's list
-- [ ] `tests/catalog.go` is unchanged
-- [ ] `go test ./...` and `make lint` pass
+- [x] `tests/catalog.go` is unchanged
+- [x] `go test ./...` and `make lint` pass
 
 ## Verify
 

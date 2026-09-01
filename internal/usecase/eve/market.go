@@ -33,6 +33,7 @@ type marketOrdersIn struct {
 
 type marketContractsIn struct {
 	OutstandingOnly *bool  `json:"outstanding_only,omitempty" jsonschema:"Only contracts still awaiting action. Default true."`
+	Page            int    `json:"page,omitempty"             jsonschema:"Which page of results to fetch, starting at 1. The result says which page it is and how many exist. Only reach for page 2 if the user asked for more than page 1 showed."`
 	Limit           int    `json:"limit,omitempty"            jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
 	ResponseFormat  string `json:"response_format,omitempty"  jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
@@ -205,12 +206,12 @@ func eveMarketContracts(ctx context.Context, a *session.Session, in marketContra
 		return nil, wrap("eveMarketContracts", err)
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.GetAllPages(ctx, esiPath("characters", esiID(cid), "contracts"), &cid, nil, pagesESI)
+	result, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "contracts"), &cid, esiPageQuery(in.Page, nil), nil)
 	if err != nil {
 		return nil, wrap("eveMarketContracts", err)
 	}
 
-	return formatContracts(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), limitOr(in.Limit, limitDefault), concise(in.ResponseFormat), false)
+	return formatContracts(ctx, a, token.CharacterName, cid, result.Data, result.StaleNote(), boolDef(in.OutstandingOnly, true), in.Page, result.PageCount(), limitOr(in.Limit, limitDefault), concise(in.ResponseFormat), false)
 }
 
 func marketHistory(ctx context.Context, a *session.Session, typeID, regionID, days int) (map[string]any, error) {
@@ -317,7 +318,7 @@ func formatOrders(ctx context.Context, a *session.Session, character string, cid
 
 		return j.Str(rows[i][fItem]) < j.Str(rows[k][fItem])
 	})
-	visible, meta := page(rows, limit, "")
+	paged := applyLimit(rows, limit, "")
 	keep := []string{fSide, fItem, fPrice, "remaining", "filled_pct", fLocation, "expires_in"}
 	if walletNames != nil {
 		keep = append(keep, fWallet)
@@ -326,11 +327,11 @@ func formatOrders(ctx context.Context, a *session.Session, character string, cid
 	return merge(map[string]any{
 		fCharacter: character, "open_orders": len(rows),
 		"sell_side_value": isk(sellValue), "buy_escrow_locked": isk(buyEscrow),
-		fDataAge: stale, fOrders: project(visible, keep, conciseMode),
-	}, meta), nil
+		fDataAge: stale, fOrders: project(paged.Rows, keep, conciseMode),
+	}, paged.fields), nil
 }
 
-func formatContracts(ctx context.Context, a *session.Session, character string, cid int, data any, stale string, outstandingOnly bool, limit int, conciseMode, corp bool) (map[string]any, error) {
+func formatContracts(ctx context.Context, a *session.Session, character string, cid int, data any, stale string, outstandingOnly bool, page, totalPages, limit int, conciseMode, corp bool) (map[string]any, error) {
 	contracts := j.Maps(data)
 	if outstandingOnly {
 		var filtered []map[string]any
@@ -350,7 +351,7 @@ func formatContracts(ctx context.Context, a *session.Session, character string, 
 			note = "No outstanding corporation contracts. Pass outstanding_only=false to include finished and expired ones."
 		}
 
-		return map[string]any{fCharacter: character, fContracts: []any{}, fNote: note, fDataAge: stale}, nil
+		return merge(map[string]any{fCharacter: character, fContracts: []any{}, fNote: note, fDataAge: stale}, pageByNumber(nil, page, totalPages, limit).fields), nil
 	}
 	idSet := map[int]struct{}{}
 	for _, c := range contracts {
@@ -387,7 +388,7 @@ func formatContracts(ctx context.Context, a *session.Session, character string, 
 		}
 		rows = append(rows, row)
 	}
-	visible, meta := page(rows, limit, "")
+	paged := pageByNumber(rows, page, totalPages, limit)
 	keep := []string{fType, fStatus, fTitle, fPrice, fReward, fCollateral, fFrom, "to", fExpires}
 	if corp {
 		keep = []string{fType, fStatus, fTitle, "issuer", fPrice, fReward, fCollateral, fFrom, "to", fExpires}
@@ -395,8 +396,8 @@ func formatContracts(ctx context.Context, a *session.Session, character string, 
 
 	return merge(map[string]any{
 		fCharacter: character, fTotal: len(rows), vOutstanding: outstanding,
-		fDataAge: stale, fContracts: project(visible, keep, conciseMode),
-	}, meta), nil
+		fDataAge: stale, fContracts: project(paged.Rows, keep, conciseMode),
+	}, paged.fields), nil
 }
 
 func nilIfZero(v any) any {
