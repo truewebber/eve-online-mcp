@@ -1,6 +1,6 @@
 # T29 — `.env.example` and `api/http.yaml`
 
-- Status: `todo`
+- Status: `done`
 - Size: S
 - Depends on: T22
 - RULES: §16 (config is env on the binary), §6 (the code is the
@@ -70,12 +70,12 @@ not claim otherwise.
 
 ## Acceptance
 
-- [ ] Every env in SPEC §2 appears in `.env.example` with the same name,
+- [x] Every env in SPEC §2 appears in `.env.example` with the same name,
       default and required-ness, and nothing else does
-- [ ] `api/http.yaml` matches SPEC §6's route table
-- [ ] `/mcp` is still absent from the YAML
-- [ ] `make gen` produces no diff after the commit
-- [ ] `go build ./cmd/eve-mcp`, `go test ./...` and `make lint` pass
+- [x] `api/http.yaml` matches SPEC §6's route table
+- [x] `/mcp` is still absent from the YAML
+- [x] `make gen` produces no diff after the commit
+- [x] `go build ./cmd/eve-mcp`, `go test ./...` and `make lint` pass
 
 ## Verify
 

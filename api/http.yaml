@@ -3,32 +3,41 @@ info:
   title: EVE MCP HTTP API
   version: 0.3.0
   description: |
-    Public HTTP surface: OAuth for MCP clients plus two human pages.
-    This is **not** the tool catalog.
+    Public HTTP surface of eve-mcp: OAuth for MCP clients and two
+    human HTML pages. This is **not** the tool catalog.
+
+    The service exposes one EVE Online character per connection. The
+    player adds one URL in Cursor or Claude, signs in with EVE in the
+    browser, and picks a character. That character *is* the connection —
+    there is no server-side user above it. An alt is a second client
+    entry with its own sign-in.
 
     The LLM never walks these paths to discover or call EVE tools.
-
-    Cursor / Claude open one URL from client config:
+    Clients open one URL:
 
         { "url": "http://127.0.0.1:8765/mcp" }
 
-    That is MCP over Streamable HTTP (JSON-RPC), mounted in
-    `internal/service/http` and registered in `internal/usecase/eve`.
-    After OAuth the client sends `initialize`, then `tools/list`, then
-    `tools/call` with `eve_<domain>_<action>`. Unauthenticated `/mcp`
-    returns 401 + RFC 9728 `WWW-Authenticate`.
+    That is MCP over Streamable HTTP (JSON-RPC), mounted next to the
+    generated mux in `internal/service/http`. After OAuth the client
+    sends `initialize`, then `tools/list`, then `tools/call`.
+    Unauthenticated `/mcp` returns 401 + RFC 9728 `WWW-Authenticate`.
 
-    `/mcp` is intentionally absent from `paths` below: oapi-codegen would
-    steal the route from the MCP handler.
+    `/mcp` is intentionally absent from `paths` below so oapi-codegen
+    cannot steal the route.
 
-    The instance owns exactly one EVE application (`CLIENT_ID` env).
-    `/oauth/authorize` immediately redirects the player to EVE SSO, where
-    they log in and pick a character. Characters group under a server-side
-    user; the MCP bearer token carries that user id.
+    `/healthz` and `/readyz` live on the internal listener
+    (`INTERNAL_LISTEN_HOST_PORT`, default `127.0.0.1:8766`) and are
+    also absent: they are cluster-only and must not be routed
+    publicly. `/healthz` is liveness (`{"status":"ok"}`, no
+    dependency). `/readyz` is that plus a Postgres ping; it returns
+    503 when the ping fails. `/metrics` is future (SPEC §11).
 
-    Liveness and readiness live on the internal listener
-    (`INTERNAL_LISTEN_HOST_PORT`), outside this contract, and must not
-    be routed publicly.
+    Human failures on the EVE callback — refused login, short grant,
+    unknown state — are HTML pages with a static sentence. They are
+    never JSON and never echo CCP query strings or Go errors.
+
+    The instance owns exactly one EVE application (`CLIENT_ID`).
+    `/oauth/authorize` sends the browser to EVE SSO.
 servers:
   - url: /
 paths:
@@ -36,6 +45,9 @@ paths:
     get:
       operationId: getIndex
       summary: Human status page
+      description: |
+        How to connect and the exact EVE callback URL. No character
+        data, no counts — it is world-readable.
       tags: [pages]
       responses:
         "200":
@@ -56,6 +68,12 @@ paths:
     get:
       operationId: getAuthCallback
       summary: EVE SSO callback
+      description: |
+        Completes the EVE login. Success redirects the browser back to
+        the MCP client, or renders an HTML confirmation when no client
+        redirect was stored. Failures render a static HTML catalog page
+        (400 / 503 / 500). CCP `error` / `error_description` and Go
+        errors stay in the log.
       tags: [auth]
       parameters:
         - name: code
@@ -76,7 +94,7 @@ paths:
             type: string
       responses:
         "200":
-          description: Character authorized (tool-started login)
+          description: Character authorized (no MCP client redirect)
           content:
             text/html:
               schema:
@@ -84,7 +102,19 @@ paths:
         "302":
           description: Back to the MCP client with an authorization code
         "400":
-          description: Login failed
+          description: Catalog HTML — refused, unknown, mismatch, short grant, or bad callback
+          content:
+            text/html:
+              schema:
+                type: string
+        "503":
+          description: Catalog HTML — login could not be finished
+          content:
+            text/html:
+              schema:
+                type: string
+        "500":
+          description: Catalog HTML — unexpected failure
           content:
             text/html:
               schema:
@@ -145,9 +175,10 @@ paths:
       operationId: getOAuthAuthorize
       summary: MCP authorize — redirects straight to EVE SSO
       description: |
-        Validates the MCP client and redirect URI, then sends the browser to
-        EVE SSO with the instance application. Without OAuth parameters it
-        renders a human hint page.
+        Validates the MCP client and redirect URI, then sends the browser
+        to EVE SSO with the instance application. Without OAuth
+        parameters it renders a human HTML hint. An unknown client is
+        plain text, not the callback catalog.
       tags: [oauth]
       parameters:
         - name: client_id
@@ -170,13 +201,23 @@ paths:
         "302":
           description: Redirect to EVE SSO
         "200":
-          description: Hint page (no OAuth parameters)
+          description: HTML hint (no OAuth parameters)
           content:
             text/html:
               schema:
                 type: string
         "400":
-          description: Unknown client or redirect_uri
+          description: Unknown client or redirect_uri (plain text)
+          content:
+            text/plain:
+              schema:
+                type: string
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthError"
   /oauth/token:
     post:
       operationId: postOAuthToken
