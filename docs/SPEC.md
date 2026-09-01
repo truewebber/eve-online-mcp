@@ -64,7 +64,7 @@ Each pod runs two HTTP listeners:
 | Listener | Env | Default | Serves | Exposure |
 |---|---|---|---|---|
 | Public | `LISTEN_HOST_PORT` | `127.0.0.1:8765` | `/mcp`, OAuth endpoints, human pages | Ingress / Cloudflare tunnel |
-| Internal | `INTERNAL_LISTEN_HOST_PORT` | `127.0.0.1:8766` | `/healthz`, `/readyz`, `/metrics` (future) | Cluster-only. Never routed publicly |
+| Internal | `INTERNAL_LISTEN_HOST_PORT` | `127.0.0.1:8766` | `/healthz`, `/readyz`, `/metrics` | Cluster-only. Never routed publicly |
 
 Defaults bind loopback because the common local case is a laptop. Under
 Kubernetes both must be set to `0.0.0.0:<port>` or the kubelet cannot
@@ -701,7 +701,7 @@ Internal listener:
 |---|---|
 | `GET /healthz` | Liveness: the process is up and serving. `{"status":"ok"}`, no dependency touched |
 | `GET /readyz` | Readiness: liveness plus a Postgres ping under a short timeout; `503` when the ping fails |
-| `GET /metrics` | Prometheus, future — see §11 |
+| `GET /metrics` | Prometheus — see §11 |
 
 The split is what keeps a pod with an unreachable database out of the
 Service without restarting it in a loop: it can serve nothing, but
@@ -839,22 +839,17 @@ the mail cap counts from (§5.4). It stores no message bodies.
 ## 11. Observability
 
 - Now: `/healthz`, `/readyz`, structured process logs to stdout,
-  and the `mutations` audit log (§8), which is queryable with SQL and is
-  the only durable record of in-game changes.
-- Next (internal listener): Prometheus `/metrics` — ESI requests/errors
-  by status, error-limit remain gauge, cache hit ratio and bytes held,
-  per-tool call count + latency, per-character allowance and error-budget
-  rejections, mail-cap rejections, mutations by tool and outcome, active
-  sessions, sweep run age. Everything except the database-derived series
-  is per pod and must be summed across them; a cache hit ratio averaged
-  over pods without weighting is a lie when replicas roll.
-- **Three of those counters are not garnish.** The constants in §5.2 and
-  §5.3 claim a bucket of 400 and 20 errors a minute are "never felt in
-  normal use", and that claim is unfalsifiable until something counts
-  allowance rejections, error-budget rejections and mail-cap rejections.
-  They ship with the limiters that produce them, not with the rest of
-  `/metrics`: a counter incremented in the same function as the refusal
-  is a line of code, while going back for it later means re-reading §5.
+  the `mutations` audit log (§8), which is queryable with SQL and is
+  the only durable record of in-game changes, and Prometheus `/metrics`
+  on the internal listener — RED for the ESI client and for the public
+  HTTP listener (request count and duration by method, status, and a
+  path *template*). ESI path labels replace numeric segments with
+  `{id}`; public path labels are the mux pattern, or `other`. Never a
+  raw id or an unmatched URL. Series are per pod and must be summed
+  across replicas. The internal listener itself is not counted.
+- Allowance, error-budget and mail-cap refusals are still incremented
+  next to the refusal that produces them (§5.2–§5.4). They are not
+  Prometheus series.
 
 ## 12. Deltas vs current code (implementation checklist)
 

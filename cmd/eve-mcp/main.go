@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 
 	"github.com/truewebber/gopkg/log"
@@ -19,6 +20,7 @@ import (
 	oauthclientpgx "github.com/truewebber/eve-online-mcp/internal/domain/oauthclient/pgx"
 	sessionpgx "github.com/truewebber/eve-online-mcp/internal/domain/session/pgx"
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
+	"github.com/truewebber/eve-online-mcp/internal/observe"
 	"github.com/truewebber/eve-online-mcp/internal/postgres"
 	httpsvc "github.com/truewebber/eve-online-mcp/internal/service/http"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/oauth"
@@ -58,7 +60,8 @@ func start(logger log.Logger) error {
 		return fmt.Errorf("open postgres: %w", err)
 	}
 	defer db.Close()
-	runtime, err := openRuntime(cfg, db, logger)
+	obs := observe.New()
+	runtime, err := openRuntime(cfg, db, logger, obs)
 	if err != nil {
 		return err
 	}
@@ -73,7 +76,10 @@ func start(logger log.Logger) error {
 	}
 	go sweep.New(runtime.sweep).Start(context.Background())
 
-	return listen(serveIn{cfg: cfg, db: db, host: host, oauth: oauthServer, logger: logger})
+	return listen(serveIn{
+		cfg: cfg, db: db, host: host, oauth: oauthServer, logger: logger,
+		metrics: obs.Handler(), observe: obs,
+	})
 }
 
 func helpRequested() bool {
@@ -93,8 +99,8 @@ type runtime struct {
 	sweep   sweep.Options
 }
 
-func openRuntime(cfg config, db *postgres.DB, logger log.Logger) (runtime, error) {
-	opts := sessionOptions(cfg, db, logger)
+func openRuntime(cfg config, db *postgres.DB, logger log.Logger, obs *observe.Registry) (runtime, error) {
+	opts := sessionOptions(cfg, db, logger, obs)
 	opened, err := session.Open(opts)
 	if err != nil {
 		return runtime{}, fmt.Errorf("open session: %w", err)
@@ -113,7 +119,7 @@ func openRuntime(cfg config, db *postgres.DB, logger log.Logger) (runtime, error
 	}}, nil
 }
 
-func sessionOptions(cfg config, db *postgres.DB, logger log.Logger) session.Options {
+func sessionOptions(cfg config, db *postgres.DB, logger log.Logger, obs *observe.Registry) session.Options {
 	pool := db.Pool()
 	opts := session.Options{
 		UserAgent:  cfg.UserAgent,
@@ -133,6 +139,7 @@ func sessionOptions(cfg config, db *postgres.DB, logger log.Logger) session.Opti
 	opts.ESI = esihttp.New(esi.Options{
 		UserAgent:  cfg.UserAgent,
 		CompatDate: defaultCompatDate,
+		Observe:    obs,
 	}, opts.HTTP, logger)
 	opts.SSO = ssohttp.New(sso.Options{
 		ClientID:     cfg.ClientID,
@@ -155,11 +162,13 @@ func oauthHost(cfg config) oauth.Host {
 }
 
 type serveIn struct {
-	cfg    config
-	db     *postgres.DB
-	host   oauth.Host
-	oauth  *oauth.Server
-	logger log.Logger
+	cfg     config
+	db      *postgres.DB
+	host    oauth.Host
+	oauth   *oauth.Server
+	logger  log.Logger
+	metrics http.Handler
+	observe httpsvc.Observer
 }
 
 func listen(in serveIn) error {
@@ -172,6 +181,8 @@ func listen(in serveIn) error {
 		TrustConnectingIP: in.cfg.TrustConnectingIP,
 		Ready:             in.db.Ping,
 		Logger:            in.logger,
+		Metrics:           in.metrics,
+		Observe:           in.observe,
 	}); err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}

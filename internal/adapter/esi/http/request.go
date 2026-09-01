@@ -196,12 +196,16 @@ func (c *Client) request(ctx context.Context, in httpCall) (*nhttp.Response, err
 	}
 	req.Header = in.headers.Clone()
 	c.sem <- struct{}{}
+	start := time.Now()
 	resp, err := c.http.Do(req)
 	<-c.sem
 	if err != nil {
+		c.observeRequest(in.method, 0, in.path, time.Since(start))
+
 		return c.retryOrNetErr(ctx, in, err)
 	}
 	c.noteErrorHeaders(resp)
+	c.observeRequest(in.method, resp.StatusCode, in.path, time.Since(start))
 	if retry, err := c.throttleOrLimit(&in, resp); retry {
 		return c.request(ctx, in)
 	} else if err != nil {

@@ -114,7 +114,7 @@ commit as the change to the document that owns it; after the task
 | [T27](T27-pagination.md) | Pagination across the list tools | done | L | T26 | §10 §15 | §4, §12.12 |
 | [T28](T28-one-function-one-job.md) | One function, one job; one result | done | L | T27 | §15 §10 §3 | §7 |
 | [T29](T29-env-and-openapi.md) | `.env.example` + `api/http.yaml` | done | S | T22 | §16 | §2, §6, §12.14 |
-| [T30](T30-metrics.md) | Prometheus `/metrics` | later | M | T28 | §7 §15 | §11, §12.15 |
+| [T30](T30-metrics.md) | Prometheus `/metrics` | done | M | T28 | §7 §15 | §11, §12.15 |
 
 ## What the audit of 2026-08-31 changed
 

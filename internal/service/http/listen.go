@@ -33,19 +33,21 @@ type ListenOptions struct {
 	TrustConnectingIP bool
 	Ready             func(context.Context) error
 	Logger            log.Logger
+	Metrics           http.Handler
+	Observe           Observer
 }
 
-// The internal listener (healthz, readyz, later metrics) must never be exposed.
+// The internal listener (healthz, readyz, metrics) must never be exposed.
 func ListenAndServe(h *API, opts ListenOptions) error {
 	errs := make(chan error, httpServers)
-	go func() { errs <- serve(opts.InternalListen, internalMux(opts.Ready)) }()
+	go func() { errs <- serve(opts.InternalListen, internalMux(opts.Ready, opts.Metrics)) }()
 
 	base := h.Host.BaseURL()
 	path := mcpPath(opts.MCPPath)
 	opts.Logger.Info("writes: confirm, mail cap 5/hour")
 	opts.Logger.Info("MCP endpoint (OAuth — clients show Authentication required)", "base", base, "path", path)
 	opts.Logger.Info("EVE callback must be exactly this URL", "url", h.Host.CallbackURL)
-	opts.Logger.Info("internal endpoint (healthz, readyz)", "addr", opts.InternalListen)
+	opts.Logger.Info("internal endpoint (healthz, readyz, metrics)", "addr", opts.InternalListen)
 
 	go func() { errs <- serve(opts.Listen, publicHandler(h, opts)) }()
 
@@ -60,7 +62,7 @@ func publicHandler(h *API, opts ListenOptions) http.Handler {
 	mountMCP(root, h, opts)
 	root.Handle("/", limited)
 
-	return root
+	return observePublic(root, opts.Observe)
 }
 
 func mountPublic(h *API, mux *http.ServeMux) {
@@ -114,10 +116,14 @@ func serve(addr string, h http.Handler) error {
 	return nil
 }
 
-func internalMux(ready func(context.Context) error) *http.ServeMux {
+func internalMux(ready func(context.Context) error, metrics http.Handler) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", serveHealthz)
 	mux.HandleFunc("/readyz", serveReadyz(ready))
+	if metrics != nil {
+		// RED series are per pod and must be summed across replicas.
+		mux.Handle("/metrics", metrics)
+	}
 
 	return mux
 }

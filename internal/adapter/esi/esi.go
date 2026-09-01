@@ -19,11 +19,16 @@ const (
 	staleAfterHour   = 3600.0
 )
 
+type Observer interface {
+	Request(method string, status int, path string, d time.Duration)
+}
+
 type Options struct {
 	BaseURL        string
 	UserAgent      string
 	CompatDate     string
 	MaxConcurrency int
+	Observe        Observer
 }
 
 type Error struct {
@@ -89,7 +94,7 @@ func (r Result) PageCount() int {
 	return 1
 }
 
-//go:generate go tool go.uber.org/mock/mockgen -destination=../../mocks/esi.go -package=mocks -mock_names=Client=MockESIClient,TokenSource=MockESITokenSource github.com/truewebber/eve-online-mcp/internal/adapter/esi Client,TokenSource
+//go:generate go tool go.uber.org/mock/mockgen -destination=../../mocks/esi.go -package=mocks -mock_names=Client=MockESIClient,TokenSource=MockESITokenSource,Observer=MockESIObserver github.com/truewebber/eve-online-mcp/internal/adapter/esi Client,TokenSource,Observer
 type TokenSource interface {
 	AccessToken(ctx context.Context, characterID int) (string, error)
 }

@@ -140,7 +140,10 @@ func (s *Session) RebuildGrant(sessionID int64) {
 	s.SessionID = sessionID
 	s.grant = &grantState{}
 	if s.Mutations != nil && s.Confirms != nil {
-		s.Guard = write.NewGuard(guardPersist{mutations: s.Mutations, confirms: s.Confirms}, int64(s.CharacterID), sessionID, s.Logger)
+		s.Guard = write.NewGuard(
+			guardPersist{mutations: s.Mutations, confirms: s.Confirms},
+			int64(s.CharacterID), sessionID, s.Logger,
+		)
 	}
 }
 

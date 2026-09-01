@@ -104,7 +104,7 @@ The EVE application callback must then be exactly
 client and sign in with EVE — MCP OAuth binds each of them to their own
 characters.
 
-`/healthz`, `/readyz` (and metrics, when added) are served on
+`/healthz`, `/readyz` and `/metrics` are served on
 `INTERNAL_LISTEN_HOST_PORT` (default `127.0.0.1:8766`) — point k8s
 probes there, never route it publicly. Liveness is `/healthz`; readiness
 is `/readyz`, which also pings Postgres, so a pod that cannot reach the

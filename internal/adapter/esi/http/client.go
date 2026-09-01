@@ -43,6 +43,7 @@ type Client struct {
 	bucket       *userBucket
 	budget       *errorBudget
 	logger       log.Logger
+	observe      esi.Observer
 }
 
 func New(opts esi.Options, httpClient *nhttp.Client, logger log.Logger) *Client {
@@ -63,6 +64,7 @@ func New(opts esi.Options, httpClient *nhttp.Client, logger log.Logger) *Client 
 		bucket:      newUserBucket(),
 		budget:      newErrorBudget(),
 		logger:      logger,
+		observe:     opts.Observe,
 	}
 }
 
@@ -87,6 +89,7 @@ func (c *Client) ForUser(auth esi.TokenSource) esi.Client {
 		bucket:      newUserBucket(),
 		budget:      newErrorBudget(),
 		logger:      c.logger,
+		observe:     c.observe,
 	}
 }
 

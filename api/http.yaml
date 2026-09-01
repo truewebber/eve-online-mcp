@@ -30,7 +30,9 @@ info:
     also absent: they are cluster-only and must not be routed
     publicly. `/healthz` is liveness (`{"status":"ok"}`, no
     dependency). `/readyz` is that plus a Postgres ping; it returns
-    503 when the ping fails. `/metrics` is future (SPEC §11).
+    503 when the ping fails. `/metrics` is Prometheus RED for the ESI
+    client and the public HTTP listener (SPEC §11) and is also absent.
+    Path labels are templates, never raw ids. Series are per pod.
 
     Human failures on the EVE callback — refused login, short grant,
     unknown state — are HTML pages with a static sentence. They are

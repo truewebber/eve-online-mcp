@@ -140,15 +140,20 @@ func (c *responseCache) evictLocked() {
 }
 
 func (c *responseCache) len() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	_, entries := c.stats()
 
-	return c.ll.Len()
+	return entries
 }
 
 func (c *responseCache) size() int {
+	bytes, _ := c.stats()
+
+	return bytes
+}
+
+func (c *responseCache) stats() (int, int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	return c.bytes
+	return c.bytes, c.ll.Len()
 }
