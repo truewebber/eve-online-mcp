@@ -391,7 +391,7 @@ func writeSurface() []toolWant {
 			reqString(fWindow), reqString("target"), optConfirm(),
 		}},
 		{name: "eve_fitting_save", params: []wantParam{
-			reqString(fName), reqString("ship"), {fModules, schemaArray, true, schemaObject},
+			reqString(fName), reqString(fShip), {fModules, schemaArray, true, schemaObject},
 			optString(fDescription), optConfirm(),
 		}},
 		{name: "eve_fitting_delete", params: []wantParam{reqInt(fFittingID), optConfirm()}},

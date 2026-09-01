@@ -140,16 +140,27 @@ func fetchOverview(ctx context.Context, a *session.Session, cid int) overviewFet
 
 		return overviewBox{r, err}
 	}
-	ch := make(chan overviewBox, overviewFetches)
-	go func() { ch <- get(esiPath("characters", esiID(cid)), false) }()
-	go func() { ch <- get(esiPath("characters", esiID(cid), "wallet"), true) }()
-	go func() { ch <- get(esiPath("characters", esiID(cid), "location"), true) }()
-	go func() { ch <- get(esiPath("characters", esiID(cid), "ship"), true) }()
-	go func() { ch <- get(esiPath("characters", esiID(cid), "online"), true) }()
-	go func() { ch <- get(esiPath("characters", esiID(cid), "skillqueue"), true) }()
-	go func() { ch <- get(esiPath("characters", esiID(cid), "attributes"), true) }()
+	ch := make(chan func(*overviewFetch), overviewFetches)
+	launch := func(path string, auth bool, set func(*overviewFetch, overviewBox)) {
+		go func() {
+			box := get(path, auth)
+			ch <- func(out *overviewFetch) { set(out, box) }
+		}()
+	}
+	launch(esiPath("characters", esiID(cid)), false, func(o *overviewFetch, b overviewBox) { o.public = b })
+	launch(esiPath("characters", esiID(cid), fWallet), true, func(o *overviewFetch, b overviewBox) { o.wallet = b })
+	launch(esiPath("characters", esiID(cid), fLocation), true, func(o *overviewFetch, b overviewBox) { o.location = b })
+	launch(esiPath("characters", esiID(cid), fShip), true, func(o *overviewFetch, b overviewBox) { o.ship = b })
+	launch(esiPath("characters", esiID(cid), "online"), true, func(o *overviewFetch, b overviewBox) { o.online = b })
+	launch(esiPath("characters", esiID(cid), "skillqueue"), true, func(o *overviewFetch, b overviewBox) { o.queue = b })
+	launch(esiPath("characters", esiID(cid), "attributes"), true, func(o *overviewFetch, b overviewBox) { o.attributes = b })
 
-	return overviewFetch{<-ch, <-ch, <-ch, <-ch, <-ch, <-ch, <-ch}
+	var out overviewFetch
+	for range overviewFetches {
+		(<-ch)(&out)
+	}
+
+	return out
 }
 
 func applyOverviewPublic(ctx context.Context, a *session.Session, public overviewBox, out map[string]any) {
@@ -171,11 +182,20 @@ func applyOverviewPublic(ctx context.Context, a *session.Session, public overvie
 }
 
 func applyOverviewWallet(wallet overviewBox, out map[string]any) {
-	if wallet.err != nil {
+	if wallet.err != nil || !isWalletAmount(wallet.r.Data) {
 		return
 	}
 	out["wallet_isk"] = wallet.r.Data
 	out[fWallet] = isk(wallet.r.Data)
+}
+
+func isWalletAmount(v any) bool {
+	switch v.(type) {
+	case float64, float32, int, int64:
+		return true
+	default:
+		return false
+	}
 }
 
 func applyOverviewOnline(online overviewBox, out map[string]any) {
@@ -227,6 +247,9 @@ func applyOverviewShip(ctx context.Context, a *session.Session, ship overviewBox
 
 func applyOverviewQueue(ctx context.Context, a *session.Session, queue overviewBox, out map[string]any) {
 	if queue.err != nil {
+		return
+	}
+	if _, ok := queue.r.Data.([]any); !ok {
 		return
 	}
 	var entries []map[string]any

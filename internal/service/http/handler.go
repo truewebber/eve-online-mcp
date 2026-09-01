@@ -11,6 +11,8 @@ import (
 	"github.com/truewebber/eve-online-mcp/internal/usecase/oauth"
 )
 
+const githubRepoURL = "https://github.com/truewebber/eve-online-mcp"
+
 type API struct {
 	OAuth  *oauth.Server
 	Host   oauth.Host
@@ -44,14 +46,14 @@ func (h *API) GetIndex(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	repo := html.EscapeString(githubRepoURL)
 	body := fmt.Sprintf(`
 			<h1>EVE MCP</h1>
 			<p>Add this URL in Cursor or Claude Code. The client will show <b>Authentication required</b> and send you to the EVE login.</p>
 			<p>MCP endpoint: <code>%s</code></p>
-			<p class=dim>EVE callback must be exactly <code>%s</code>.</p>
+			<p class=dim><a href="%s">%s</a></p>
 			<p class=dim>Writes: confirm (mail cap 5/hour)</p>`,
-		html.EscapeString(h.OAuth.ResourceURL()),
-		html.EscapeString(h.Host.CallbackURL))
+		html.EscapeString(h.OAuth.ResourceURL()), repo, repo)
 	page(w, "EVE MCP", body)
 }
 

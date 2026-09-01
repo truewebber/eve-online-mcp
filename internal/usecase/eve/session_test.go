@@ -21,6 +21,8 @@ import (
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 )
 
+const fixturePilotName = "Fixture Pilot"
+
 func fixtureSession(t *testing.T) *session.Session {
 	t.Helper()
 	tr, err := esitest.Load()
@@ -56,7 +58,7 @@ func toolSession(t *testing.T, esiClient esi.Client, refresh bool) *session.Sess
 		ID: sid, CharacterID: int64(id), Scopes: scopes, RefreshToken: "refresh",
 	}, nil).AnyTimes()
 	chars.EXPECT().Get(gomock.Any(), int64(id)).Return(&character.Character{
-		ID: int64(id), Name: "Fixture Pilot",
+		ID: int64(id), Name: fixturePilotName,
 	}, nil).AnyTimes()
 	muts.EXPECT().CountMailCap(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
 	if refresh {
@@ -70,7 +72,7 @@ func toolSession(t *testing.T, esiClient esi.Client, refresh bool) *session.Sess
 		ssoC.EXPECT().AccessToken(gomock.Any(), "refresh").Return(&sso.CharacterToken{
 			AccessToken: "at", RefreshToken: "refresh",
 			AccessExpiresAt: time.Now().Add(time.Hour),
-			CharacterID:     id, CharacterName: "Fixture Pilot", Scopes: scopes,
+			CharacterID:     id, CharacterName: fixturePilotName, Scopes: scopes,
 		}, nil).AnyTimes()
 	}
 	if mock, ok := esiClient.(*mocks.MockESIClient); ok {

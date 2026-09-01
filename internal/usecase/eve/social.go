@@ -164,7 +164,7 @@ func eveFittingList(ctx context.Context, a *session.Session, in fitIn) (any, err
 			d = desc
 		}
 		rows = append(rows, map[string]any{
-			fFittingID: f[fFittingID], fName: f[fName], "ship": names[j.Int(f[fShipTypeID])],
+			fFittingID: f[fFittingID], fName: f[fName], fShip: names[j.Int(f[fShipTypeID])],
 			"module_count": len(j.Slice(f[fItems])), fDescription: d, fModules: mods,
 		})
 	}
@@ -172,7 +172,7 @@ func eveFittingList(ctx context.Context, a *session.Session, in fitIn) (any, err
 
 	return merge(map[string]any{
 		fCharacter: token.CharacterName, fDataAge: result.StaleNote(),
-		fFittings: project(paged.Rows, []string{fFittingID, fName, "ship", "module_count"}, concise(in.ResponseFormat)),
+		fFittings: project(paged.Rows, []string{fFittingID, fName, fShip, "module_count"}, concise(in.ResponseFormat)),
 	}, paged.fields), nil
 }
 

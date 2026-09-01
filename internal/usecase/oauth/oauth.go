@@ -281,9 +281,8 @@ func (s *Server) ServeAuthorize(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `<!doctype html><meta charset=utf-8><title>EVE MCP</title>
 <body style="font:15px/1.6 system-ui;max-width:36rem;margin:4rem auto;padding:0 1.5rem">
 <h1>Connect from Cursor or Claude</h1>
-<p>Add <code>%s</code> as an HTTP MCP server. The client will show Authentication required and send you to the EVE login.</p>
-<p class=dim>EVE callback: <code>%s</code></p>`,
-			html.EscapeString(s.ResourceURL()), html.EscapeString(s.pub.CallbackURL))
+<p>Add <code>%s</code> as an HTTP MCP server. The client will show Authentication required and send you to the EVE login.</p>`,
+			html.EscapeString(s.ResourceURL()))
 
 		return
 	}

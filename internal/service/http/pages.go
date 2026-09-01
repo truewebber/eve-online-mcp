@@ -21,6 +21,7 @@ const pageTmpl = `<!doctype html><meta charset=utf-8><title>%s</title>
   ul { padding-left: 1.1rem; }
   code { background: rgba(127,127,127,.18); padding: .1em .35em; border-radius: 3px; }
   .dim { opacity: .65; }
+  a:not(.btn) { color: inherit; }
   .warn { color: #c0392b; }
   .btn, button { display: inline-block; padding: .55rem 1rem; border-radius: 6px;
           background: #2b6cb0; color: #fff; text-decoration: none; border: 0; font: inherit; cursor: pointer; }

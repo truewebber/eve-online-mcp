@@ -153,7 +153,7 @@ func eveCharacterSkillQueue(ctx context.Context, a *session.Session, _ empty) (a
 	entries := j.Maps(result.Data)
 	if len(entries) == 0 {
 		return map[string]any{
-			fCharacter: token.CharacterName, "queue": []any{},
+			fCharacter: token.CharacterName, fQueue: []any{},
 			"warning": "The skill queue is empty. This character is accruing no skill points at all until something is queued.",
 			fDataAge:  result.StaleNote(),
 		}, nil
@@ -178,7 +178,7 @@ func eveCharacterSkillQueue(ctx context.Context, a *session.Session, _ empty) (a
 		fCharacter: token.CharacterName, "queued_skills": len(rows),
 		"training_now":   strings.TrimSpace(j.Str(rows[0][fSkill]) + " " + j.Str(rows[0]["to_level"])),
 		"queue_empty_in": emptyIn, "queue_ends": rows[len(rows)-1]["finish_date"],
-		fDataAge: result.StaleNote(), "queue": rows,
+		fDataAge: result.StaleNote(), fQueue: rows,
 	}, nil
 }
 

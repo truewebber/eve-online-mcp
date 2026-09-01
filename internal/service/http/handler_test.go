@@ -243,3 +243,20 @@ func callbackAPI(
 
 	return h
 }
+
+func TestIndexLinksToGitHub(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	h := callbackAPI(t, mocks.QuietLogger(ctrl), mocks.NewMockLoginstateRepository(ctrl),
+		mocks.NewMockSSOClient(ctrl), mocks.NewMockCharacterRepository(ctrl), mocks.NewMockAuthcodeRepository(ctrl))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+	h.GetIndex(rec, req)
+	body := rec.Body.String()
+	if !strings.Contains(body, githubRepoURL) {
+		t.Fatalf("missing github link: %s", body)
+	}
+	if strings.Contains(body, "EVE callback") {
+		t.Fatalf("operator callback leaked onto the index: %s", body)
+	}
+}

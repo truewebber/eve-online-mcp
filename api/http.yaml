@@ -48,8 +48,9 @@ paths:
       operationId: getIndex
       summary: Human status page
       description: |
-        How to connect and the exact EVE callback URL. No character
-        data, no counts — it is world-readable.
+        How to connect. No character data, no counts — it is
+        world-readable. The EVE SSO callback URL is operator
+        configuration, not shown here.
       tags: [pages]
       responses:
         "200":
