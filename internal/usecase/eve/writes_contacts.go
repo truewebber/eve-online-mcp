@@ -15,7 +15,7 @@ import (
 
 type contactsSetIn struct {
 	Names        []string `json:"names"                   jsonschema:"Exact character, corporation or alliance names."`
-	Standing     float64  `json:"standing"                jsonschema:"-10.0 to 10.0.,minimum=-10,maximum=10"`
+	Standing     float64  `json:"standing"                jsonschema:"-10.0 to 10.0."`
 	Watched      *bool    `json:"watched,omitempty"       jsonschema:"Add to the watch list. Characters only."`
 	ConfirmToken string   `json:"confirm_token,omitempty" jsonschema:"Leave empty on the first call: the tool returns a preview of exactly what it would do plus a single-use token. Show that preview to the user, get an explicit yes, then call again with identical arguments and the token here."`
 }

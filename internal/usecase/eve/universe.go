@@ -99,12 +99,12 @@ func eveUniverseSearch(ctx context.Context, a *session.Session, in universeSearc
 	if err := a.RequireScope(token, "esi-search.search_structures.v1", "the search index"); err != nil {
 		return nil, wrap("eveUniverseSearch", err)
 	}
-	raw, used, err := searchWithFallback(ctx, a, token.CharacterID, wanted, in.Query, boolDef(in.Strict, false))
+	hit, err := searchWithFallback(ctx, a, token.CharacterID, wanted, in.Query, boolDef(in.Strict, false))
 	if err != nil {
 		return nil, err
 	}
 
-	return universeSearchAssemble(ctx, a, token.CharacterID, in, raw, used)
+	return universeSearchAssemble(ctx, a, token.CharacterID, in, hit)
 }
 
 func universeSearchWanted(categories string) []string {
@@ -138,20 +138,20 @@ func universeSearchInvalid(wanted []string) []string {
 	return invalid
 }
 
-func universeSearchAssemble(ctx context.Context, a *session.Session, characterID int, in universeSearchIn, raw map[string][]int, used string) (map[string]any, error) {
+func universeSearchAssemble(ctx context.Context, a *session.Session, characterID int, in universeSearchIn, hit searchHit) (map[string]any, error) {
 	limit := limitOr(in.Limit, limitShort)
 	pool := min(max(searchPoolFactor*limit, searchPoolFloor), searchPoolMax)
-	names, err := a.Resolver.Names(ctx, setToList(universeSearchIDSet(raw, pool)), &characterID)
+	names, err := a.Resolver.Names(ctx, setToList(universeSearchIDSet(hit.raw, pool)), &characterID)
 	if err != nil {
 		return nil, wrap("universeSearchAssemble", err)
 	}
-	out := map[string]any{fQuery: in.Query, fStrict: boolDef(in.Strict, false)}
-	if used != in.Query {
-		out["matched_on_prefix"] = used
-		out[fNote] = fmt.Sprintf("Nothing matched %q exactly. ESI matches on prefix, not fuzzily, so the search was retried with the shorter prefix %q. Check that the result below is really what was meant.", in.Query, used)
+	out := map[string]any{fQuery: in.Query, fStrict: boolDef(in.Strict, false), fDataAge: staleNote(hit.age)}
+	if hit.used != in.Query {
+		out["matched_on_prefix"] = hit.used
+		out[fNote] = fmt.Sprintf("Nothing matched %q exactly. ESI matches on prefix, not fuzzily, so the search was retried with the shorter prefix %q. Check that the result below is really what was meant.", in.Query, hit.used)
 	}
 	anyHit := false
-	for cat, ids := range raw {
+	for cat, ids := range hit.raw {
 		if len(ids) > 0 {
 			anyHit = true
 		}
@@ -264,7 +264,7 @@ func eveUniverseSystem(ctx context.Context, a *session.Session, in universeSyste
 		fStations: len(j.Slice(info[fStations])), "stargates": len(j.Slice(info["stargates"])),
 		"ship_kills_last_hour": j.Int(kills["ship_kills"]), "pod_kills_last_hour": j.Int(kills["pod_kills"]),
 		"npc_kills_last_hour": j.Int(kills["npc_kills"]), "jumps_last_hour": j.Int(jumps["ship_jumps"]),
-		fDataAge: got.kills.StaleNote(),
+		fDataAge: staleNote(got.info.AgeSeconds, got.kills.AgeSeconds, got.jumps.AgeSeconds),
 	}, nil
 }
 
@@ -538,14 +538,20 @@ func eveUniverseHotspots(ctx context.Context, a *session.Session, in universeHot
 	return merge(map[string]any{fWindow: "last hour", fDataAge: result.StaleNote(), fSystems: visible}, meta), nil
 }
 
-func searchWithFallback(ctx context.Context, a *session.Session, characterID int, categories []string, query string, strict bool) (map[string][]int, string, error) {
+type searchHit struct {
+	raw  map[string][]int
+	used string
+	age  float64
+}
+
+func searchWithFallback(ctx context.Context, a *session.Session, characterID int, categories []string, query string, strict bool) (searchHit, error) {
 	attempt := strings.TrimSpace(query)
 	for {
 		result, err := a.ESI.Get(ctx, esiPath("characters", esiID(characterID), "search"), &characterID, map[string]any{
 			"categories": categories, "search": attempt, fStrict: strict,
 		}, nil)
 		if err != nil {
-			return nil, attempt, wrap("searchWithFallback", err)
+			return searchHit{used: attempt}, wrap("searchWithFallback", err)
 		}
 		raw := map[string][]int{}
 		hit := false
@@ -560,7 +566,7 @@ func searchWithFallback(ctx context.Context, a *session.Session, characterID int
 			}
 		}
 		if hit || strict || len(attempt) <= 3 {
-			return raw, attempt, nil
+			return searchHit{raw: raw, used: attempt, age: result.AgeSeconds}, nil
 		}
 		attempt = attempt[:len(attempt)-1]
 	}

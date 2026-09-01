@@ -23,7 +23,7 @@ type marketPriceIn struct {
 	Item        string `json:"item"                   jsonschema:"Exact item type name, e.g. 'Tritanium' or 'Rifter'. Must match the in-game name exactly."`
 	Region      string `json:"region,omitempty"       jsonschema:"Exact region name. Empty means The Forge / Jita 4-4."`
 	WholeRegion *bool  `json:"whole_region,omitempty" jsonschema:"Price across every station in the region instead of just the main hub."`
-	HistoryDays int    `json:"history_days,omitempty" jsonschema:"Summarise this many days of daily price history. 0 skips it.,minimum=0,maximum=365"`
+	HistoryDays int    `json:"history_days,omitempty" jsonschema:"Summarise this many days of daily price history. 0 skips it."`
 }
 
 type marketOrdersIn struct {
@@ -48,7 +48,7 @@ func registerMarket(s *mcp.Server) {
 	}, sessionTool(eveMarketOrders))
 	addTool(s, &mcp.Tool{
 		Name:        "eve_market_contracts",
-		Description: "Contracts the character issued or was assigned, newest first.\n\nCourier contracts are the ones with a collateral and a reward. Returns: total, outstanding, contracts[].",
+		Description: "Contracts the character issued or was assigned, newest first within the page.\n\nCourier contracts are the ones with a collateral and a reward. Returns: total, outstanding, contracts[], page, total_pages.",
 	}, sessionTool(eveMarketContracts))
 }
 
@@ -256,7 +256,7 @@ func marketHistory(ctx context.Context, a *session.Session, typeID, regionID, da
 func formatOrders(ctx context.Context, a *session.Session, character string, cid int, data any, stale string, limit int, conciseMode bool, walletNames map[int]string) (map[string]any, error) {
 	orders := j.Maps(data)
 	if len(orders) == 0 {
-		return map[string]any{fCharacter: character, fOrders: []any{}, fNote: "No open market orders."}, nil
+		return map[string]any{fCharacter: character, fOrders: []any{}, fNote: "No open market orders.", fDataAge: stale}, nil
 	}
 	typeSet, placeSet := map[int]struct{}{}, map[int]struct{}{}
 	for _, o := range orders {
@@ -350,7 +350,7 @@ func formatContracts(ctx context.Context, a *session.Session, character string, 
 			note = "No outstanding corporation contracts. Pass outstanding_only=false to include finished and expired ones."
 		}
 
-		return map[string]any{fCharacter: character, fContracts: []any{}, fNote: note}, nil
+		return map[string]any{fCharacter: character, fContracts: []any{}, fNote: note, fDataAge: stale}, nil
 	}
 	idSet := map[int]struct{}{}
 	for _, c := range contracts {

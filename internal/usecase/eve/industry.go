@@ -76,7 +76,7 @@ func eveIndustryPlanets(ctx context.Context, a *session.Session, in industryPlan
 	}
 	colonies := j.Maps(result.Data)
 	if len(colonies) == 0 {
-		return map[string]any{fCharacter: token.CharacterName, "colonies": []any{}, fNote: "No PI colonies."}, nil
+		return map[string]any{fCharacter: token.CharacterName, "colonies": []any{}, fNote: "No PI colonies.", fDataAge: result.StaleNote()}, nil
 	}
 	idSet := map[int]struct{}{}
 	for _, c := range colonies {
@@ -95,13 +95,14 @@ func eveIndustryPlanets(ctx context.Context, a *session.Session, in industryPlan
 			"pins": c["num_pins"], "planet_id": c["planet_id"],
 		})
 	}
+	ages := []float64{result.AgeSeconds}
 	if boolDef(in.Detail, false) {
-		decorateColonyDetails(ctx, a, cid, colonies, rows)
+		ages = append(ages, decorateColonyDetails(ctx, a, cid, colonies, rows)...)
 	}
 
 	return map[string]any{
 		fCharacter: token.CharacterName, "colony_count": len(rows),
-		fDataAge: result.StaleNote(), "colonies": rows,
+		fDataAge: staleNote(ages...), "colonies": rows,
 	}, nil
 }
 
@@ -120,7 +121,7 @@ func eveIndustryMining(ctx context.Context, a *session.Session, in industryMinin
 	}
 	entries := j.Maps(result.Data)
 	if len(entries) == 0 {
-		return map[string]any{fCharacter: token.CharacterName, fOres: []any{}, fNote: "Nothing mined recently."}, nil
+		return map[string]any{fCharacter: token.CharacterName, fOres: []any{}, fNote: "Nothing mined recently.", fDataAge: result.StaleNote()}, nil
 	}
 	totals, bySystem := sumMining(entries)
 	names, err := a.Resolver.Names(ctx, append(keys(totals), keys(bySystem)...), nil)
@@ -188,7 +189,8 @@ func industryJobsResult(ctx context.Context, a *session.Session, character strin
 	if len(jobs) == 0 {
 		return map[string]any{
 			fCharacter: character, fJobs: []any{},
-			fNote: "No industry jobs. Pass include_completed=true to see finished ones.",
+			fNote:    "No industry jobs. Pass include_completed=true to see finished ones.",
+			fDataAge: stale,
 		}, nil
 	}
 	idSet := map[int]struct{}{}
@@ -270,17 +272,22 @@ func industryJobsResult(ctx context.Context, a *session.Session, character strin
 	}, meta), nil
 }
 
-func decorateColonyDetails(ctx context.Context, a *session.Session, cid int, colonies, rows []map[string]any) {
+func decorateColonyDetails(ctx context.Context, a *session.Session, cid int, colonies, rows []map[string]any) []float64 {
 	now := time.Now().UTC()
+	var ages []float64
 	for i, c := range colonies {
-		decorateColonyDetail(ctx, a, cid, c, rows[i], now)
+		if age, ok := decorateColonyDetail(ctx, a, cid, c, rows[i], now); ok {
+			ages = append(ages, age)
+		}
 	}
+
+	return ages
 }
 
-func decorateColonyDetail(ctx context.Context, a *session.Session, cid int, colony, row map[string]any, now time.Time) {
+func decorateColonyDetail(ctx context.Context, a *session.Session, cid int, colony, row map[string]any, now time.Time) (float64, bool) {
 	layout, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "planets", esiID(j.Int(colony["planet_id"]))), &cid, nil, nil)
 	if err != nil {
-		return
+		return 0, false
 	}
 	pins := j.Maps(j.Map(layout.Data)["pins"])
 	if expiry := colonyExtractorExpiry(pins, now); expiry != "" {
@@ -288,11 +295,13 @@ func decorateColonyDetail(ctx context.Context, a *session.Session, cid int, colo
 	}
 	stored, err := colonyStored(ctx, a, pins)
 	if err != nil {
-		return
+		return layout.AgeSeconds, true
 	}
 	if len(stored) > 0 {
 		row["stored"] = stored
 	}
+
+	return layout.AgeSeconds, true
 }
 
 func colonyExtractorExpiry(pins []map[string]any, now time.Time) string {

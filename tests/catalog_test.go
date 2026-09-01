@@ -61,6 +61,57 @@ func TestCatalog(t *testing.T) {
 	}
 }
 
+func TestCatalogT26Clean(t *testing.T) {
+	t.Parallel()
+	root, err := moduleRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	toolsText, err := readDoc(root, docsTOOLS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	esiText, err := readDoc(root, docsESI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cat, err := parseTOOLS(toolsText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	esi, err := parseESI(esiText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls, err := extractCalls(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := openEnv(t)
+	got, err := e.client.ListTools(t.Context(), &mcp.ListToolsParams{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	init := e.client.InitializeResult()
+	served := ""
+	if init != nil {
+		served = init.Instructions
+	}
+	var leftover []finding
+	for _, f := range append(append(diffTools(cat, marshalTools(t, got.Tools)), diffInstructions(cat.Instructions, served)...), diffESI(esi, calls)...) {
+		if findingOwner(f) == "T26" {
+			leftover = append(leftover, f)
+		}
+	}
+	if len(leftover) == 0 {
+		return
+	}
+	t.Errorf("%d T26 findings remain:", len(leftover))
+	for _, f := range leftover {
+		t.Errorf("%s", formatFinding(f))
+	}
+}
+
 func marshalTools(t *testing.T, tools []*mcp.Tool) []map[string]any {
 	t.Helper()
 	out := make([]map[string]any, 0, len(tools))

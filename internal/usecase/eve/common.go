@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
 	"github.com/truewebber/eve-online-mcp/internal/j"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 
@@ -47,14 +48,18 @@ func patchBounds(schema *jsonschema.Schema) {
 			continue
 		}
 		switch name {
-		case "limit", fItems:
+		case "limit":
 			prop.Minimum, prop.Maximum = new(1.0), new(argLimitMax)
+		case fItems:
+			prop.Minimum, prop.Maximum = new(1.0), new(argItemsMax)
 		case fDivision:
 			prop.Minimum, prop.Maximum = new(1.0), new(argDivisionMax)
 		case "history_days":
 			prop.Minimum, prop.Maximum = new(0.0), new(argHistoryDays)
-		case fApprovedCost:
+		case fApprovedCost, "min_value":
 			prop.Minimum = new(0.0)
+		case fStanding:
+			prop.Minimum, prop.Maximum = new(argStandingMin), new(argStandingMax)
 		case fFromEvent, fEventID, fMailID, fFittingID, "page":
 			prop.Minimum = new(1.0)
 		}
@@ -373,4 +378,19 @@ func intersect(have []string, want map[string]struct{}) []string {
 	}
 
 	return out
+}
+
+func staleNote(ages ...float64) string {
+	return esi.Result{AgeSeconds: oldestAge(ages)}.StaleNote()
+}
+
+func oldestAge(ages []float64) float64 {
+	var oldest float64
+	for i, age := range ages {
+		if i == 0 || age > oldest {
+			oldest = age
+		}
+	}
+
+	return oldest
 }

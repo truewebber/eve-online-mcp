@@ -55,8 +55,11 @@ const (
 	journalCategoryCap = 15
 
 	argLimitMax    float64 = 500
+	argItemsMax    float64 = 200
 	argDivisionMax float64 = 7
 	argHistoryDays float64 = 365
+	argStandingMin float64 = -10
+	argStandingMax float64 = 10
 
 	activityManufacturing = 1
 	activityResearchTE    = 3

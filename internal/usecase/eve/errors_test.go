@@ -99,6 +99,51 @@ func TestHandleUnresolvedNamesAreData(t *testing.T) {
 	}
 }
 
+func TestHandleEsiRateLimitedErrorLimitFields(t *testing.T) {
+	t.Parallel()
+	remain, reset := 12, 8
+	res, _, err := Handle(esi.RateLimitedError{
+		Status: 420, RetrySec: 8, RetryAt: time.Unix(0, 0).UTC(),
+		Remain: &remain, ResetSec: &reset,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out map[string]any
+	if json.Unmarshal([]byte(toolText(res)), &out) != nil {
+		t.Fatal(toolText(res))
+	}
+	if out["kind"] != "EsiRateLimited" {
+		t.Fatalf("kind %v", out["kind"])
+	}
+	if out["retry_after_seconds"] != float64(8) || out["retry_at"] == nil {
+		t.Fatalf("%+v", out)
+	}
+	if out["error_limit_remain"] != float64(12) || out["error_limit_reset_seconds"] != float64(8) {
+		t.Fatalf("error_limit extras %+v", out)
+	}
+}
+
+func TestHandleKindsExcludeCharacterNotFound(t *testing.T) {
+	t.Parallel()
+	for _, err := range []error{
+		session.ErrNoSession, write.ErrMailCap, esi.ErrAllowanceSpent,
+		esi.RateLimitedError{}, esi.Error{Status: 500}, UnresolvedError{},
+	} {
+		res, _, handleErr := Handle(err)
+		if handleErr != nil {
+			t.Fatal(handleErr)
+		}
+		var out map[string]any
+		if json.Unmarshal([]byte(toolText(res)), &out) != nil {
+			t.Fatal(toolText(res))
+		}
+		if out["kind"] == "CharacterNotFound" {
+			t.Fatalf("%v mapped to CharacterNotFound", err)
+		}
+	}
+}
+
 func TestHandleUserRateLimitedExtras(t *testing.T) {
 	t.Parallel()
 	retryAt := time.Date(2026, 9, 1, 1, 0, 0, 0, time.UTC)

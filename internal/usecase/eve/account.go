@@ -20,11 +20,11 @@ func registerAccount(s *mcp.Server) {
 	}, sessionTool(eveServerStatus))
 	addTool(s, &mcp.Tool{
 		Name:        "eve_auth_status",
-		Description: "Who is authorized here, and which in-game changes the tools can make.\n\nCall this before anything else when you do not know the setup, and always before promising the user an in-game change. It names the one character this connection acts as, every mutating capability (all of them are registered), remaining mail sends this hour, how confirmation works, and when this sign-in expires.\n\nReturns: character, capabilities, capability_reference, outward_facing_capabilities, mails_last_hour, mails_remaining_this_hour, mail_cap_per_hour, pending_confirmations, confirm_ttl_seconds, confirm, session_expires_at.",
+		Description: "Who this connection is, and which in-game changes it can make.\n\nCall this before anything else when you do not know the setup, and always before promising the user an in-game change. This connection is signed in as exactly one character and acts only as that character; there is no way to add or switch to another one from here — that is a second server entry in the client, signed in separately.\n\nReturns: character, corporation, capabilities, capability_reference, outward_facing_capabilities, mails_last_hour, mails_remaining_this_hour, mail_cap_per_hour, pending_confirmations, confirm_ttl_seconds, confirm, session_expires_at.",
 	}, sessionTool(eveAuthStatus))
 	addTool(s, &mcp.Tool{
 		Name:        "eve_auth_logout",
-		Description: "Revoke this connection's access to its character and soft-delete the identity row.\n\nIrreversible in the sense that re-authorizing needs another browser login, but it destroys nothing in-game. Takes no arguments: a connection is exactly one character.\n\nReturns: removed, character_id.",
+		Description: "Sign this connection out and revoke the server's access to its character.\n\nEnds the connection: the stored EVE authorization is revoked at CCP and every following call fails until the user signs in again through the browser. Destroys nothing in game. There is no argument — a connection can only log out the character it is.\n\nReturns: removed, character_id, character.",
 	}, sessionTool(eveAuthLogout))
 	addTool(s, &mcp.Tool{
 		Name:        "eve_character_overview",
@@ -105,7 +105,25 @@ func eveCharacterOverview(ctx context.Context, a *session.Session, _ empty) (any
 		out["remaps_available"] = j.Map(got.attributes.r.Data)["bonus_remaps"]
 	}
 
+	if age := staleOf(got.public, got.wallet, got.location, got.ship, got.online, got.queue, got.attributes); age != "" {
+		out[fDataAge] = age
+	}
+
 	return compact(out), nil
+}
+
+func staleOf(boxes ...overviewBox) string {
+	var ages []float64
+	for _, b := range boxes {
+		if b.err == nil {
+			ages = append(ages, b.r.AgeSeconds)
+		}
+	}
+	if len(ages) == 0 {
+		return ""
+	}
+
+	return staleNote(ages...)
 }
 
 type overviewFetch struct {

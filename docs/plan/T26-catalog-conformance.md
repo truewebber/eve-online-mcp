@@ -1,6 +1,6 @@
 # T26 — Catalog conformance and the server instructions
 
-- Status: `todo`
+- Status: `done`
 - Size: M
 - Depends on: T25
 - RULES: §5 (tests are the only proof), §6 (the code is the
@@ -103,21 +103,21 @@ correct.
 
 ## Acceptance
 
-- [ ] Every tool's name, description, parameters, types and
+- [x] Every tool's name, description, parameters, types and
       required-ness match TOOLS.md
-- [ ] No `jsonschema` tag contains bound syntax
-- [ ] No typed output schemas
-- [ ] `instructions` matches TOOLS.md's block, single-character wording
+- [x] No `jsonschema` tag contains bound syntax
+- [x] No typed output schemas
+- [x] `instructions` matches TOOLS.md's block, single-character wording
       and error budget included
-- [ ] Every ESI-backed result carries `data_age`; fused results report
+- [x] Every ESI-backed result carries `data_age`; fused results report
       the oldest
-- [ ] Error kinds match SPEC §4
-- [ ] The table-driven test covers all 52 tools
-- [ ] The catalogue check reports only pagination findings, and T25's
+- [x] Error kinds match SPEC §4
+- [x] The table-driven test covers all 52 tools
+- [x] The catalogue check reports only pagination findings, and T25's
       list is otherwise empty
-- [ ] `tests/catalog.go` is unchanged, except for a parser bug fixed
+- [x] `tests/catalog.go` is unchanged, except for a parser bug fixed
       with a parser test
-- [ ] `go test ./...` and `make lint` pass
+- [x] `go test ./...` and `make lint` pass
 
 ## Verify
 

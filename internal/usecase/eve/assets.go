@@ -14,9 +14,9 @@ import (
 
 type assetsListIn struct {
 	Location       string  `json:"location,omitempty"        jsonschema:"Case-insensitive substring of a station or structure name, e.g. 'Jita' or 'Amarr VIII'. Empty means every location."`
-	MinValue       float64 `json:"min_value,omitempty"       jsonschema:"Hide locations holding less than this many ISK.,minimum=0"`
+	MinValue       float64 `json:"min_value,omitempty"       jsonschema:"Hide locations holding less than this many ISK."`
 	Limit          int     `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
-	Items          int     `json:"items,omitempty"           jsonschema:"Maximum items to list inside each location in detailed mode.,minimum=1,maximum=200"`
+	Items          int     `json:"items,omitempty"           jsonschema:"Maximum items to list inside each location in detailed mode."`
 	ResponseFormat string  `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
@@ -48,7 +48,7 @@ func registerAssets(s *mcp.Server) {
 	}, sessionTool(eveAssetsFind))
 	addTool(s, &mcp.Tool{
 		Name:        "eve_assets_blueprints",
-		Description: "Blueprints with material/time efficiency and remaining runs.\n\nOriginals (BPO) can be used forever and report runs_left absent; copies (BPC) are consumed. Material efficiency (0-10) cuts input materials; time efficiency (0-20) cuts job duration.\n\nReturns: originals, copies, blueprints[].",
+		Description: "Blueprints with material/time efficiency and remaining runs.\n\nOriginals (BPO) can be used forever and report runs_left absent; copies (BPC) are consumed. Material efficiency (0-10) cuts input materials; time efficiency (0-20) cuts job duration.\n\nReturns: originals, copies, blueprints[] — the counts describe the page\nyou asked for.",
 	}, sessionTool(eveAssetsBlueprints))
 }
 
@@ -70,7 +70,7 @@ func eveAssetsList(ctx context.Context, a *session.Session, in assetsListIn) (an
 	}
 	assets := j.Maps(result.Data)
 	if len(assets) == 0 {
-		return map[string]any{fCharacter: token.CharacterName, fLocations: []any{}, fNote: "This character holds no personal assets (corp hangars are separate)."}, nil
+		return map[string]any{fCharacter: token.CharacterName, fLocations: []any{}, fNote: "This character holds no personal assets (corp hangars are separate).", fDataAge: result.StaleNote()}, nil
 	}
 	roots := rootLocations(assets)
 	prices, err := a.Resolver.ReferencePrices(ctx)
@@ -207,7 +207,8 @@ func eveAssetsFind(ctx context.Context, a *session.Session, in assetsFindIn) (an
 	if len(matches) == 0 {
 		return map[string]any{
 			fCharacter: token.CharacterName, fQuery: in.Name, fMatches: []any{},
-			fNote: "Nothing matching in personal assets. Check the spelling with eve_universe_search, or the item may be in a corp hangar (eve_corp_assets_find).",
+			fNote:    "Nothing matching in personal assets. Check the spelling with eve_universe_search, or the item may be in a corp hangar (eve_corp_assets_find).",
+			fDataAge: result.StaleNote(),
 		}, nil
 	}
 	roots := rootLocations(items)
@@ -298,7 +299,7 @@ func eveAssetsBlueprints(ctx context.Context, a *session.Session, in assetsBluep
 	}
 	bps := j.Maps(result.Data)
 	if len(bps) == 0 {
-		return map[string]any{fCharacter: token.CharacterName, fBlueprints: []any{}, fNote: "None owned."}, nil
+		return map[string]any{fCharacter: token.CharacterName, fBlueprints: []any{}, fNote: "None owned.", fDataAge: result.StaleNote()}, nil
 	}
 	var typeIDs, placeIDs []int
 	for _, b := range bps {

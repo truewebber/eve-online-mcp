@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
 	"github.com/truewebber/eve-online-mcp/internal/j"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 
@@ -154,6 +155,7 @@ func eveCharacterSkillQueue(ctx context.Context, a *session.Session, _ empty) (a
 		return map[string]any{
 			fCharacter: token.CharacterName, "queue": []any{},
 			"warning": "The skill queue is empty. This character is accruing no skill points at all until something is queued.",
+			fDataAge:  result.StaleNote(),
 		}, nil
 	}
 	var ids []int
@@ -236,7 +238,7 @@ func eveCharacterClones(ctx context.Context, a *session.Session, _ empty) (any, 
 		"home_station":    names[j.Int(home["location_id"])],
 		"last_clone_jump": clones["last_clone_jump_date"],
 		"active_implants": formatActiveImplants(implants, names), "jump_clones": formatJumpClones(jump, names),
-		fDataAge: clonesRes.StaleNote(),
+		fDataAge: staleNote(clonesRes.AgeSeconds, implantsRes.AgeSeconds),
 	}, nil
 }
 
@@ -301,7 +303,8 @@ func eveCharacterStandings(ctx context.Context, a *session.Session, in character
 	standingsRes, standingsErr := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "standings"), &cid, nil, nil)
 	lpScope := "esi-characters.read_loyalty.v1"
 	lpGranted := a.HasScope(token, lpScope)
-	lpData, lpErr := fetchCharacterLP(ctx, a, cid, lpGranted)
+	lpRes, lpErr := fetchCharacterLP(ctx, a, cid, lpGranted)
+	lpData := j.Maps(lpRes.Data)
 	var standings []map[string]any
 	if standingsErr == nil {
 		standings = j.Maps(standingsRes.Data)
@@ -316,20 +319,38 @@ func eveCharacterStandings(ctx context.Context, a *session.Session, in character
 		fCharacter: token.CharacterName, "loyalty_points": formatLoyaltyPoints(lpData, names), "standings": visible,
 	}, meta)
 	applyStandingsNotes(out, standingsErr, lpErr, lpGranted, token.CharacterName, lpScope)
+	if age := standingsAge(standingsRes, standingsErr, lpRes, lpErr, lpGranted); age != "" {
+		out[fDataAge] = age
+	}
 
 	return out, nil
 }
 
-func fetchCharacterLP(ctx context.Context, a *session.Session, cid int, granted bool) ([]map[string]any, error) {
+func standingsAge(standingsRes esi.Result, standingsErr error, lpRes esi.Result, lpErr error, lpGranted bool) string {
+	var ages []float64
+	if standingsErr == nil {
+		ages = append(ages, standingsRes.AgeSeconds)
+	}
+	if lpGranted && lpErr == nil {
+		ages = append(ages, lpRes.AgeSeconds)
+	}
+	if len(ages) == 0 {
+		return ""
+	}
+
+	return staleNote(ages...)
+}
+
+func fetchCharacterLP(ctx context.Context, a *session.Session, cid int, granted bool) (esi.Result, error) {
 	if !granted {
-		return nil, nil
+		return esi.Result{}, nil
 	}
 	lpRes, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "loyalty", "points"), &cid, nil, nil)
 	if err != nil {
-		return nil, wrap("fetchCharacterLP", err)
+		return esi.Result{}, wrap("fetchCharacterLP", err)
 	}
 
-	return j.Maps(lpRes.Data), nil
+	return lpRes, nil
 }
 
 func standingsNameIDs(standings, lpData []map[string]any) []int {

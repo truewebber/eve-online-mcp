@@ -83,9 +83,8 @@ nothing else in the system can enforce either. It is assembled from
 `internal/usecase/eve/register.go`, it must read as below, and the
 catalogue check in `tests/` diffs the served string against this block.
 
-Like the rest of this file it describes the target: the string in the
-code today still talks about "which characters are authorized" and knows
-nothing about the error budget, pagination or `eve_mail_compose`.
+The served `instructions` string is this block. A change to it lands
+here and in `Instructions` / `CorpInstructions` in the same commit.
 
 ```
 This server exposes one EVE Online character's own account through CCP's official
@@ -859,7 +858,7 @@ Delete a saved fitting. Permanent — there is no undo in game. The preview name
 
 *Source: `internal/usecase/eve/writes_mail.go`*
 
-Change the read flag on one mail. This does not return the mail's contents — use eve_mail_read for that.
+Change the read flag on one mail. This does not return the mail's contents — use eve_mail_read for that. Unread mail is what eve_mail_list can filter on; this is how a mail leaves that list.
 
 | Parameter | Type | Required | Bounds | Description |
 |---|---|---|---|---|

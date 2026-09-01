@@ -218,7 +218,7 @@ func transactionSection(ctx context.Context, a *session.Session, path string, ci
 func summarizeTransactions(ctx context.Context, a *session.Session, cid int, data any, stale string, truncated bool, limit int, conciseMode bool) (map[string]any, error) {
 	entries := j.Maps(data)
 	if len(entries) == 0 {
-		return map[string]any{fTransactions: []any{}, fNote: "No market trades in the retained window."}, nil
+		return map[string]any{fTransactions: []any{}, fNote: "No market trades in the retained window.", fDataAge: stale}, nil
 	}
 	typeSet, placeSet := map[int]struct{}{}, map[int]struct{}{}
 	for _, t := range entries {

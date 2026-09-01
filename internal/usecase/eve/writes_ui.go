@@ -81,7 +81,7 @@ func eveUISetWaypoint(ctx context.Context, a *session.Session, destination strin
 func registerOpenWindow(s *mcp.Server) {
 	addTool(s, &mcp.Tool{
 		Name:        "eve_ui_open_window",
-		Description: "Open a window in the running game client.\n\nGood for handing something off to the player. Changes nothing in game and costs nothing. A window outside market, info or contract is refused.",
+		Description: "Open a window in the running game client.\n\nGood for handing something off to the player. Changes nothing in game and costs nothing.\n\nA `window` outside the three values is refused with the list of accepted ones — it never falls back to one of them. For a pre-filled mail window, that is eve_mail_compose.",
 	}, sessionTool(eveUIOpenWindow))
 }
 

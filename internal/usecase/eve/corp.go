@@ -89,9 +89,9 @@ func esiRole(name string) bool {
 
 type corpAssetsListIn struct {
 	Location       string  `json:"location,omitempty"        jsonschema:"Case-insensitive substring of a station or structure name."`
-	MinValue       float64 `json:"min_value,omitempty"       jsonschema:"Hide locations holding less than this many ISK.,minimum=0"`
+	MinValue       float64 `json:"min_value,omitempty"       jsonschema:"Hide locations holding less than this many ISK."`
 	Limit          int     `json:"limit,omitempty"           jsonschema:"Maximum rows to return. Keep it small — every row costs context. Results say truncated when more exist."`
-	Items          int     `json:"items,omitempty"           jsonschema:"Maximum items per location in detailed mode.,minimum=1,maximum=200"`
+	Items          int     `json:"items,omitempty"           jsonschema:"Maximum items per location in detailed mode."`
 	ResponseFormat string  `json:"response_format,omitempty" jsonschema:"'concise' (default) returns only the high-signal fields and costs far fewer tokens. Use 'detailed' when you need secondary fields and raw ids."`
 }
 
@@ -275,6 +275,7 @@ func corpOverviewAttachWallets(ctx context.Context, a *session.Session, corp *ch
 	out[fWallets] = bal.rows
 	out["wallet_total"] = isk(bal.total)
 	out["wallet_age"] = wallets.StaleNote()
+	out[fDataAge] = wallets.StaleNote()
 }
 
 func corpOverviewNextStep(a *session.Session, corp *character.Corporation, out map[string]any) {

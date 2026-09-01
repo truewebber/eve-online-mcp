@@ -58,7 +58,7 @@ type composeRecipients struct {
 func registerMailOrganize(s *mcp.Server) {
 	addTool(s, &mcp.Tool{
 		Name:        "eve_mail_mark",
-		Description: "Change the read flag on one mail. This does not return the mail's contents — use eve_mail_read for that. Needs a confirm_token in confirm mode.",
+		Description: "Change the read flag on one mail. This does not return the mail's contents — use eve_mail_read for that. Unread mail is what eve_mail_list can filter on; this is how a mail leaves that list.",
 	}, sessionTool(eveMailMark))
 	addTool(s, &mcp.Tool{
 		Name:        "eve_mail_delete",
@@ -69,14 +69,14 @@ func registerMailOrganize(s *mcp.Server) {
 func registerMailSend(s *mcp.Server) {
 	addTool(s, &mcp.Tool{
 		Name:        "eve_mail_send",
-		Description: "Send an in-game EVE mail from this character to other players.\n\nThe most consequential tool on this server. The mail cannot be recalled. Show the preview to the user word for word — the full body and the priced CSPA charge — and get an explicit yes before confirming.",
+		Description: "Send an in-game EVE mail from this character to other players.\n\nThe most consequential tool on this server. The mail cannot be recalled. Show the preview to the user word for word — the full body and the priced CSPA charge — and get an explicit yes before confirming. Capped at 5 mails per hour; eve_auth_status reports how many are left. If the user is in front of their client, eve_mail_compose does the same job and leaves the sending to them.",
 	}, sessionTool(eveMailSend))
 }
 
 func registerMailCompose(s *mcp.Server) {
 	addTool(s, &mcp.Tool{
 		Name:        "eve_mail_compose",
-		Description: "Open a pre-filled mail in the player's client without sending it.\n\nThe safe half of mail: recipients, subject and body are filled in, the compose window opens in the running game client, and the Send button stays the player's. Nothing leaves the character, no CSPA charge is possible, and it does not count against the hourly send cap.",
+		Description: "Open a pre-filled mail in the player's client without sending it.\n\nThe safe half of mail: recipients, subject and body are filled in, the compose window opens in the running game client, and the Send button stays the player's. Nothing leaves the character, no CSPA charge is possible, and it does not count against the hourly send cap. Prefer it over eve_mail_send whenever the user is at their keyboard — eve_mail_send is for a mail that has to go out without them touching the client.\n\nNeeds the EVE client logged in on this character. There is no way to tell from here whether it is, so report that the window was requested, never that a mail was delivered.",
 	}, sessionTool(eveMailCompose))
 }
 
