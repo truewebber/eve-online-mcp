@@ -5,7 +5,6 @@ import (
 	"errors"
 	"sync"
 	"testing"
-	"time"
 
 	"go.uber.org/mock/gomock"
 
@@ -14,8 +13,6 @@ import (
 	"github.com/truewebber/eve-online-mcp/internal/domain/character"
 	"github.com/truewebber/eve-online-mcp/internal/mocks"
 )
-
-const testRefreshTwo = "rt-2"
 
 func openRepo(t *testing.T) *Repo {
 	t.Helper()
@@ -30,11 +27,9 @@ func TestUpsertAndOwnerHash(t *testing.T) {
 	repo := openRepo(t)
 	ctx := context.Background()
 	row := character.Character{
-		ID:           2112625428,
-		Name:         "Jane Doe",
-		OwnerHash:    "hash-a",
-		RefreshToken: "rt-1",
-		Scopes:       []string{"esi-wallet.read_character_wallet.v1"},
+		ID:        2112625428,
+		Name:      "Jane Doe",
+		OwnerHash: "hash-a",
 	}
 	if err := repo.Upsert(ctx, row); err != nil {
 		t.Fatal(err)
@@ -43,10 +38,9 @@ func TestUpsertAndOwnerHash(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.RefreshToken != "rt-1" || got.OwnerHash != "hash-a" || !got.Live() {
+	if got.OwnerHash != "hash-a" || !got.Live() {
 		t.Fatalf("got %+v", got)
 	}
-	row.RefreshToken = testRefreshTwo
 	row.OwnerHash = "hash-b"
 	if err := repo.Upsert(ctx, row); err != nil {
 		t.Fatal(err)
@@ -55,7 +49,7 @@ func TestUpsertAndOwnerHash(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.RefreshToken != testRefreshTwo || got.OwnerHash != "hash-b" {
+	if got.OwnerHash != "hash-b" {
 		t.Fatalf("got %+v", got)
 	}
 	if _, err := repo.Get(ctx, 1); !errors.Is(err, character.ErrNotFound) {
@@ -70,15 +64,14 @@ func TestConcurrentUpsert(t *testing.T) {
 	id := int64(2112625429)
 	var wg sync.WaitGroup
 	errc := make(chan error, 2)
-	for i, tok := range []string{"rt-a", "rt-b"} {
+	for _, name := range []string{"pilot-a", "pilot-b"} {
 		wg.Add(1)
-		go func(name, refresh string) {
+		go func(name string) {
 			defer wg.Done()
 			errc <- repo.Upsert(ctx, character.Character{
-				ID: id, Name: name, OwnerHash: "h", RefreshToken: refresh,
+				ID: id, Name: name, OwnerHash: "h",
 			})
-		}("pilot", tok)
-		_ = i
+		}(name)
 	}
 	wg.Wait()
 	close(errc)
@@ -93,94 +86,12 @@ func TestConcurrentUpsert(t *testing.T) {
 	}
 }
 
-func TestUpdateRefreshSerializes(t *testing.T) {
-	t.Parallel()
-	repo := openRepo(t)
-	ctx := context.Background()
-	id := int64(99)
-	if err := repo.Upsert(ctx, character.Character{
-		ID: id, Name: "Lock", RefreshToken: "old",
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	started := make(chan struct{})
-	release := make(chan struct{})
-	var mu sync.Mutex
-	var order []string
-	errc := make(chan error, 2)
-
-	go func() {
-		errc <- repo.UpdateRefresh(ctx, id, func(_ string) (string, error) {
-			mu.Lock()
-			order = append(order, "a-start")
-			mu.Unlock()
-			close(started)
-			<-release
-			mu.Lock()
-			order = append(order, "a-end")
-			mu.Unlock()
-
-			return "from-a", nil
-		})
-	}()
-	<-started
-	doneB := make(chan struct{})
-	go func() {
-		errc <- repo.UpdateRefresh(ctx, id, func(tok string) (string, error) {
-			mu.Lock()
-			order = append(order, "b:"+tok)
-			mu.Unlock()
-
-			return "from-b", nil
-		})
-		close(doneB)
-	}()
-	time.Sleep(80 * time.Millisecond)
-	mu.Lock()
-	for _, step := range order {
-		if len(step) > 0 && step[0] == 'b' {
-			mu.Unlock()
-			t.Fatalf("b ran before a released: %v", order)
-		}
-	}
-	snapshot := append([]string(nil), order...)
-	mu.Unlock()
-	if len(snapshot) != 1 || snapshot[0] != "a-start" {
-		t.Fatalf("during lock: %v", snapshot)
-	}
-	close(release)
-	select {
-	case <-doneB:
-	case <-time.After(5 * time.Second):
-		t.Fatal("b blocked forever")
-	}
-	if err := <-errc; err != nil {
-		t.Fatal(err)
-	}
-	if err := <-errc; err != nil {
-		t.Fatal(err)
-	}
-	got, err := repo.Get(ctx, id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.RefreshToken != "from-b" {
-		t.Fatalf("token %s", got.RefreshToken)
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if len(order) != 3 || order[0] != "a-start" || order[1] != "a-end" || order[2] != "b:from-a" {
-		t.Fatalf("order %v", order)
-	}
-}
-
 func TestDeleteSoft(t *testing.T) {
 	t.Parallel()
 	repo := openRepo(t)
 	ctx := context.Background()
 	if err := repo.Upsert(ctx, character.Character{
-		ID: 7, Name: "X", RefreshToken: "rt",
+		ID: 7, Name: "X",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -188,19 +99,19 @@ func TestDeleteSoft(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := repo.Get(ctx, 7)
-	if err != nil || got.Live() || got.RefreshToken != "" {
-		t.Fatalf("want soft-deleted empty grant, got %+v %v", got, err)
+	if err != nil || got.Live() {
+		t.Fatalf("want soft-deleted, got %+v %v", got, err)
 	}
 	if err := repo.Delete(ctx, 7); !errors.Is(err, character.ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
 	if err := repo.Upsert(ctx, character.Character{
-		ID: 7, Name: "X", RefreshToken: testRefreshTwo, OwnerHash: "h",
+		ID: 7, Name: "X", OwnerHash: "h",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	got, err = repo.Get(ctx, 7)
-	if err != nil || !got.Live() || got.RefreshToken != testRefreshTwo {
+	if err != nil || !got.Live() {
 		t.Fatalf("want revived, got %+v %v", got, err)
 	}
 }

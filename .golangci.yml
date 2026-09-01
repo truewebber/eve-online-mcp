@@ -147,6 +147,22 @@ linters:
           deny:
             - pkg: github.com/truewebber/eve-online-mcp/internal/domain/write
               desc: domains must not import each other; use interfaces only
+        domain-no-session:
+          list-mode: lax
+          files:
+            - "**/internal/domain/**/*.go"
+            - "!**/internal/domain/session/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/truewebber/eve-online-mcp/internal/domain/session
+              desc: domains must not import each other; use interfaces only
+        adapter-no-domain:
+          list-mode: lax
+          files:
+            - "**/internal/adapter/**/*.go"
+          deny:
+            - pkg: github.com/truewebber/eve-online-mcp/internal/domain/
+              desc: adapters must not import domain
         service-no-domain:
           list-mode: lax
           files:

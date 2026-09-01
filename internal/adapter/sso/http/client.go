@@ -20,7 +20,6 @@ import (
 	"github.com/truewebber/gopkg/log"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
-	"github.com/truewebber/eve-online-mcp/internal/domain/character"
 	"github.com/truewebber/eve-online-mcp/internal/j"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -74,7 +73,7 @@ type Client struct {
 	opts         sso.Options
 	base         url.URL
 	http         *nhttp.Client
-	tokens       *tokenStore
+	access       *accessCache
 	refreshLocks sync.Map
 	jwks         *jwksState
 	logger       log.Logger
@@ -85,41 +84,10 @@ func New(opts sso.Options, httpClient *nhttp.Client, logger log.Logger) *Client 
 		opts:   opts,
 		base:   url.URL{Scheme: "https", Host: ssoHost},
 		http:   httpClient,
-		tokens: newTokenStore(nil, 0, logger),
+		access: newAccessCache(),
 		jwks:   &jwksState{},
 		logger: logger,
 	}
-}
-
-func (c *Client) ForCharacter(characterID int, chars character.Repository) sso.Client {
-	return &Client{
-		opts:   c.opts,
-		base:   c.base,
-		http:   c.http,
-		tokens: newTokenStore(chars, characterID, c.logger),
-		jwks:   c.jwks,
-		logger: c.logger,
-	}
-}
-
-func (c *Client) Upsert(ctx context.Context, token *sso.CharacterToken) error {
-	return c.tokens.Upsert(ctx, token)
-}
-
-func (c *Client) Remove(ctx context.Context, id int) bool {
-	return c.tokens.Remove(ctx, id)
-}
-
-func (c *Client) Get(ctx context.Context, id int) *sso.CharacterToken {
-	return c.tokens.Get(ctx, id)
-}
-
-func (c *Client) All(ctx context.Context) []*sso.CharacterToken {
-	return c.tokens.All(ctx)
-}
-
-func (c *Client) FindByName(ctx context.Context, name string) *sso.CharacterToken {
-	return c.tokens.FindByName(ctx, name)
 }
 
 func (c *Client) PrepareLogin(scopes []string) (*sso.PreparedLogin, error) {
@@ -169,46 +137,40 @@ func (c *Client) ExchangeCode(ctx context.Context, code, verifier string) (*sso.
 	return c.tokenFromPayload(ctx, payload, nil)
 }
 
-func (c *Client) AccessToken(ctx context.Context, characterID int) (*sso.CharacterToken, error) {
-	token := c.tokens.Get(ctx, characterID)
-	if token == nil {
-		return nil, fail(fmt.Sprintf("Character %d is not authorized. Run the login flow first.", characterID))
+func (c *Client) AccessToken(ctx context.Context, refreshToken string) (*sso.CharacterToken, error) {
+	if refreshToken == "" {
+		return nil, fail("Missing EVE refresh token. Re-authenticate the MCP server (Authentication required) and try again.")
 	}
-	if token.AccessToken != "" && time.Now().Before(token.AccessExpiresAt.Add(-refreshMargin)) {
-		return token, nil
+	if mem, ok := c.access.live(refreshToken, refreshMargin); ok {
+		return cachedToken(refreshToken, mem), nil
 	}
-	lockI, _ := c.refreshLocks.LoadOrStore(characterID, &sync.Mutex{})
+	lockI, _ := c.refreshLocks.LoadOrStore(refreshToken, &sync.Mutex{})
 	lock, ok := lockI.(*sync.Mutex)
 	if !ok {
-		return nil, fail(fmt.Sprintf("refresh lock for character %d has an unexpected type", characterID))
+		return nil, fail("refresh lock has an unexpected type")
 	}
 	lock.Lock()
 	defer lock.Unlock()
-	token = c.tokens.Get(ctx, characterID)
-	if token == nil {
-		return nil, fail(fmt.Sprintf("Character %d was removed during refresh.", characterID))
-	}
-	if token.AccessToken != "" && time.Now().Before(token.AccessExpiresAt.Add(-refreshMargin)) {
-		return token, nil
+	if mem, ok := c.access.live(refreshToken, refreshMargin); ok {
+		return cachedToken(refreshToken, mem), nil
 	}
 
-	return c.refresh(ctx, token)
+	return c.refresh(ctx, refreshToken)
 }
 
-func (c *Client) Revoke(ctx context.Context, characterID int) {
-	token := c.tokens.Get(ctx, characterID)
-	if token == nil {
+func (c *Client) Revoke(ctx context.Context, refreshToken string) {
+	if refreshToken == "" {
 		return
 	}
 	data := url.Values{
 		"token_type_hint": {formRefreshToken},
-		"token":           {token.RefreshToken},
+		"token":           {refreshToken},
 		formClientID:      {c.opts.ClientID},
 	}
 	req, err := nhttp.NewRequestWithContext(ctx, nhttp.MethodPost, c.endpoint(pathRevoke, nil), strings.NewReader(data.Encode()))
 	if err != nil {
-		c.logger.Error("sso: revoke request", "character_id", characterID, "err", err)
-		c.tokens.Remove(ctx, characterID)
+		c.logger.Error("sso: revoke request", "err", err)
+		c.access.drop(refreshToken)
 
 		return
 	}
@@ -219,11 +181,11 @@ func (c *Client) Revoke(ctx context.Context, characterID int) {
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		c.logger.Error("sso: revoke call", "character_id", characterID, "err", err)
+		c.logger.Error("sso: revoke call", "err", err)
 	} else {
 		resp.Body.Close()
 	}
-	c.tokens.Remove(ctx, characterID)
+	c.access.drop(refreshToken)
 }
 
 func (c *Client) endpoint(path string, q url.Values) string {
@@ -236,58 +198,34 @@ func (c *Client) endpoint(path string, q url.Values) string {
 	return u.String()
 }
 
-func (c *Client) refresh(ctx context.Context, token *sso.CharacterToken) (*sso.CharacterToken, error) {
-	if c.tokens.durable() {
-		return c.refreshLocked(ctx, token)
-	}
+func (c *Client) refresh(ctx context.Context, refreshToken string) (*sso.CharacterToken, error) {
+	refreshed, err := c.exchangeRefresh(ctx, refreshToken, nil)
+	if err != nil {
+		if errors.Is(err, sso.ErrInvalidGrant) {
+			c.access.drop(refreshToken)
 
-	return c.refreshMemory(ctx, token)
-}
-
-func (c *Client) refreshLocked(ctx context.Context, token *sso.CharacterToken) (*sso.CharacterToken, error) {
-	var out *sso.CharacterToken
-	err := c.tokens.chars.UpdateRefresh(ctx, int64(token.CharacterID), func(refreshToken string) (string, error) {
-		refreshed, err := c.exchangeRefresh(ctx, refreshToken, token)
-		if err != nil {
-			return "", err
+			return nil, err
 		}
-		out = refreshed
 
-		return refreshed.RefreshToken, nil
+		return nil, err
+	}
+	c.access.put(refreshed.RefreshToken, accessMem{
+		AccessToken:     refreshed.AccessToken,
+		AccessExpiresAt: refreshed.AccessExpiresAt,
 	})
-	if err != nil {
-		if strings.Contains(err.Error(), "invalid_grant") {
-			c.tokens.Remove(ctx, token.CharacterID)
-
-			return nil, fail(fmt.Sprintf("Refresh token for %s was revoked or expired. Log this character in again.", token.CharacterName))
-		}
-		if errors.Is(err, character.ErrNotFound) {
-			return nil, fail(fmt.Sprintf("Character %d was removed during refresh.", token.CharacterID))
-		}
-
-		return nil, wrap("refreshLocked", err)
-	}
-	c.tokens.setAccess(out)
-
-	return out, nil
-}
-
-func (c *Client) refreshMemory(ctx context.Context, token *sso.CharacterToken) (*sso.CharacterToken, error) {
-	refreshed, err := c.exchangeRefresh(ctx, token.RefreshToken, token)
-	if err != nil {
-		if strings.Contains(err.Error(), "invalid_grant") {
-			c.tokens.Remove(ctx, token.CharacterID)
-
-			return nil, fail(fmt.Sprintf("Refresh token for %s was revoked or expired. Log this character in again.", token.CharacterName))
-		}
-
-		return nil, err
-	}
-	if err := c.tokens.Upsert(ctx, refreshed); err != nil {
-		return nil, err
+	if refreshed.RefreshToken != refreshToken {
+		c.access.drop(refreshToken)
 	}
 
 	return refreshed, nil
+}
+
+func cachedToken(refreshToken string, mem accessMem) *sso.CharacterToken {
+	return &sso.CharacterToken{
+		RefreshToken:    refreshToken,
+		AccessToken:     mem.AccessToken,
+		AccessExpiresAt: mem.AccessExpiresAt,
+	}
 }
 
 func (c *Client) exchangeRefresh(ctx context.Context, refreshToken string, fallback *sso.CharacterToken) (*sso.CharacterToken, error) {
@@ -328,7 +266,12 @@ func (c *Client) tokenRequest(ctx context.Context, data url.Values, clientID, se
 		return nil, fail("SSO token request failed: " + err.Error())
 	}
 	if resp.StatusCode >= nhttp.StatusBadRequest {
-		return nil, fail(fmt.Sprintf("SSO token request failed (%d): %s", resp.StatusCode, ssoDetail(resp.Header.Get("Content-Type"), body)))
+		detail := ssoDetail(resp.Header.Get("Content-Type"), body)
+		if strings.Contains(detail, "invalid_grant") {
+			return nil, fmt.Errorf("%w: %s", sso.ErrInvalidGrant, detail)
+		}
+
+		return nil, fail(fmt.Sprintf("SSO token request failed (%d): %s", resp.StatusCode, detail))
 	}
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {

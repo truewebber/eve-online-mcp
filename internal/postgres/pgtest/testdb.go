@@ -15,7 +15,7 @@ const (
 	unlockSQL       = `SELECT pg_advisory_unlock($1)`
 	resetTablesSQL  = `
 	TRUNCATE mail_log, confirm_tokens, auth_codes, login_states,
-	         oauth_clients, characters CASCADE`
+	         sessions, oauth_clients, characters CASCADE`
 )
 
 func HoldTestLock(ctx context.Context, db *postgres.DB, logger log.Logger) (func(), error) {

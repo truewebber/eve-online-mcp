@@ -60,6 +60,7 @@ func TestGooseAppliesFromEmpty(t *testing.T) {
 		"login_states",
 		"mail_log",
 		"oauth_clients",
+		"sessions",
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("tables %v", got)

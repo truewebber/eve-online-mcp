@@ -3,6 +3,7 @@ package eve
 import (
 	"context"
 	"sort"
+	"time"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
@@ -19,7 +20,7 @@ func registerAccount(s *mcp.Server) {
 	}, sessionTool(eveServerStatus))
 	addTool(s, &mcp.Tool{
 		Name:        "eve_auth_status",
-		Description: "Who is authorized here, and which in-game changes the tools can make.\n\nCall this before anything else when you do not know the setup, and always before promising the user an in-game change. It names the one character this connection acts as, every mutating capability (all of them are registered), remaining mail sends this hour, and how confirmation works.\n\nReturns: character, capabilities, capability_reference, outward_facing_capabilities, mails_last_hour, mails_remaining_this_hour, mail_cap_per_hour, pending_confirmations, confirm_ttl_seconds, confirm.",
+		Description: "Who is authorized here, and which in-game changes the tools can make.\n\nCall this before anything else when you do not know the setup, and always before promising the user an in-game change. It names the one character this connection acts as, every mutating capability (all of them are registered), remaining mail sends this hour, how confirmation works, and when this sign-in expires.\n\nReturns: character, capabilities, capability_reference, outward_facing_capabilities, mails_last_hour, mails_remaining_this_hour, mail_cap_per_hour, pending_confirmations, confirm_ttl_seconds, confirm, session_expires_at.",
 	}, sessionTool(eveAuthStatus))
 	addTool(s, &mcp.Tool{
 		Name:        "eve_auth_logout",
@@ -56,6 +57,9 @@ func eveAuthStatus(ctx context.Context, a *session.Session, _ empty) (any, error
 	}
 	sort.Strings(outward)
 	policy["outward_facing_capabilities"] = outward
+	if live, err := a.Live(ctx); err == nil {
+		policy["session_expires_at"] = live.ValidTil.UTC().Format(time.RFC3339)
+	}
 	writes := write.AllWriteScopeSet()
 	corps := write.CorpScopeSet()
 
@@ -70,13 +74,12 @@ func eveAuthStatus(ctx context.Context, a *session.Session, _ empty) (any, error
 }
 
 func eveAuthLogout(ctx context.Context, a *session.Session, _ empty) (any, error) {
-	token, err := a.Character(ctx)
+	out, err := a.Logout(ctx)
 	if err != nil {
 		return nil, wrap("eveAuthLogout", err)
 	}
-	a.SSO.Revoke(ctx, token.CharacterID)
 
-	return map[string]any{"removed": token.CharacterName, fCharacterID: token.CharacterID}, nil
+	return map[string]any{"removed": out.CharacterName, fCharacterID: out.CharacterID}, nil
 }
 
 type overviewBox struct {

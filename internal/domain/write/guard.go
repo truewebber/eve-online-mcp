@@ -27,11 +27,12 @@ type Decision struct {
 type Guard struct {
 	persist     Persist
 	characterID int64
+	sessionID   int64
 	logger      log.Logger
 }
 
-func NewGuard(persist Persist, characterID int64, logger log.Logger) *Guard {
-	return &Guard{persist: persist, characterID: characterID, logger: logger}
+func NewGuard(persist Persist, characterID, sessionID int64, logger log.Logger) *Guard {
+	return &Guard{persist: persist, characterID: characterID, sessionID: sessionID, logger: logger}
 }
 
 func (g *Guard) CheckCapability(capability string) error {
@@ -94,7 +95,7 @@ func (g *Guard) Authorize(ctx context.Context, tool, capability string, args map
 	}
 	if g.persist != nil {
 		err := g.persist.PutConfirm(ctx, Confirm{
-			Token: token, CharacterID: g.characterID, Tool: tool,
+			Token: token, SessionID: g.sessionID, Tool: tool,
 			ArgsDigest: digest, CreatedAt: time.Now().UTC(),
 		})
 		if err != nil {
@@ -131,7 +132,7 @@ func (g *Guard) Status(ctx context.Context) map[string]any {
 		if n, err := g.persist.CountMailSince(ctx, g.characterID, now.Add(-time.Hour)); err == nil {
 			mails = n
 		}
-		if n, err := g.persist.CountConfirm(ctx, g.characterID); err == nil {
+		if n, err := g.persist.CountConfirm(ctx, g.sessionID); err == nil {
 			pending = n
 		}
 	}
@@ -175,7 +176,7 @@ func (g *Guard) consumeConfirm(ctx context.Context, tool, digest, confirmToken s
 	if err != nil {
 		return wrap("consumeConfirm", err)
 	}
-	if pending.CharacterID != g.characterID {
+	if pending.SessionID != g.sessionID {
 		return BlockedError{Msg: errConfirmUnknown}
 	}
 	if time.Since(pending.CreatedAt) > ConfirmTTL {

@@ -2,17 +2,10 @@ package session
 
 import (
 	"context"
-
-	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
 )
 
-type ssoTokens struct{ sso sso.Client }
+type ssoTokens struct{ s *Session }
 
-func (t ssoTokens) AccessToken(ctx context.Context, characterID int) (string, error) {
-	tok, err := t.sso.AccessToken(ctx, characterID)
-	if err != nil {
-		return "", wrap("AccessToken", err)
-	}
-
-	return tok.AccessToken, nil
+func (t ssoTokens) AccessToken(ctx context.Context, _ int) (string, error) {
+	return t.s.eveAccess(ctx)
 }

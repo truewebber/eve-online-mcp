@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"time"
-
-	"github.com/truewebber/eve-online-mcp/internal/domain/character"
 )
 
-var ErrMissingCharacterID = errors.New("sso: missing character id")
+var (
+	ErrMissingCharacterID = errors.New("sso: missing character id")
+	ErrInvalidGrant       = errors.New("sso: invalid grant")
+)
 
 const TokenAudience = "EVE Online"
 
@@ -37,7 +38,6 @@ type CharacterToken struct {
 	AccessExpiresAt time.Time
 }
 
-// Persist State + Verifier in login_states so any replica can finish the handshake.
 type PreparedLogin struct {
 	URL      string
 	State    string
@@ -49,12 +49,6 @@ type PreparedLogin struct {
 type Client interface {
 	PrepareLogin(scopes []string) (*PreparedLogin, error)
 	ExchangeCode(ctx context.Context, code, verifier string) (*CharacterToken, error)
-	AccessToken(ctx context.Context, characterID int) (*CharacterToken, error)
-	Revoke(ctx context.Context, characterID int)
-	Upsert(ctx context.Context, token *CharacterToken) error
-	Remove(ctx context.Context, id int) bool
-	Get(ctx context.Context, id int) *CharacterToken
-	All(ctx context.Context) []*CharacterToken
-	FindByName(ctx context.Context, name string) *CharacterToken
-	ForCharacter(characterID int, chars character.Repository) Client
+	AccessToken(ctx context.Context, refreshToken string) (*CharacterToken, error)
+	Revoke(ctx context.Context, refreshToken string)
 }

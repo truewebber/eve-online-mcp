@@ -56,6 +56,21 @@ func (mr *MockAuthcodeRepositoryMockRecorder) DeleteExpired(ctx any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteExpired", reflect.TypeOf((*MockAuthcodeRepository)(nil).DeleteExpired), ctx)
 }
 
+// Get mocks base method.
+func (m *MockAuthcodeRepository) Get(ctx context.Context, value string) (*authcode.Code, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Get", ctx, value)
+	ret0, _ := ret[0].(*authcode.Code)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Get indicates an expected call of Get.
+func (mr *MockAuthcodeRepositoryMockRecorder) Get(ctx, value any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockAuthcodeRepository)(nil).Get), ctx, value)
+}
+
 // Put mocks base method.
 func (m *MockAuthcodeRepository) Put(ctx context.Context, c authcode.Code) error {
 	m.ctrl.T.Helper()

@@ -70,20 +70,6 @@ func (mr *MockCharacterRepositoryMockRecorder) Get(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockCharacterRepository)(nil).Get), ctx, id)
 }
 
-// UpdateRefresh mocks base method.
-func (m *MockCharacterRepository) UpdateRefresh(ctx context.Context, id int64, fn func(string) (string, error)) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateRefresh", ctx, id, fn)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UpdateRefresh indicates an expected call of UpdateRefresh.
-func (mr *MockCharacterRepositoryMockRecorder) UpdateRefresh(ctx, id, fn any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRefresh", reflect.TypeOf((*MockCharacterRepository)(nil).UpdateRefresh), ctx, id, fn)
-}
-
 // Upsert mocks base method.
 func (m *MockCharacterRepository) Upsert(ctx context.Context, c character.Character) error {
 	m.ctrl.T.Helper()

@@ -1,0 +1,212 @@
+package pgx
+
+import (
+	"context"
+	"errors"
+	"sync"
+	"testing"
+	"time"
+
+	"go.uber.org/mock/gomock"
+
+	"github.com/truewebber/eve-online-mcp/internal/domain/character"
+	characterpgx "github.com/truewebber/eve-online-mcp/internal/domain/character/pgx"
+	"github.com/truewebber/eve-online-mcp/internal/domain/session"
+	"github.com/truewebber/eve-online-mcp/internal/mocks"
+	"github.com/truewebber/eve-online-mcp/internal/postgres"
+	"github.com/truewebber/eve-online-mcp/internal/postgres/pgtest"
+)
+
+func openRepo(t *testing.T) (*Repo, character.Repository, *postgres.DB) {
+	t.Helper()
+	logger := mocks.QuietLogger(gomock.NewController(t))
+	db := pgtest.Open(t, logger)
+
+	return New(db.Pool(), logger), characterpgx.New(db.Pool(), logger), db
+}
+
+func seedCharacter(t *testing.T, chars character.Repository, id int64) {
+	t.Helper()
+	if err := chars.Upsert(context.Background(), character.Character{
+		ID: id, Name: "Pilot", OwnerHash: "h",
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateAndLiveByID(t *testing.T) {
+	t.Parallel()
+	repo, chars, _ := openRepo(t)
+	ctx := context.Background()
+	seedCharacter(t, chars, 11)
+	got, err := repo.Create(ctx, session.Session{
+		CharacterID: 11, RefreshToken: "rt", Scopes: []string{"s"},
+		MCPClientID: "c", ClientName: "Cursor", IP: "127.0.0.1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID == 0 || got.RefreshToken != "rt" || got.ValidTil.Before(time.Now()) {
+		t.Fatalf("got %+v", got)
+	}
+	live, err := repo.LiveByID(ctx, got.ID)
+	if err != nil || live.CharacterID != 11 {
+		t.Fatalf("live %+v err %v", live, err)
+	}
+}
+
+func TestRevokeAllClearsTokens(t *testing.T) {
+	t.Parallel()
+	repo, chars, _ := openRepo(t)
+	ctx := context.Background()
+	seedCharacter(t, chars, 12)
+	created, err := repo.Create(ctx, session.Session{
+		CharacterID: 12, RefreshToken: "rt-live", Scopes: []string{},
+		MCPClientID: "c",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	revoked, err := repo.RevokeAllForCharacter(ctx, 12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(revoked.IDs) != 1 || revoked.IDs[0] != created.ID {
+		t.Fatalf("ids %+v", revoked.IDs)
+	}
+	if len(revoked.Tokens) != 1 || revoked.Tokens[0] != "rt-live" {
+		t.Fatalf("tokens %+v", revoked.Tokens)
+	}
+	if _, err := repo.LiveByID(ctx, created.ID); !errors.Is(err, session.ErrNotFound) {
+		t.Fatalf("want dead, got %v", err)
+	}
+}
+
+func TestExpiredUnrevokedDoesNotBlockCreate(t *testing.T) {
+	t.Parallel()
+	repo, chars, db := openRepo(t)
+	ctx := context.Background()
+	seedCharacter(t, chars, 13)
+	old, err := repo.Create(ctx, session.Session{
+		CharacterID: 13, RefreshToken: "old", Scopes: []string{},
+		MCPClientID: "c",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Pool().Exec(ctx, `UPDATE sessions SET valid_til = now() - interval '1 day' WHERE id = $1`, old.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.LiveByID(ctx, old.ID); !errors.Is(err, session.ErrNotFound) {
+		t.Fatalf("expired still live: %v", err)
+	}
+	revoked, err := repo.RevokeAllForCharacter(ctx, 13)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(revoked.IDs) != 1 {
+		t.Fatalf("want expired row revoked, got %+v", revoked)
+	}
+	next, err := repo.Create(ctx, session.Session{
+		CharacterID: 13, RefreshToken: "new", Scopes: []string{},
+		MCPClientID: "c",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.ID == old.ID {
+		t.Fatal("replaced session reused id")
+	}
+}
+
+func TestLockForRefreshSerializesAndRereads(t *testing.T) {
+	t.Parallel()
+	repo, chars, _ := openRepo(t)
+	ctx := context.Background()
+	seedCharacter(t, chars, 14)
+	row, err := repo.Create(ctx, session.Session{
+		CharacterID: 14, RefreshToken: "old", Scopes: []string{},
+		MCPClientID: "c",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var mu sync.Mutex
+	var order []string
+	errc := make(chan error, 2)
+
+	go func() {
+		errc <- repo.LockForRefresh(ctx, row.ID, func(_ string) (string, error) {
+			mu.Lock()
+			order = append(order, "a-start")
+			mu.Unlock()
+			close(started)
+			<-release
+			mu.Lock()
+			order = append(order, "a-end")
+			mu.Unlock()
+
+			return "from-a", nil
+		})
+	}()
+	<-started
+	doneB := make(chan struct{})
+	go func() {
+		errc <- repo.LockForRefresh(ctx, row.ID, func(tok string) (string, error) {
+			mu.Lock()
+			order = append(order, "b:"+tok)
+			mu.Unlock()
+
+			return "from-b", nil
+		})
+		close(doneB)
+	}()
+	time.Sleep(80 * time.Millisecond)
+	mu.Lock()
+	for _, step := range order {
+		if len(step) > 0 && step[0] == 'b' {
+			mu.Unlock()
+			t.Fatalf("b ran before a released: %v", order)
+		}
+	}
+	snapshot := append([]string(nil), order...)
+	mu.Unlock()
+	if len(snapshot) != 1 || snapshot[0] != "a-start" {
+		t.Fatalf("during lock: %v", snapshot)
+	}
+	close(release)
+	select {
+	case <-doneB:
+	case <-time.After(5 * time.Second):
+		t.Fatal("b blocked forever")
+	}
+	if err := <-errc; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-errc; err != nil {
+		t.Fatal(err)
+	}
+	live, err := repo.LiveByID(ctx, row.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if live.RefreshToken != "from-b" {
+		t.Fatalf("token %s", live.RefreshToken)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(order) != 3 || order[0] != "a-start" || order[1] != "a-end" || order[2] != "b:from-a" {
+		t.Fatalf("order %v", order)
+	}
+}
+
+func TestLockCharacterRequiresTx(t *testing.T) {
+	t.Parallel()
+	repo, _, _ := openRepo(t)
+	if err := repo.LockCharacter(context.Background(), 1); !errors.Is(err, session.ErrNeedTx) {
+		t.Fatalf("got %v", err)
+	}
+}

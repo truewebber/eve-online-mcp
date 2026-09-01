@@ -17,6 +17,7 @@ import (
 	loginstatepgx "github.com/truewebber/eve-online-mcp/internal/domain/loginstate/pgx"
 	mutationpgx "github.com/truewebber/eve-online-mcp/internal/domain/mutation/pgx"
 	oauthclientpgx "github.com/truewebber/eve-online-mcp/internal/domain/oauthclient/pgx"
+	sessionpgx "github.com/truewebber/eve-online-mcp/internal/domain/session/pgx"
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 	"github.com/truewebber/eve-online-mcp/internal/postgres"
 	httpsvc "github.com/truewebber/eve-online-mcp/internal/service/http"
@@ -66,12 +67,16 @@ func start(logger log.Logger) error {
 	opts := session.Options{
 		UserAgent:  cfg.UserAgent,
 		Characters: chars,
+		Sessions:   sessionpgx.New(pool, logger),
 		Clients:    oauthclientpgx.New(pool),
 		Logins:     loginstatepgx.New(pool),
 		Codes:      authcodepgx.New(pool),
 		Confirms:   confirmpgx.New(pool),
 		Mutations:  mutationpgx.New(pool),
-		Logger:     logger,
+		WithinTx: func(ctx context.Context, fn func(context.Context) error) error {
+			return postgres.WithinTx(ctx, pool, fn)
+		},
+		Logger: logger,
 	}
 	opts.HTTP = session.NewHTTPClient(opts)
 	opts.ESI = esihttp.New(esi.Options{

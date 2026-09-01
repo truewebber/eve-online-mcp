@@ -43,18 +43,18 @@ func (m *MockWritePersist) EXPECT() *MockWritePersistMockRecorder {
 }
 
 // CountConfirm mocks base method.
-func (m *MockWritePersist) CountConfirm(ctx context.Context, characterID int64) (int, error) {
+func (m *MockWritePersist) CountConfirm(ctx context.Context, sessionID int64) (int, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountConfirm", ctx, characterID)
+	ret := m.ctrl.Call(m, "CountConfirm", ctx, sessionID)
 	ret0, _ := ret[0].(int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CountConfirm indicates an expected call of CountConfirm.
-func (mr *MockWritePersistMockRecorder) CountConfirm(ctx, characterID any) *gomock.Call {
+func (mr *MockWritePersistMockRecorder) CountConfirm(ctx, sessionID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountConfirm", reflect.TypeOf((*MockWritePersist)(nil).CountConfirm), ctx, characterID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountConfirm", reflect.TypeOf((*MockWritePersist)(nil).CountConfirm), ctx, sessionID)
 }
 
 // CountMailSince mocks base method.

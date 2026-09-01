@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"context"
 	"fmt"
 	nhttp "net/http"
 	"net/http/httptest"
@@ -25,6 +26,8 @@ import (
 	loginstatepgx "github.com/truewebber/eve-online-mcp/internal/domain/loginstate/pgx"
 	mutationpgx "github.com/truewebber/eve-online-mcp/internal/domain/mutation/pgx"
 	oauthclientpgx "github.com/truewebber/eve-online-mcp/internal/domain/oauthclient/pgx"
+	dbsession "github.com/truewebber/eve-online-mcp/internal/domain/session"
+	sessionpgx "github.com/truewebber/eve-online-mcp/internal/domain/session/pgx"
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 	"github.com/truewebber/eve-online-mcp/internal/mocks"
 	"github.com/truewebber/eve-online-mcp/internal/postgres"
@@ -38,11 +41,12 @@ import (
 )
 
 const (
-	testHMACKey     = "0123456789abcdef0123456789abcdef"
-	testAccessToken = "fixture-access"
-	testVersion     = "test"
-	testUserAgent   = "eve-mcp-tests"
-	fixtureName     = "Fixture Pilot"
+	testHMACKey      = "0123456789abcdef0123456789abcdef"
+	testAccessToken  = "fixture-access"
+	testRefreshToken = "fixture-refresh"
+	testVersion      = "test"
+	testUserAgent    = "eve-mcp-tests"
+	fixtureName      = "Fixture Pilot"
 )
 
 type env struct {
@@ -68,8 +72,8 @@ func openEnv(t *testing.T) *env {
 		CallbackURL: baseURL.JoinPath("auth", "callback").String(),
 	}
 	runtime, oauthServer := wire(t, db, host, httpClient, logger)
-	characterID := seedCharacter(t, runtime, oauthServer)
-	token, err := oauthServer.IssueAccess(characterID)
+	characterID, sessionID := seedCharacter(t, runtime)
+	token, err := oauthServer.IssueAccess(characterID, sessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,24 +113,45 @@ func wire(
 	opts := session.Options{
 		UserAgent:  testUserAgent,
 		Characters: characterpgx.New(pool, logger),
+		Sessions:   sessionpgx.New(pool, logger),
 		Clients:    oauthclientpgx.New(pool),
 		Logins:     loginstatepgx.New(pool),
 		Codes:      authcodepgx.New(pool),
 		Confirms:   confirmpgx.New(pool),
 		Mutations:  mutationpgx.New(pool),
 		HTTP:       httpClient,
-		Logger:     logger,
+		WithinTx: func(ctx context.Context, fn func(context.Context) error) error {
+			return postgres.WithinTx(ctx, pool, fn)
+		},
+		Logger: logger,
 	}
 	opts.ESI = esihttp.New(esi.Options{
 		UserAgent:  testUserAgent,
 		CompatDate: esitest.CompatDate,
 	}, httpClient, logger)
-	opts.SSO = ssohttp.New(sso.Options{
-		ClientID:    "test-eve-client",
-		CallbackURL: host.CallbackURL,
-		UserAgent:   testUserAgent,
-		Scopes:      write.RequestedScopes(),
-	}, httpClient, logger)
+	ssoMock := mocks.NewMockSSOClient(gomock.NewController(t))
+	ssoMock.EXPECT().PrepareLogin(gomock.Any()).DoAndReturn(
+		ssohttp.New(sso.Options{
+			ClientID:    "test-eve-client",
+			CallbackURL: host.CallbackURL,
+			UserAgent:   testUserAgent,
+			Scopes:      write.RequestedScopes(),
+		}, httpClient, logger).PrepareLogin,
+	).AnyTimes()
+	ssoMock.EXPECT().AccessToken(gomock.Any(), gomock.Any()).Return(&sso.CharacterToken{
+		CharacterID:     esitest.FixtureCharacterID,
+		CharacterName:   fixtureName,
+		RefreshToken:    testRefreshToken,
+		Scopes:          write.RequestedScopes(),
+		AccessToken:     testAccessToken,
+		AccessExpiresAt: time.Now().Add(time.Hour),
+	}, nil).AnyTimes()
+	ssoMock.EXPECT().Revoke(gomock.Any(), gomock.Any()).AnyTimes()
+	ssoMock.EXPECT().ExchangeCode(gomock.Any(), gomock.Any(), gomock.Any()).Return(&sso.CharacterToken{
+		CharacterID: esitest.FixtureCharacterID, CharacterName: fixtureName,
+		RefreshToken: testRefreshToken, Scopes: write.RequestedScopes(),
+	}, nil).AnyTimes()
+	opts.SSO = ssoMock
 	runtime, err := session.Open(opts)
 	if err != nil {
 		t.Fatal(err)
@@ -139,31 +164,27 @@ func wire(
 	return runtime, oauthServer
 }
 
-func seedCharacter(t *testing.T, runtime *session.Session, oauthServer *oauth.Server) int {
+func seedCharacter(t *testing.T, runtime *session.Session) (int, int64) {
 	t.Helper()
 	ctx := t.Context()
 	id := esitest.FixtureCharacterID
 	if err := runtime.Characters.Upsert(ctx, character.Character{
-		ID:           int64(id),
-		Name:         fixtureName,
-		RefreshToken: "fixture-refresh",
-		Scopes:       write.RequestedScopes(),
+		ID:   int64(id),
+		Name: fixtureName,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	sess := oauthServer.SessionFor(id)
-	if err := sess.SSO.Upsert(ctx, &sso.CharacterToken{
-		CharacterID:     id,
-		CharacterName:   fixtureName,
-		RefreshToken:    "fixture-refresh",
-		Scopes:          write.RequestedScopes(),
-		AccessToken:     testAccessToken,
-		AccessExpiresAt: time.Now().Add(time.Hour),
-	}); err != nil {
+	row, err := runtime.Sessions.Create(ctx, dbsession.Session{
+		CharacterID:  int64(id),
+		RefreshToken: testRefreshToken,
+		Scopes:       write.RequestedScopes(),
+		MCPClientID:  "test",
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 
-	return id
+	return id, row.ID
 }
 
 func mcpMux(oauthServer *oauth.Server, host oauth.Host) nhttp.Handler {

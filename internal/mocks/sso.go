@@ -14,7 +14,6 @@ import (
 	reflect "reflect"
 
 	sso "github.com/truewebber/eve-online-mcp/internal/adapter/sso"
-	character "github.com/truewebber/eve-online-mcp/internal/domain/character"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -43,32 +42,18 @@ func (m *MockSSOClient) EXPECT() *MockSSOClientMockRecorder {
 }
 
 // AccessToken mocks base method.
-func (m *MockSSOClient) AccessToken(ctx context.Context, characterID int) (*sso.CharacterToken, error) {
+func (m *MockSSOClient) AccessToken(ctx context.Context, refreshToken string) (*sso.CharacterToken, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AccessToken", ctx, characterID)
+	ret := m.ctrl.Call(m, "AccessToken", ctx, refreshToken)
 	ret0, _ := ret[0].(*sso.CharacterToken)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AccessToken indicates an expected call of AccessToken.
-func (mr *MockSSOClientMockRecorder) AccessToken(ctx, characterID any) *gomock.Call {
+func (mr *MockSSOClientMockRecorder) AccessToken(ctx, refreshToken any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AccessToken", reflect.TypeOf((*MockSSOClient)(nil).AccessToken), ctx, characterID)
-}
-
-// All mocks base method.
-func (m *MockSSOClient) All(ctx context.Context) []*sso.CharacterToken {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "All", ctx)
-	ret0, _ := ret[0].([]*sso.CharacterToken)
-	return ret0
-}
-
-// All indicates an expected call of All.
-func (mr *MockSSOClientMockRecorder) All(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "All", reflect.TypeOf((*MockSSOClient)(nil).All), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AccessToken", reflect.TypeOf((*MockSSOClient)(nil).AccessToken), ctx, refreshToken)
 }
 
 // ExchangeCode mocks base method.
@@ -86,48 +71,6 @@ func (mr *MockSSOClientMockRecorder) ExchangeCode(ctx, code, verifier any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExchangeCode", reflect.TypeOf((*MockSSOClient)(nil).ExchangeCode), ctx, code, verifier)
 }
 
-// FindByName mocks base method.
-func (m *MockSSOClient) FindByName(ctx context.Context, name string) *sso.CharacterToken {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FindByName", ctx, name)
-	ret0, _ := ret[0].(*sso.CharacterToken)
-	return ret0
-}
-
-// FindByName indicates an expected call of FindByName.
-func (mr *MockSSOClientMockRecorder) FindByName(ctx, name any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByName", reflect.TypeOf((*MockSSOClient)(nil).FindByName), ctx, name)
-}
-
-// ForCharacter mocks base method.
-func (m *MockSSOClient) ForCharacter(characterID int, chars character.Repository) sso.Client {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ForCharacter", characterID, chars)
-	ret0, _ := ret[0].(sso.Client)
-	return ret0
-}
-
-// ForCharacter indicates an expected call of ForCharacter.
-func (mr *MockSSOClientMockRecorder) ForCharacter(characterID, chars any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ForCharacter", reflect.TypeOf((*MockSSOClient)(nil).ForCharacter), characterID, chars)
-}
-
-// Get mocks base method.
-func (m *MockSSOClient) Get(ctx context.Context, id int) *sso.CharacterToken {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Get", ctx, id)
-	ret0, _ := ret[0].(*sso.CharacterToken)
-	return ret0
-}
-
-// Get indicates an expected call of Get.
-func (mr *MockSSOClientMockRecorder) Get(ctx, id any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockSSOClient)(nil).Get), ctx, id)
-}
-
 // PrepareLogin mocks base method.
 func (m *MockSSOClient) PrepareLogin(scopes []string) (*sso.PreparedLogin, error) {
 	m.ctrl.T.Helper()
@@ -143,42 +86,14 @@ func (mr *MockSSOClientMockRecorder) PrepareLogin(scopes any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrepareLogin", reflect.TypeOf((*MockSSOClient)(nil).PrepareLogin), scopes)
 }
 
-// Remove mocks base method.
-func (m *MockSSOClient) Remove(ctx context.Context, id int) bool {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Remove", ctx, id)
-	ret0, _ := ret[0].(bool)
-	return ret0
-}
-
-// Remove indicates an expected call of Remove.
-func (mr *MockSSOClientMockRecorder) Remove(ctx, id any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Remove", reflect.TypeOf((*MockSSOClient)(nil).Remove), ctx, id)
-}
-
 // Revoke mocks base method.
-func (m *MockSSOClient) Revoke(ctx context.Context, characterID int) {
+func (m *MockSSOClient) Revoke(ctx context.Context, refreshToken string) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Revoke", ctx, characterID)
+	m.ctrl.Call(m, "Revoke", ctx, refreshToken)
 }
 
 // Revoke indicates an expected call of Revoke.
-func (mr *MockSSOClientMockRecorder) Revoke(ctx, characterID any) *gomock.Call {
+func (mr *MockSSOClientMockRecorder) Revoke(ctx, refreshToken any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Revoke", reflect.TypeOf((*MockSSOClient)(nil).Revoke), ctx, characterID)
-}
-
-// Upsert mocks base method.
-func (m *MockSSOClient) Upsert(ctx context.Context, token *sso.CharacterToken) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Upsert", ctx, token)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Upsert indicates an expected call of Upsert.
-func (mr *MockSSOClientMockRecorder) Upsert(ctx, token any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Upsert", reflect.TypeOf((*MockSSOClient)(nil).Upsert), ctx, token)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Revoke", reflect.TypeOf((*MockSSOClient)(nil).Revoke), ctx, refreshToken)
 }

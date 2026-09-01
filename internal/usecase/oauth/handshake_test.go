@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/truewebber/eve-online-mcp/internal/domain/authcode"
+	"github.com/truewebber/eve-online-mcp/internal/domain/character"
+	dbsession "github.com/truewebber/eve-online-mcp/internal/domain/session"
 )
 
 func TestOpenHMACTooShort(t *testing.T) {
@@ -27,12 +29,24 @@ func TestHMACStableAcrossOpen(t *testing.T) {
 	db := openDB(t)
 	s1 := testServer(t, db)
 	s2 := testServer(t, db)
-	const characterID = 2112625428
-	tok, err := s1.issueAccess(characterID)
+	const characterID int64 = 2112625428
+	if err := characters(t, db).Upsert(context.Background(), character.Character{
+		ID: characterID, Name: janeDoe, OwnerHash: "h",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	row, err := sessions(t, db).Create(context.Background(), dbsession.Session{
+		CharacterID: characterID, RefreshToken: "rt", Scopes: []string{},
+		MCPClientID: "c",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	info, err := s2.verifyAccess(tok)
+	tok, err := s1.issueAccess(int(characterID), row.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, _, err := s2.verifyAccess(tok)
 	if err != nil || info.UserID != "2112625428" {
 		t.Fatalf("cross-process jwt: %+v err %v", info, err)
 	}
@@ -93,12 +107,18 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 	db := openDB(t)
 	ctx := context.Background()
 	const characterID int64 = 2112625428
+	if err := characters(t, db).Upsert(ctx, character.Character{
+		ID: characterID, Name: janeDoe, OwnerHash: "h",
+	}); err != nil {
+		t.Fatal(err)
+	}
 	s := testServer(t, db)
 
 	put := func(t *testing.T, code string, expires time.Time) {
 		t.Helper()
 		err := codes(db).Put(ctx, authcode.Code{
-			Value: code, CharacterID: characterID, MCPClientID: "c",
+			Value: code, CharacterID: characterID, RefreshToken: "parked-rt",
+			Scopes: []string{scopePublic}, MCPClientID: "c",
 			RedirectURI: redirect, CodeChallenge: challenge, ExpiresAt: expires,
 		})
 		if err != nil {
@@ -144,9 +164,9 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 				if !ok || raw == "" {
 					t.Fatalf("access_token %+v", payload)
 				}
-				info, err := s.verifyAccess(raw)
-				if err != nil || info.UserID != "2112625428" {
-					t.Fatalf("jwt %+v err %v", info, err)
+				info, ref, err := s.verifyAccess(raw)
+				if err != nil || info.UserID != "2112625428" || ref.SessionID == 0 {
+					t.Fatalf("jwt %+v ref %+v err %v", info, ref, err)
 				}
 			},
 		},

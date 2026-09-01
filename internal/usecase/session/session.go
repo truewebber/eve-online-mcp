@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/truewebber/gopkg/log"
@@ -20,6 +21,7 @@ import (
 	"github.com/truewebber/eve-online-mcp/internal/domain/loginstate"
 	"github.com/truewebber/eve-online-mcp/internal/domain/mutation"
 	"github.com/truewebber/eve-online-mcp/internal/domain/oauthclient"
+	dbsession "github.com/truewebber/eve-online-mcp/internal/domain/session"
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 	"github.com/truewebber/eve-online-mcp/internal/j"
 )
@@ -32,6 +34,8 @@ var (
 	ErrSSORequired       = errors.New("session: SSO client is required")
 )
 
+type TxRunner func(ctx context.Context, fn func(context.Context) error) error
+
 type Options struct {
 	UserAgent         string
 	RequestTimeoutSec float64
@@ -40,11 +44,13 @@ type Options struct {
 	ESI               esi.Client
 	SSO               sso.Client
 	Characters        character.Repository
+	Sessions          dbsession.Repository
 	Clients           oauthclient.Repository
 	Logins            loginstate.Repository
 	Codes             authcode.Repository
 	Confirms          confirm.Repository
 	Mutations         mutation.Repository
+	WithinTx          TxRunner
 	Logger            log.Logger
 }
 
@@ -52,17 +58,22 @@ type Session struct {
 	Opts        Options
 	HTTP        *http.Client
 	Characters  character.Repository
+	Sessions    dbsession.Repository
 	Clients     oauthclient.Repository
 	Logins      loginstate.Repository
 	Codes       authcode.Repository
 	Confirms    confirm.Repository
 	Mutations   mutation.Repository
+	WithinTx    TxRunner
 	CharacterID int
+	SessionID   int64
 	SSO         sso.Client
 	ESI         esi.Client
 	Resolver    *esihttp.Resolver
 	Guard       *write.Guard
 	Logger      log.Logger
+	grantMu     sync.Mutex
+	grant       *grantState
 }
 
 func Open(opts Options) (*Session, error) {
@@ -80,25 +91,26 @@ func Open(opts Options) (*Session, error) {
 		opts.HTTP = NewHTTPClient(opts)
 	}
 	purgeExpired(context.Background(), opts)
-	ssoClient := opts.SSO.ForCharacter(0, opts.Characters)
-	esiClient := opts.ESI.ForUser(ssoTokens{sso: ssoClient})
-	persist := guardPersist{mutations: opts.Mutations, confirms: opts.Confirms}
-
-	return &Session{
+	s := &Session{
 		Opts:       opts,
 		HTTP:       opts.HTTP,
 		Characters: opts.Characters,
+		Sessions:   opts.Sessions,
 		Clients:    opts.Clients,
 		Logins:     opts.Logins,
 		Codes:      opts.Codes,
 		Confirms:   opts.Confirms,
 		Mutations:  opts.Mutations,
-		SSO:        ssoClient,
-		ESI:        esiClient,
-		Resolver:   esihttp.NewResolver(esiClient, opts.Logger),
-		Guard:      write.NewGuard(persist, 0, opts.Logger),
+		WithinTx:   opts.WithinTx,
+		SSO:        opts.SSO,
+		Resolver:   esihttp.NewResolver(opts.ESI, opts.Logger),
+		Guard:      write.NewGuard(guardPersist{mutations: opts.Mutations, confirms: opts.Confirms}, 0, 0, opts.Logger),
 		Logger:     opts.Logger,
-	}, nil
+		grant:      &grantState{},
+	}
+	s.ESI = opts.ESI.ForUser(ssoTokens{s: s})
+
+	return s, nil
 }
 
 func NewHTTPClient(opts Options) *http.Client {
@@ -170,29 +182,34 @@ func From(ctx context.Context) (*Session, error) {
 	return s, nil
 }
 
-// ForCharacter keeps the process EVE application and the shared HTTP cache;
-// the grant is bound to this one character.
-func (s *Session) ForCharacter(characterID int) *Session {
+func (s *Session) ForCharacter(characterID int, sessionID int64) *Session {
 	opts := s.Opts
-	ssoClient := s.Opts.SSO.ForCharacter(characterID, s.Characters)
-	esiClient := s.Opts.ESI.ForUser(ssoTokens{sso: ssoClient})
-
-	return &Session{
+	out := &Session{
 		Opts:        opts,
 		HTTP:        s.HTTP,
 		Characters:  s.Characters,
+		Sessions:    s.Sessions,
 		Clients:     s.Clients,
 		Logins:      s.Logins,
 		Codes:       s.Codes,
 		Confirms:    s.Confirms,
 		Mutations:   s.Mutations,
+		WithinTx:    s.WithinTx,
 		CharacterID: characterID,
-		SSO:         ssoClient,
-		ESI:         esiClient,
-		Resolver:    s.Resolver.ForUser(esiClient),
-		Guard:       write.NewGuard(guardPersist{mutations: s.Mutations, confirms: s.Confirms}, int64(characterID), s.Logger),
-		Logger:      s.Logger,
+		SessionID:   sessionID,
+		SSO:         s.SSO,
+		Resolver:    s.Resolver,
+		Guard: write.NewGuard(
+			guardPersist{mutations: s.Mutations, confirms: s.Confirms},
+			int64(characterID), sessionID, s.Logger,
+		),
+		Logger: s.Logger,
+		grant:  &grantState{},
 	}
+	out.ESI = opts.ESI.ForUser(ssoTokens{s: out})
+	out.Resolver = s.Resolver.ForUser(out.ESI)
+
+	return out
 }
 
 func (s *Session) DomainToken(tok *sso.CharacterToken) *character.Token {
@@ -207,15 +224,38 @@ func (s *Session) DomainToken(tok *sso.CharacterToken) *character.Token {
 }
 
 func (s *Session) Character(ctx context.Context) (*sso.CharacterToken, error) {
-	if s.CharacterID == 0 {
+	if s.CharacterID == 0 || s.SessionID == 0 {
 		return nil, wrap("Character", sso.Err("This request is not tied to an EVE login. Re-authenticate the MCP server (Authentication required) and try again."))
 	}
-	token := s.SSO.Get(ctx, s.CharacterID)
-	if token == nil {
+	row, err := s.Sessions.LiveByID(ctx, s.SessionID)
+	if err != nil || row.CharacterID != int64(s.CharacterID) {
+		return nil, wrap("Character", sso.Err("This connection's character is no longer authorized. Re-authenticate the MCP server (Authentication required) and try again."))
+	}
+	ident, err := s.Characters.Get(ctx, int64(s.CharacterID))
+	if err != nil || !ident.Live() {
 		return nil, wrap("Character", sso.Err("This connection's character is no longer authorized. Re-authenticate the MCP server (Authentication required) and try again."))
 	}
 
-	return token, nil
+	return &sso.CharacterToken{
+		CharacterID:   int(ident.ID),
+		CharacterName: ident.Name,
+		RefreshToken:  row.RefreshToken,
+		Scopes:        row.Scopes,
+		OwnerHash:     ident.OwnerHash,
+		AddedAt:       float64(ident.CreatedAt.Unix()),
+	}, nil
+}
+
+func (s *Session) Live(ctx context.Context) (*dbsession.Session, error) {
+	if s.SessionID == 0 {
+		return nil, wrap("Live", sso.Err("This request is not tied to an EVE login. Re-authenticate the MCP server (Authentication required) and try again."))
+	}
+	row, err := s.Sessions.LiveByID(ctx, s.SessionID)
+	if err != nil {
+		return nil, wrap("Live", err)
+	}
+
+	return row, nil
 }
 
 func (s *Session) RequireScope(token *sso.CharacterToken, scope, what string) error {

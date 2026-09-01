@@ -17,7 +17,7 @@ type guardPersist struct {
 
 func (p guardPersist) PutConfirm(ctx context.Context, c write.Confirm) error {
 	return wrap("PutConfirm", p.confirms.Put(ctx, confirm.Confirm{
-		Value: c.Token, CharacterID: c.CharacterID, Tool: c.Tool,
+		Value: c.Token, SessionID: c.SessionID, Tool: c.Tool,
 		ArgsDigest: c.ArgsDigest, CreatedAt: c.CreatedAt,
 	}))
 }
@@ -32,7 +32,7 @@ func (p guardPersist) GetConfirm(ctx context.Context, token string) (*write.Conf
 	}
 
 	return &write.Confirm{
-		Token: row.Value, CharacterID: row.CharacterID, Tool: row.Tool,
+		Token: row.Value, SessionID: row.SessionID, Tool: row.Tool,
 		ArgsDigest: row.ArgsDigest, CreatedAt: row.CreatedAt,
 	}, nil
 }
@@ -41,8 +41,8 @@ func (p guardPersist) DeleteConfirm(ctx context.Context, token string) error {
 	return wrap("DeleteConfirm", p.confirms.Delete(ctx, token))
 }
 
-func (p guardPersist) CountConfirm(ctx context.Context, characterID int64) (int, error) {
-	n, err := p.confirms.Count(ctx, characterID)
+func (p guardPersist) CountConfirm(ctx context.Context, sessionID int64) (int, error) {
+	n, err := p.confirms.Count(ctx, sessionID)
 
 	return n, wrap("CountConfirm", err)
 }

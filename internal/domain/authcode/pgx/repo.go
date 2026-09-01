@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/truewebber/eve-online-mcp/internal/domain/authcode"
+	"github.com/truewebber/eve-online-mcp/internal/postgres"
 
 	jackpgx "github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -14,11 +15,15 @@ import (
 
 const (
 	putSQL = `
-		INSERT INTO auth_codes (code, character_id, mcp_client_id, redirect_uri, code_challenge, expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6)`
+		INSERT INTO auth_codes (
+			code, character_id, refresh_token, scopes, mcp_client_id, redirect_uri, code_challenge, expires_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	selectSQL = `
+		SELECT code, character_id, refresh_token, scopes, mcp_client_id, redirect_uri, code_challenge, expires_at
+		FROM auth_codes WHERE code = $1`
 	takeSQL = `
 		DELETE FROM auth_codes WHERE code = $1
-		RETURNING code, character_id, mcp_client_id, redirect_uri, code_challenge, expires_at`
+		RETURNING code, character_id, refresh_token, scopes, mcp_client_id, redirect_uri, code_challenge, expires_at`
 	deleteExpiredSQL = `DELETE FROM auth_codes WHERE expires_at < now()`
 )
 
@@ -31,38 +36,74 @@ func New(pool *pgxpool.Pool) *Repo {
 }
 
 func (r *Repo) Put(ctx context.Context, c authcode.Code) error {
-	_, err := r.pool.Exec(ctx, putSQL,
-		c.Value, c.CharacterID, c.MCPClientID, c.RedirectURI, c.CodeChallenge, c.ExpiresAt,
+	if c.Scopes == nil {
+		c.Scopes = []string{}
+	}
+	_, err := postgres.Q(ctx, r.pool).Exec(ctx, putSQL,
+		c.Value, c.CharacterID, c.RefreshToken, c.Scopes,
+		c.MCPClientID, c.RedirectURI, c.CodeChallenge, c.ExpiresAt,
 	)
 
 	return wrap("Put", err)
 }
 
-func (r *Repo) Take(ctx context.Context, value string) (*authcode.Code, error) {
-	var c authcode.Code
-	err := r.pool.QueryRow(ctx, takeSQL, value).Scan(
-		&c.Value, &c.CharacterID, &c.MCPClientID, &c.RedirectURI, &c.CodeChallenge, &c.ExpiresAt,
-	)
+func (r *Repo) Get(ctx context.Context, value string) (*authcode.Code, error) {
+	row, err := scan(postgres.Q(ctx, r.pool).QueryRow(ctx, selectSQL, value))
 	if errors.Is(err, jackpgx.ErrNoRows) {
 		return nil, authcode.ErrNotFound
 	}
 	if err != nil {
-		return nil, wrap("Take", err)
+		return nil, err
 	}
-	if time.Now().After(c.ExpiresAt) {
+	if time.Now().After(row.ExpiresAt) {
 		return nil, authcode.ErrNotFound
 	}
 
-	return &c, nil
+	return row, nil
+}
+
+func (r *Repo) Take(ctx context.Context, value string) (*authcode.Code, error) {
+	row, err := scan(postgres.Q(ctx, r.pool).QueryRow(ctx, takeSQL, value))
+	if errors.Is(err, jackpgx.ErrNoRows) {
+		return nil, authcode.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if time.Now().After(row.ExpiresAt) {
+		return nil, authcode.ErrNotFound
+	}
+
+	return row, nil
 }
 
 func (r *Repo) DeleteExpired(ctx context.Context) (int64, error) {
-	tag, err := r.pool.Exec(ctx, deleteExpiredSQL)
+	tag, err := postgres.Q(ctx, r.pool).Exec(ctx, deleteExpiredSQL)
 	if err != nil {
 		return 0, wrap("DeleteExpired", err)
 	}
 
 	return tag.RowsAffected(), nil
+}
+
+type scanner interface {
+	Scan(dest ...any) error
+}
+
+func scan(row scanner) (*authcode.Code, error) {
+	var c authcode.Code
+	err := row.Scan(
+		&c.Value, &c.CharacterID, &c.RefreshToken, &c.Scopes,
+		&c.MCPClientID, &c.RedirectURI, &c.CodeChallenge, &c.ExpiresAt,
+	)
+	if err != nil {
+		return nil, wrap("scan", err)
+	}
+	if c.Scopes == nil {
+		c.Scopes = []string{}
+	}
+
+	return &c, nil
 }
 
 func wrap(op string, err error) error {

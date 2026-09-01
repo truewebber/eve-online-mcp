@@ -721,6 +721,7 @@ internal/
     loginstate/         in-flight SSO handshake + repository; pgx/
     authcode/           one-time MCP code + repository; pgx/
     confirm/            one-shot consent token + repository; pgx/
+    session/            MCP connection + EVE grant; pgx/
     mutation/           mail_log (mutations table lands in T19); pgx/
     write/              capability catalog, Guard (confirm cycle, mail cap)
   j/                    map[string]any helpers, above the layer split

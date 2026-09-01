@@ -10,15 +10,12 @@ const PlayerCorpIDFloor = 98_000_000
 
 var ErrNotFound = errors.New("character: not found")
 
-// Grant lives on this row until sessions own it (DB.md, SPEC §3.3).
 type Character struct {
-	ID           int64
-	Name         string
-	OwnerHash    string
-	RefreshToken string
-	Scopes       []string
-	CreatedAt    time.Time
-	DeletedAt    *time.Time
+	ID        int64
+	Name      string
+	OwnerHash string
+	CreatedAt time.Time
+	DeletedAt *time.Time
 }
 
 func (c Character) Live() bool { return c.DeletedAt == nil }
@@ -28,10 +25,8 @@ type Repository interface {
 	Upsert(ctx context.Context, c Character) error
 	Get(ctx context.Context, id int64) (*Character, error)
 	Delete(ctx context.Context, id int64) error
-	UpdateRefresh(ctx context.Context, id int64, fn func(string) (string, error)) error
 }
 
-// Refresh material stays in the SSO adapter; this is identity and grants only.
 type Token struct {
 	CharacterID   int
 	CharacterName string

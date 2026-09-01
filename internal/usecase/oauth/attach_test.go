@@ -22,6 +22,8 @@ import (
 	loginstatepgx "github.com/truewebber/eve-online-mcp/internal/domain/loginstate/pgx"
 	mutationpgx "github.com/truewebber/eve-online-mcp/internal/domain/mutation/pgx"
 	oauthclientpgx "github.com/truewebber/eve-online-mcp/internal/domain/oauthclient/pgx"
+	dbsession "github.com/truewebber/eve-online-mcp/internal/domain/session"
+	sessionpgx "github.com/truewebber/eve-online-mcp/internal/domain/session/pgx"
 	"github.com/truewebber/eve-online-mcp/internal/mocks"
 	"github.com/truewebber/eve-online-mcp/internal/postgres"
 	"github.com/truewebber/eve-online-mcp/internal/postgres/pgtest"
@@ -34,6 +36,7 @@ const (
 	newRT       = "new-rt"
 	altName     = "Alt"
 	testHMACKey = "0123456789abcdef0123456789abcdef"
+	scopePublic = "publicData"
 )
 
 func openDB(t *testing.T) *postgres.DB {
@@ -46,6 +49,12 @@ func characters(t *testing.T, db *postgres.DB) character.Repository {
 	t.Helper()
 
 	return characterpgx.New(db.Pool(), mocks.QuietLogger(gomock.NewController(t)))
+}
+
+func sessions(t *testing.T, db *postgres.DB) dbsession.Repository {
+	t.Helper()
+
+	return sessionpgx.New(db.Pool(), mocks.QuietLogger(gomock.NewController(t)))
 }
 
 func logins(db *postgres.DB) loginstate.Repository {
@@ -68,26 +77,48 @@ func testESI(t *testing.T) esi.Client {
 
 func testSSO(t *testing.T) sso.Client {
 	t.Helper()
-
-	return ssohttp.New(sso.Options{
+	ctrl := gomock.NewController(t)
+	m := mocks.NewMockSSOClient(ctrl)
+	login := ssohttp.New(sso.Options{
 		ClientID:    "test-eve-client",
 		CallbackURL: "http://127.0.0.1/auth/callback",
-	}, nhttp.DefaultClient, mocks.QuietLogger(gomock.NewController(t)))
+	}, nhttp.DefaultClient, mocks.QuietLogger(ctrl))
+	m.EXPECT().PrepareLogin(gomock.Any()).DoAndReturn(login.PrepareLogin).AnyTimes()
+	m.EXPECT().ExchangeCode(gomock.Any(), gomock.Any(), gomock.Any()).Return(&sso.CharacterToken{
+		CharacterID: 1, CharacterName: janeDoe, RefreshToken: "rt",
+	}, nil).AnyTimes()
+	m.EXPECT().AccessToken(gomock.Any(), gomock.Any()).Return(&sso.CharacterToken{
+		AccessToken: "at", RefreshToken: "rt",
+	}, nil).AnyTimes()
+	m.EXPECT().Revoke(gomock.Any(), gomock.Any()).AnyTimes()
+
+	return m
 }
 
 func testServer(t *testing.T, db *postgres.DB) *Server {
 	t.Helper()
+
+	return testServerSSO(t, db, testSSO(t))
+}
+
+func testServerSSO(t *testing.T, db *postgres.DB, ssoClient sso.Client) *Server {
+	t.Helper()
 	logger := mocks.QuietLogger(gomock.NewController(t))
+	pool := db.Pool()
 	runtime, err := session.Open(session.Options{
 		Characters: characters(t, db),
-		Clients:    oauthclientpgx.New(db.Pool()),
+		Sessions:   sessions(t, db),
+		Clients:    oauthclientpgx.New(pool),
 		Logins:     logins(db),
 		Codes:      codes(db),
 		Confirms:   confirms(db),
-		Mutations:  mutationpgx.New(db.Pool()),
+		Mutations:  mutationpgx.New(pool),
 		ESI:        testESI(t),
-		SSO:        testSSO(t),
-		Logger:     logger,
+		SSO:        ssoClient,
+		WithinTx: func(ctx context.Context, fn func(context.Context) error) error {
+			return postgres.WithinTx(ctx, pool, fn)
+		},
+		Logger: logger,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -107,7 +138,7 @@ func TestFinishMCPUpsertsCharacter(t *testing.T) {
 	const charID int64 = 2112625428
 	chars := characters(t, db)
 	if err := chars.Upsert(ctx, character.Character{
-		ID: charID, Name: janeDoe, RefreshToken: "old-rt", OwnerHash: "h1",
+		ID: charID, Name: janeDoe, OwnerHash: "h1",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -117,6 +148,7 @@ func TestFinishMCPUpsertsCharacter(t *testing.T) {
 		MCPState: "mcp", CodeChallenge: "x",
 	}, &sso.CharacterToken{
 		CharacterID: int(charID), CharacterName: janeDoe, RefreshToken: newRT, OwnerHash: "h1",
+		Scopes: []string{scopePublic},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -126,11 +158,12 @@ func TestFinishMCPUpsertsCharacter(t *testing.T) {
 		t.Fatalf("redirect %s err %v", loc, err)
 	}
 	row, err := chars.Get(ctx, charID)
-	if err != nil || !row.Live() || row.RefreshToken != newRT {
+	if err != nil || !row.Live() || row.OwnerHash != "h1" {
 		t.Fatalf("row %+v err %v", row, err)
 	}
-	if tok := s.SessionFor(int(charID)).SSO.Get(ctx, int(charID)); tok == nil {
-		t.Fatal("session store miss")
+	parked, err := codes(db).Get(ctx, got.Query().Get(paramCode))
+	if err != nil || parked.RefreshToken != newRT {
+		t.Fatalf("parked grant %+v err %v", parked, err)
 	}
 }
 
@@ -182,14 +215,14 @@ func TestFinishMCPCreatesCharacter(t *testing.T) {
 	}
 }
 
-func TestOwnerHashChangeReplacesGrant(t *testing.T) {
+func TestOwnerHashChangeReplacesIdentity(t *testing.T) {
 	t.Parallel()
 	db := openDB(t)
 	ctx := context.Background()
 	const charID int64 = 2112625428
 	chars := characters(t, db)
 	if err := chars.Upsert(ctx, character.Character{
-		ID: charID, Name: janeDoe, RefreshToken: "old-rt", OwnerHash: "old-hash",
+		ID: charID, Name: janeDoe, OwnerHash: "old-hash",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +235,7 @@ func TestOwnerHashChangeReplacesGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	row, err := chars.Get(ctx, charID)
-	if err != nil || row.OwnerHash != "new-hash" || row.RefreshToken != newRT {
+	if err != nil || row.OwnerHash != "new-hash" {
 		t.Fatalf("row %+v err %v", row, err)
 	}
 }
@@ -235,14 +268,21 @@ func TestLogoutSoftDeleteThenRelogin(t *testing.T) {
 		t.Fatal(err)
 	}
 	row, err = characters(t, db).Get(ctx, charID)
-	if err != nil || !row.Live() || row.RefreshToken != "rt-2" {
+	if err != nil || !row.Live() {
 		t.Fatalf("want revived, got %+v %v", row, err)
 	}
-	tok, err := s.IssueAccess(int(charID))
+	created, err := sessions(t, db).Create(ctx, dbsession.Session{
+		CharacterID: charID, RefreshToken: "rt-2", Scopes: []string{},
+		MCPClientID: "c",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	info, err := s.verifyAccess(tok)
+	tok, err := s.IssueAccess(int(charID), created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := s.VerifyAccess(ctx, tok, nil)
 	if err != nil || info.UserID != "99" {
 		t.Fatalf("sub %+v err %v", info, err)
 	}

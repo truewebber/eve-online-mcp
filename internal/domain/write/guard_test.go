@@ -36,7 +36,7 @@ func testGuard(t *testing.T) (*write.Guard, *confirmBox) {
 	persist.EXPECT().CountConfirm(gomock.Any(), gomock.Any()).DoAndReturn(box.countConfirm).AnyTimes()
 	persist.EXPECT().CountMailSince(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(box.countMail).AnyTimes()
 	persist.EXPECT().InsertMail(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(box.insertMail).AnyTimes()
-	g := write.NewGuard(persist, 1, mocks.QuietLogger(ctrl))
+	g := write.NewGuard(persist, 1, 1, mocks.QuietLogger(ctrl))
 
 	return g, box
 }
@@ -63,10 +63,10 @@ func (b *confirmBox) drop(_ context.Context, token string) error {
 	return nil
 }
 
-func (b *confirmBox) countConfirm(_ context.Context, characterID int64) (int, error) {
+func (b *confirmBox) countConfirm(_ context.Context, sessionID int64) (int, error) {
 	n := 0
 	for _, c := range b.tokens {
-		if c.CharacterID == characterID {
+		if c.SessionID == sessionID {
 			n++
 		}
 	}

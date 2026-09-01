@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -24,19 +23,16 @@ import (
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
 	"github.com/truewebber/eve-online-mcp/internal/domain/authcode"
-	"github.com/truewebber/eve-online-mcp/internal/domain/character"
 	"github.com/truewebber/eve-online-mcp/internal/domain/loginstate"
 	"github.com/truewebber/eve-online-mcp/internal/domain/oauthclient"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 
-	"github.com/golang-jwt/jwt/v5"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
 )
 
 const (
 	accessTTL     = time.Hour
-	refreshTTL    = 30 * 24 * time.Hour
 	codeTTL       = 2 * time.Minute
 	scopeEve      = "eve"
 	hmacMinBytes  = 32
@@ -54,6 +50,7 @@ const (
 	typRefresh        = "refresh"
 	schemeHTTP        = "http"
 	schemeHTTPS       = "https"
+	claimSID          = "sid"
 )
 
 var (
@@ -64,6 +61,7 @@ var (
 	errNotRefresh   = errors.New("not refresh")
 	errNoSub        = errors.New("no sub")
 	errBadCharacter = errors.New("oauth: character id")
+	errNoSID        = errors.New("oauth: sid")
 )
 
 type Host struct {
@@ -149,14 +147,10 @@ func Open(pub Host, runtime *session.Session, opts Options, logger log.Logger) (
 		clients: runtime.Clients,
 		logins:  runtime.Logins,
 		codes:   runtime.Codes,
-		login:   runtime.Opts.SSO.ForCharacter(0, nil),
+		login:   runtime.Opts.SSO,
 		hmacKey: opts.HMACKey,
 		logger:  logger,
 	}, nil
-}
-
-func (s *Server) IssueAccess(characterID int) (string, error) {
-	return s.issueAccess(characterID)
 }
 
 func (s *Server) Base() string { return s.pub.BaseURL() }
@@ -239,7 +233,7 @@ func (s *Server) ServeRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := randomID(clientIDBytes)
-	err = s.clients.Upsert(r.Context(), oauthclient.Client{ID: id, RedirectURIs: allowed})
+	err = s.clients.Upsert(r.Context(), oauthclient.Client{ID: id, Name: req.ClientName, RedirectURIs: allowed})
 	if err != nil {
 		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
 
@@ -259,8 +253,6 @@ func (s *Server) ServeRegister(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// No form: the instance owns the one EVE application; the player only
-// picks a character at CCP.
 func (s *Server) ServeAuthorize(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	mcpClient := q.Get(paramClientID)
@@ -307,29 +299,6 @@ func (s *Server) ServeAuthorize(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, prep.URL, http.StatusFound)
 }
 
-type Callback struct {
-	Redirect string
-	Token    *sso.CharacterToken
-}
-
-func (s *Server) CompleteCallback(ctx context.Context, code, eveState string) (Callback, error) {
-	s.purge(ctx)
-	st, err := s.logins.Take(ctx, eveState)
-	if errors.Is(err, loginstate.ErrNotFound) {
-		return Callback{}, ErrUnknownLogin
-	}
-	if err != nil {
-		return Callback{}, wrap("CompleteCallback", err)
-	}
-	token, err := s.login.ExchangeCode(ctx, code, st.PKCEVerifier)
-	if err != nil {
-		return Callback{}, wrap("CompleteCallback", err)
-	}
-	loc, err := s.finishMCP(ctx, st, token)
-
-	return Callback{Redirect: loc, Token: token}, err
-}
-
 func (s *Server) ServeToken(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if r.Method != http.MethodPost {
@@ -348,262 +317,10 @@ func (s *Server) ServeToken(w http.ResponseWriter, r *http.Request) {
 	case grantAuthCode:
 		s.exchangeCode(w, r)
 	case grantRefresh:
-		s.refresh(w, r)
+		s.refreshGrant(w, r)
 	default:
 		http.Error(w, `{"error":"unsupported_grant_type"}`, http.StatusBadRequest)
 	}
-}
-
-func (s *Server) VerifyAccess(_ context.Context, token string, _ *http.Request) (*mcpauth.TokenInfo, error) {
-	return s.verifyAccess(token)
-}
-
-func (s *Server) SessionFor(characterID int) *session.Session {
-	key := strconv.Itoa(characterID)
-	if v, ok := s.sessions.Load(key); ok {
-		if sess, ok := v.(*session.Session); ok {
-			return sess
-		}
-	}
-	sess := s.runtime.ForCharacter(characterID)
-	s.sessions.Store(key, sess)
-
-	return sess
-}
-
-func (s *Server) ProtectMCP(next http.Handler) http.Handler {
-	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ti := mcpauth.TokenInfoFromContext(r.Context())
-		if ti == nil {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-
-			return
-		}
-		id, err := strconv.ParseInt(ti.UserID, 10, 64)
-		if err != nil || id == 0 {
-			http.Error(w, "unknown character", http.StatusUnauthorized)
-
-			return
-		}
-		row, err := s.runtime.Characters.Get(r.Context(), id)
-		if err != nil || row == nil || !row.Live() {
-			http.Error(w, "unknown character", http.StatusUnauthorized)
-
-			return
-		}
-		next.ServeHTTP(w, r.WithContext(session.With(r.Context(), s.SessionFor(int(id)))))
-	})
-
-	return mcpauth.RequireBearerToken(s.VerifyAccess, &mcpauth.RequireBearerTokenOptions{
-		ResourceMetadataURL: s.MetadataURL(),
-		Scopes:              []string{scopeEve},
-		ClockSkew:           jwtLeeway,
-	})(inner)
-}
-
-func (s *Server) finishMCP(ctx context.Context, p *loginstate.Login, token *sso.CharacterToken) (string, error) {
-	existing, err := s.runtime.Characters.Get(ctx, int64(token.CharacterID))
-	if err != nil && !errors.Is(err, character.ErrNotFound) {
-		return "", wrap("finishMCP", err)
-	}
-	sess := s.SessionFor(token.CharacterID)
-	if existing != nil && existing.Live() && existing.OwnerHash != "" && existing.OwnerHash != token.OwnerHash {
-		sess.SSO.Revoke(ctx, token.CharacterID)
-	}
-	if err := sess.SSO.Upsert(ctx, token); err != nil {
-		return "", wrap("finishMCP", err)
-	}
-
-	code := randomID(authCodeBytes)
-	if err := s.codes.Put(ctx, authcode.Code{
-		Value:         code,
-		CharacterID:   int64(token.CharacterID),
-		MCPClientID:   p.MCPClientID,
-		RedirectURI:   p.RedirectURI,
-		CodeChallenge: p.CodeChallenge,
-		ExpiresAt:     time.Now().Add(codeTTL),
-	}); err != nil {
-		return "", wrap("finishMCP", err)
-	}
-	u, err := url.Parse(p.RedirectURI)
-	if err != nil {
-		return "", wrap("finishMCP", err)
-	}
-	q := u.Query()
-	q.Set(paramCode, code)
-	if p.MCPState != "" {
-		q.Set("state", p.MCPState)
-	}
-	u.RawQuery = q.Encode()
-	s.logger.Info("oauth: mcp authorized", "character", token.CharacterName, "character_id", token.CharacterID)
-
-	return u.String(), nil
-}
-
-func (s *Server) exchangeCode(w http.ResponseWriter, r *http.Request) {
-	code := r.Form.Get(paramCode)
-	verifier := r.Form.Get(paramCodeVerifier)
-	redirect := r.Form.Get(paramRedirectURI)
-	ac, err := s.codes.Take(r.Context(), code)
-	if errors.Is(err, authcode.ErrNotFound) {
-		http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
-
-		return
-	}
-	if err != nil {
-		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
-
-		return
-	}
-	if redirect != "" && redirect != ac.RedirectURI {
-		http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
-
-		return
-	}
-	if !pkceOK(ac.CodeChallenge, verifier) {
-		http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
-
-		return
-	}
-	s.writeTokens(w, int(ac.CharacterID))
-}
-
-func (s *Server) refresh(w http.ResponseWriter, r *http.Request) {
-	raw := r.Form.Get(grantRefresh)
-	characterID, err := s.parseRefresh(raw)
-	if err != nil {
-		http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
-
-		return
-	}
-	row, err := s.runtime.Characters.Get(r.Context(), int64(characterID))
-	if err != nil || row == nil || !row.Live() {
-		http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
-
-		return
-	}
-	s.writeTokens(w, characterID)
-}
-
-func (s *Server) writeTokens(w http.ResponseWriter, characterID int) {
-	access, err := s.issueAccess(characterID)
-	if err != nil {
-		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
-
-		return
-	}
-	refresh, err := s.issueRefresh(characterID)
-	if err != nil {
-		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
-
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	if err := json.NewEncoder(w).Encode(map[string]any{
-		"access_token": access,
-		grantRefresh:   refresh,
-		"token_type":   "Bearer",
-		"expires_in":   int(accessTTL.Seconds()),
-		"scope":        scopeEve,
-	}); err != nil {
-		s.logger.Error("oauth: encode token response", "err", err)
-	}
-}
-
-func (s *Server) issueAccess(characterID int) (string, error) {
-	now := time.Now()
-	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub":   strconv.Itoa(characterID),
-		"aud":   s.ResourceURL(),
-		"iss":   s.Base(),
-		"iat":   now.Unix(),
-		"exp":   now.Add(accessTTL).Unix(),
-		"scope": scopeEve,
-	})
-
-	signed, err := tok.SignedString(s.hmacKey)
-
-	return signed, wrap("issueAccess", err)
-}
-
-func (s *Server) issueRefresh(characterID int) (string, error) {
-	now := time.Now()
-	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": strconv.Itoa(characterID),
-		"typ": typRefresh,
-		"iss": s.Base(),
-		"iat": now.Unix(),
-		"exp": now.Add(refreshTTL).Unix(),
-	})
-
-	signed, err := tok.SignedString(s.hmacKey)
-
-	return signed, wrap("issueRefresh", err)
-}
-
-func (s *Server) parseRefresh(raw string) (int, error) {
-	tok, err := jwt.Parse(raw, func(t *jwt.Token) (any, error) {
-		if t.Method != jwt.SigningMethodHS256 {
-			return nil, errBadAlg
-		}
-
-		return s.hmacKey, nil
-	}, jwt.WithIssuer(s.Base()), jwt.WithLeeway(jwtLeeway))
-	if err != nil || !tok.Valid {
-		return 0, errInvalidToken
-	}
-	claims, ok := tok.Claims.(jwt.MapClaims)
-	if !ok {
-		return 0, errInvalidToken
-	}
-	if claims["typ"] != typRefresh {
-		return 0, errNotRefresh
-	}
-	sub, ok := claims["sub"].(string)
-	if !ok || sub == "" {
-		return 0, errNoSub
-	}
-	id, err := strconv.Atoi(sub)
-	if err != nil || id == 0 {
-		return 0, errBadCharacter
-	}
-
-	return id, nil
-}
-
-func (s *Server) verifyAccess(token string) (*mcpauth.TokenInfo, error) {
-	tok, err := jwt.Parse(token, func(t *jwt.Token) (any, error) {
-		if t.Method != jwt.SigningMethodHS256 {
-			return nil, errBadAlg
-		}
-
-		return s.hmacKey, nil
-	}, jwt.WithAudience(s.ResourceURL()), jwt.WithIssuer(s.Base()), jwt.WithLeeway(jwtLeeway))
-	if err != nil || !tok.Valid {
-		return nil, mcpauth.ErrInvalidToken
-	}
-	claims, ok := tok.Claims.(jwt.MapClaims)
-	if !ok {
-		return nil, mcpauth.ErrInvalidToken
-	}
-	if claims["typ"] == typRefresh {
-		return nil, mcpauth.ErrInvalidToken
-	}
-	sub, ok := claims["sub"].(string)
-	if !ok || sub == "" {
-		return nil, mcpauth.ErrInvalidToken
-	}
-	exp, ok := claims["exp"].(float64)
-	if !ok {
-		return nil, mcpauth.ErrInvalidToken
-	}
-
-	return &mcpauth.TokenInfo{
-		Scopes:     []string{scopeEve},
-		Expiration: time.Unix(int64(exp), 0),
-		UserID:     sub,
-	}, nil
 }
 
 func (s *Server) clientRedirectOK(ctx context.Context, clientID, redirect string) bool {
@@ -632,6 +349,15 @@ func (s *Server) purge(ctx context.Context) {
 			s.logger.Error("oauth: purge codes", "err", err)
 		}
 	}
+}
+
+func (s *Server) clientName(ctx context.Context, clientID string) string {
+	c, err := s.clients.Get(ctx, clientID)
+	if err != nil {
+		return ""
+	}
+
+	return c.Name
 }
 
 func redirectOK(raw string) bool {
@@ -674,4 +400,13 @@ func randomID(n int) string {
 	_, _ = rand.Read(b)
 
 	return hex.EncodeToString(b)
+}
+
+func requestIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+
+	return host
 }

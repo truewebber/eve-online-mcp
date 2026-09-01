@@ -10,6 +10,7 @@ var ErrNotFound = errors.New("oauthclient: not found")
 
 type Client struct {
 	ID           string
+	Name         string
 	RedirectURIs []string
 	CreatedAt    time.Time
 }

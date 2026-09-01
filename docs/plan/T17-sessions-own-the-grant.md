@@ -1,6 +1,6 @@
 # T17 — Sessions own the EVE grant; the runtime is keyed by `sid`
 
-- Status: `todo`
+- Status: `done`
 - Size: L
 - Depends on: T16
 - RULES: §2 (constraints are not control flow), §11 (`domain/session` +
@@ -174,25 +174,25 @@ back inside the same transaction.
 
 ## Acceptance
 
-- [ ] `sessions` exists with the partial unique index; `characters`
+- [x] `sessions` exists with the partial unique index; `characters`
       holds no token
-- [ ] The exchange takes the advisory lock and revokes with
+- [x] The exchange takes the advisory lock and revokes with
       `revoked_at IS NULL`, tokens cleared
-- [ ] `rg -n 'pgerrcode|PgError|23505'` finds nothing
-- [ ] CCP revoke happens after the commit, never inside
-- [ ] `sid` is in both tokens and checked on every call
-- [ ] Grant state is keyed by `sid`; a request with a new `sid` rebuilds
+- [x] `rg -n 'pgerrcode|PgError|23505'` finds nothing
+- [x] CCP revoke happens after the commit, never inside
+- [x] `sid` is in both tokens and checked on every call
+- [x] Grant state is keyed by `sid`; a request with a new `sid` rebuilds
       it, covered by a test
-- [ ] An authorization failure revokes the requesting `sid` only
-- [ ] `sso.Client` has no method that reads or writes our database, and
+- [x] An authorization failure revokes the requesting `sid` only
+- [x] `sso.Client` has no method that reads or writes our database, and
       no package under `internal/adapter/` imports `internal/domain`
-- [ ] `depguard` has an `adapter-no-domain` rule and the tree is green
+- [x] `depguard` has an `adapter-no-domain` rule and the tree is green
       under it
-- [ ] Concurrent sign-in and concurrent refresh tests pass
-- [ ] No function in `usecase/oauth` does the exchange *and* the issuing
-- [ ] No clock is injected anywhere; no database test runs in a
+- [x] Concurrent sign-in and concurrent refresh tests pass
+- [x] No function in `usecase/oauth` does the exchange *and* the issuing
+- [x] No clock is injected anywhere; no database test runs in a
       `synctest` bubble
-- [ ] `go test ./...`, `make test-store` and `make lint` pass; signing
+- [x] `go test ./...`, `make test-store` and `make lint` pass; signing
       in from a second client kicks the first, verified by hand once
 
 ## Verify
