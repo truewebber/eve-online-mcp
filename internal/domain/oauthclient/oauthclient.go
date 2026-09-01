@@ -19,4 +19,6 @@ type Client struct {
 type Repository interface {
 	Upsert(ctx context.Context, c Client) error
 	Get(ctx context.Context, id string) (*Client, error)
+	SoftDeleteAbandoned(ctx context.Context) (int64, error)
+	DeleteLongSoftDeleted(ctx context.Context) (int64, error)
 }

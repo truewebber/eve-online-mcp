@@ -90,7 +90,6 @@ func Open(opts Options) (*Session, error) {
 	if opts.HTTP == nil {
 		opts.HTTP = NewHTTPClient(opts)
 	}
-	purgeExpired(context.Background(), opts)
 	s := &Session{
 		Opts:       opts,
 		HTTP:       opts.HTTP,
@@ -134,37 +133,6 @@ func normalize(opts Options) Options {
 	}
 
 	return opts
-}
-
-func purgeExpired(ctx context.Context, opts Options) {
-	var n int64
-	if opts.Logins != nil {
-		k, err := opts.Logins.DeleteExpired(ctx)
-		if err != nil {
-			opts.Logger.Error("session: purge login states", "err", err)
-		} else {
-			n += k
-		}
-	}
-	if opts.Codes != nil {
-		k, err := opts.Codes.DeleteExpired(ctx)
-		if err != nil {
-			opts.Logger.Error("session: purge auth codes", "err", err)
-		} else {
-			n += k
-		}
-	}
-	if opts.Confirms != nil {
-		k, err := opts.Confirms.DeleteExpired(ctx)
-		if err != nil {
-			opts.Logger.Error("session: purge confirm tokens", "err", err)
-		} else {
-			n += k
-		}
-	}
-	if n > 0 {
-		opts.Logger.Info("session: purged expired rows", "n", n)
-	}
 }
 
 type ctxKey struct{}

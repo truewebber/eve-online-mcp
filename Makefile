@@ -40,7 +40,7 @@ test:
 	$(GO) test ./...
 
 test-store: postgres migrate
-	DATABASE_URL=$(DATABASE_URL) $(GO) test ./internal/postgres ./internal/postgres/pgtest ./internal/adapter/sso ./internal/adapter/sso/http ./internal/adapter/esi ./internal/adapter/esi/http ./internal/usecase/oauth ./internal/usecase/session ./internal/domain/write ./internal/domain/character/pgx ./internal/domain/oauthclient/pgx ./internal/domain/loginstate/pgx ./internal/domain/authcode/pgx ./internal/domain/confirm/pgx ./internal/domain/mutation/pgx ./internal/domain/session/pgx -count=1
+	DATABASE_URL=$(DATABASE_URL) $(GO) test ./internal/postgres ./internal/postgres/pgtest ./internal/adapter/sso ./internal/adapter/sso/http ./internal/adapter/esi ./internal/adapter/esi/http ./internal/usecase/oauth ./internal/usecase/session ./internal/usecase/sweep ./internal/domain/write ./internal/domain/character/pgx ./internal/domain/oauthclient/pgx ./internal/domain/loginstate/pgx ./internal/domain/authcode/pgx ./internal/domain/confirm/pgx ./internal/domain/mutation/pgx ./internal/domain/session/pgx -count=1
 
 ci: lint
 	DATABASE_URL= $(GO) test ./...

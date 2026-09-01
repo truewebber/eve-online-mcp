@@ -203,6 +203,97 @@ func TestLockForRefreshSerializesAndRereads(t *testing.T) {
 	}
 }
 
+const (
+	sessionTokenSQL = `SELECT refresh_token IS NULL, revoked_at IS NOT NULL FROM sessions WHERE id = $1`
+	ageValidTilSQL  = `UPDATE sessions SET valid_til = now() - interval '1 day' WHERE id = $1`
+	ageRevokedSQL   = `UPDATE sessions SET revoked_at = now() - interval '91 days' WHERE id = $1`
+	countSessions   = `SELECT COUNT(*) FROM sessions`
+)
+
+func TestExpireValidTil(t *testing.T) {
+	t.Parallel()
+	repo, chars, db := openRepo(t)
+	ctx := context.Background()
+	seedCharacter(t, chars, 15)
+	seedCharacter(t, chars, 16)
+	expired, err := repo.Create(ctx, session.Session{
+		CharacterID: 15, RefreshToken: "rt-exp", Scopes: []string{}, MCPClientID: "c",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, err := repo.Create(ctx, session.Session{
+		CharacterID: 16, RefreshToken: "rt-ok", Scopes: []string{}, MCPClientID: "c",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Pool().Exec(ctx, ageValidTilSQL, expired.ID); err != nil {
+		t.Fatal(err)
+	}
+	revoked, err := repo.ExpireValidTil(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(revoked.IDs) != 1 || revoked.IDs[0] != expired.ID {
+		t.Fatalf("ids %+v", revoked.IDs)
+	}
+	if len(revoked.Tokens) != 1 || revoked.Tokens[0] != "rt-exp" {
+		t.Fatalf("tokens %+v", revoked.Tokens)
+	}
+	var tokenGone, marked bool
+	if err := db.Pool().QueryRow(ctx, sessionTokenSQL, expired.ID).Scan(&tokenGone, &marked); err != nil {
+		t.Fatal(err)
+	}
+	if !tokenGone || !marked {
+		t.Fatalf("expired row tokenGone=%v marked=%v", tokenGone, marked)
+	}
+	got, err := repo.LiveByID(ctx, live.ID)
+	if err != nil || got.RefreshToken != "rt-ok" {
+		t.Fatalf("live %+v err %v", got, err)
+	}
+}
+
+func TestPurgeRevoked(t *testing.T) {
+	t.Parallel()
+	repo, chars, db := openRepo(t)
+	ctx := context.Background()
+	seedCharacter(t, chars, 17)
+	seedCharacter(t, chars, 18)
+	old, err := repo.Create(ctx, session.Session{
+		CharacterID: 17, RefreshToken: "aged", Scopes: []string{}, MCPClientID: "c",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recent, err := repo.Create(ctx, session.Session{
+		CharacterID: 18, RefreshToken: "new", Scopes: []string{}, MCPClientID: "c",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Revoke(ctx, old.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Revoke(ctx, recent.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Pool().Exec(ctx, ageRevokedSQL, old.ID); err != nil {
+		t.Fatal(err)
+	}
+	n, err := repo.PurgeRevoked(ctx)
+	if err != nil || n != 1 {
+		t.Fatalf("purged %d %v", n, err)
+	}
+	var left int
+	if err := db.Pool().QueryRow(ctx, countSessions).Scan(&left); err != nil {
+		t.Fatal(err)
+	}
+	if left != 1 {
+		t.Fatalf("left %d", left)
+	}
+}
+
 func TestLockCharacterRequiresTx(t *testing.T) {
 	t.Parallel()
 	repo, _, _ := openRepo(t)

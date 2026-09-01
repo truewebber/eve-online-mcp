@@ -23,6 +23,7 @@ import (
 	httpsvc "github.com/truewebber/eve-online-mcp/internal/service/http"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/oauth"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
+	"github.com/truewebber/eve-online-mcp/internal/usecase/sweep"
 )
 
 func main() {
@@ -104,6 +105,17 @@ func start(logger log.Logger) error {
 	if err != nil {
 		return fmt.Errorf("open oauth: %w", err)
 	}
+	go sweep.New(sweep.Options{
+		Lock:      sweep.NewPoolLock(pool),
+		Logins:    opts.Logins,
+		Codes:     opts.Codes,
+		Confirms:  opts.Confirms,
+		Sessions:  opts.Sessions,
+		Mutations: opts.Mutations,
+		Clients:   opts.Clients,
+		SSO:       opts.SSO,
+		Logger:    logger,
+	}).Start(context.Background())
 
 	h := httpsvc.New(oauthServer, host)
 	if err := httpsvc.ListenAndServe(h, httpsvc.ListenOptions{

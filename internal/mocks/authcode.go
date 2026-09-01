@@ -41,21 +41,6 @@ func (m *MockAuthcodeRepository) EXPECT() *MockAuthcodeRepositoryMockRecorder {
 	return m.recorder
 }
 
-// DeleteExpired mocks base method.
-func (m *MockAuthcodeRepository) DeleteExpired(ctx context.Context) (int64, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteExpired", ctx)
-	ret0, _ := ret[0].(int64)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// DeleteExpired indicates an expected call of DeleteExpired.
-func (mr *MockAuthcodeRepositoryMockRecorder) DeleteExpired(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteExpired", reflect.TypeOf((*MockAuthcodeRepository)(nil).DeleteExpired), ctx)
-}
-
 // Get mocks base method.
 func (m *MockAuthcodeRepository) Get(ctx context.Context, value string) (*authcode.Code, error) {
 	m.ctrl.T.Helper()
@@ -83,6 +68,21 @@ func (m *MockAuthcodeRepository) Put(ctx context.Context, c authcode.Code) error
 func (mr *MockAuthcodeRepositoryMockRecorder) Put(ctx, c any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Put", reflect.TypeOf((*MockAuthcodeRepository)(nil).Put), ctx, c)
+}
+
+// SweepExpired mocks base method.
+func (m *MockAuthcodeRepository) SweepExpired(ctx context.Context) (authcode.Swept, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SweepExpired", ctx)
+	ret0, _ := ret[0].(authcode.Swept)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SweepExpired indicates an expected call of SweepExpired.
+func (mr *MockAuthcodeRepositoryMockRecorder) SweepExpired(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SweepExpired", reflect.TypeOf((*MockAuthcodeRepository)(nil).SweepExpired), ctx)
 }
 
 // Take mocks base method.

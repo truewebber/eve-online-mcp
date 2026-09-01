@@ -1,6 +1,6 @@
 # T21 — Sweeps: expire sessions, purge clients, revoke abandoned grants
 
-- Status: `todo`
+- Status: `done`
 - Size: M
 - Depends on: T17, T19
 - RULES: §1 (time is not a test seam), §2 (constraints are not control
@@ -110,19 +110,19 @@ code.
 
 ## Acceptance
 
-- [ ] Sweeps run under `pg_try_advisory_lock`, once per interval across
+- [x] Sweeps run under `pg_try_advisory_lock`, once per interval across
       all pods
-- [ ] Expired sessions end up revoked with a cleared token and a CCP
+- [x] Expired sessions end up revoked with a cleared token and a CCP
       revoke attempted
-- [ ] Abandoned `auth_codes` grants are revoked before deletion
-- [ ] Soft-deleted `oauth_clients` are eventually deleted, not just
+- [x] Abandoned `auth_codes` grants are revoked before deletion
+- [x] Soft-deleted `oauth_clients` are eventually deleted, not just
       marked
-- [ ] `characters` is never touched
-- [ ] No CCP call inside a transaction; failures logged, not retried
-- [ ] No clock is injected; the database tests are not inside a
+- [x] `characters` is never touched
+- [x] No CCP call inside a transaction; failures logged, not retried
+- [x] No clock is injected; the database tests are not inside a
       `synctest` bubble and the interval test is
-- [ ] Every sweep query is a declared const on its domain's repository
-- [ ] `go test ./...`, `make test-store` and `make lint` pass
+- [x] Every sweep query is a declared const on its domain's repository
+- [x] `go test ./...`, `make test-store` and `make lint` pass
 
 ## Verify
 

@@ -63,8 +63,24 @@ const (
 		SELECT refresh_token
 		FROM sessions
 		WHERE id = $1`
-	writeRefreshSQL  = `UPDATE sessions SET refresh_token = $2 WHERE id = $1`
-	lockCharacterSQL = `SELECT pg_advisory_xact_lock($1)`
+	writeRefreshSQL   = `UPDATE sessions SET refresh_token = $2 WHERE id = $1`
+	lockCharacterSQL  = `SELECT pg_advisory_xact_lock($1)`
+	revokeCeiling     = 100
+	expireValidTilSQL = `
+		WITH doomed AS (
+			SELECT id, refresh_token
+			FROM sessions
+			WHERE revoked_at IS NULL AND valid_til < now()
+			ORDER BY valid_til
+			LIMIT $1
+			FOR UPDATE
+		)
+		UPDATE sessions s
+		SET revoked_at = now(), refresh_token = NULL
+		FROM doomed
+		WHERE s.id = doomed.id
+		RETURNING doomed.id, doomed.refresh_token`
+	purgeRevokedSQL = `DELETE FROM sessions WHERE revoked_at < now() - interval '90 days'`
 )
 
 func New(pool *pgxpool.Pool, _ log.Logger) *Repo {
@@ -92,6 +108,19 @@ func (r *Repo) RevokeAllForCharacter(ctx context.Context, characterID int64) (se
 
 func (r *Repo) Revoke(ctx context.Context, id int64) (session.Revoked, error) {
 	return r.revoke(ctx, "Revoke", revokeOneSQL, id)
+}
+
+func (r *Repo) ExpireValidTil(ctx context.Context) (session.Revoked, error) {
+	return r.revoke(ctx, "ExpireValidTil", expireValidTilSQL, revokeCeiling)
+}
+
+func (r *Repo) PurgeRevoked(ctx context.Context) (int64, error) {
+	tag, err := postgres.Q(ctx, r.pool).Exec(ctx, purgeRevokedSQL)
+	if err != nil {
+		return 0, wrap("PurgeRevoked", err)
+	}
+
+	return tag.RowsAffected(), nil
 }
 
 func (r *Repo) LiveByID(ctx context.Context, id int64) (*session.Session, error) {

@@ -289,7 +289,6 @@ func (s *Server) ServeAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.purge(r.Context())
 	prep, err := s.login.PrepareLogin(nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -319,7 +318,6 @@ func (s *Server) ServeToken(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	s.purge(r.Context())
 	err := r.ParseForm()
 	if err != nil {
 		http.Error(w, `{"error":"invalid_request"}`, http.StatusBadRequest)
@@ -349,19 +347,6 @@ func (s *Server) clientRedirectOK(ctx context.Context, clientID, redirect string
 	}
 
 	return true
-}
-
-func (s *Server) purge(ctx context.Context) {
-	if s.logins != nil {
-		if _, err := s.logins.DeleteExpired(ctx); err != nil {
-			s.logger.Error("oauth: purge logins", "err", err)
-		}
-	}
-	if s.codes != nil {
-		if _, err := s.codes.DeleteExpired(ctx); err != nil {
-			s.logger.Error("oauth: purge codes", "err", err)
-		}
-	}
 }
 
 func (s *Server) clientName(ctx context.Context, clientID string) string {

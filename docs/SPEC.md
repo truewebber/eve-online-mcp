@@ -729,6 +729,7 @@ internal/
     session/            per-character runtime (Session, resolution)
     oauth/              MCP authorization server + sessions
     eve/                all MCP tools + instructions
+    sweep/              expiry, client purge, abandoned grants
   service/              transport; depends on usecase only
     http/               generated OpenAPI + handlers + both listeners
     mcp/                MCP server registration facade

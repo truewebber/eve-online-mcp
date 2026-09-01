@@ -29,6 +29,7 @@ const (
 			character_id, session_id, tool, capability, args_digest,
 			summary, outcome, esi_status, error
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	deleteOldSQL = `DELETE FROM mutations WHERE created_at < now() - interval '90 days'`
 )
 
 type Repo struct {
@@ -60,6 +61,15 @@ func (r *Repo) Append(ctx context.Context, m mutation.Mutation) error {
 	}
 
 	return write(ctx)
+}
+
+func (r *Repo) DeleteOld(ctx context.Context) (int64, error) {
+	tag, err := postgres.Q(ctx, r.pool).Exec(ctx, deleteOldSQL)
+	if err != nil {
+		return 0, wrap("DeleteOld", err)
+	}
+
+	return tag.RowsAffected(), nil
 }
 
 func (r *Repo) CountMailCap(ctx context.Context, characterID int64) (int, error) {

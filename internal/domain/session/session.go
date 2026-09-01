@@ -37,6 +37,8 @@ type Repository interface {
 	Create(ctx context.Context, s Session) (*Session, error)
 	RevokeAllForCharacter(ctx context.Context, characterID int64) (Revoked, error)
 	Revoke(ctx context.Context, id int64) (Revoked, error)
+	ExpireValidTil(ctx context.Context) (Revoked, error)
+	PurgeRevoked(ctx context.Context) (int64, error)
 	LiveByID(ctx context.Context, id int64) (*Session, error)
 	LockForRefresh(ctx context.Context, id int64, fn func(string) (string, error)) error
 	LockCharacter(ctx context.Context, characterID int64) error

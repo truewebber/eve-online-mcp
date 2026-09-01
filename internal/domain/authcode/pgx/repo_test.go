@@ -58,18 +58,35 @@ func TestTakeExpired(t *testing.T) {
 	}
 }
 
-func TestDeleteExpired(t *testing.T) {
+func TestSweepExpired(t *testing.T) {
 	t.Parallel()
 	repo := openRepo(t)
 	ctx := context.Background()
 	if err := repo.Put(ctx, authcode.Code{
-		Value: "oldc", CharacterID: 1, MCPClientID: "c", RedirectURI: "r", CodeChallenge: "h",
+		Value: "oldc", CharacterID: 1, RefreshToken: "parked",
+		MCPClientID: "c", RedirectURI: "r", CodeChallenge: "h",
 		ExpiresAt: time.Now().Add(-time.Minute),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	n, err := repo.DeleteExpired(ctx)
-	if err != nil || n < 1 {
-		t.Fatalf("purge %d %v", n, err)
+	if err := repo.Put(ctx, authcode.Code{
+		Value: "live", CharacterID: 1, RefreshToken: "keep",
+		MCPClientID: "c", RedirectURI: "r", CodeChallenge: "h",
+		ExpiresAt: time.Now().Add(2 * time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	swept, err := repo.SweepExpired(ctx)
+	if err != nil || swept.Count != 1 {
+		t.Fatalf("sweep %+v %v", swept, err)
+	}
+	if len(swept.Tokens) != 1 || swept.Tokens[0] != "parked" {
+		t.Fatalf("tokens %+v", swept.Tokens)
+	}
+	if _, err := repo.Get(ctx, "live"); err != nil {
+		t.Fatalf("live code gone: %v", err)
+	}
+	if _, err := repo.Get(ctx, "oldc"); !errors.Is(err, authcode.ErrNotFound) {
+		t.Fatalf("expired still there: %v", err)
 	}
 }

@@ -105,7 +105,7 @@ commit as the change to the document that owns it; after the task
 | [T18](T18-scope-checks.md) | Both scope checks | done | M | T17 | §5 §9 | §3.2, §3.5, §12.6 |
 | [T19](T19-audit-log.md) | `mutations` audit log; mail cap counts from it | done | M | T17 | §2 §11 §12 | §4.1, §5.4, §8, §12.7 |
 | [T20](T20-error-budget.md) | Per-character ESI error budget | done | M | T17 | §1 §15 | §5.3, §12.8 |
-| [T21](T21-sweeps.md) | Sweeps: expiry, client purge, abandoned grants | todo | M | T17 T19 | §1 §2 §12 | §12.9, DB.md |
+| [T21](T21-sweeps.md) | Sweeps: expiry, client purge, abandoned grants | done | M | T17 T19 | §1 §2 §12 | §12.9, DB.md |
 | [T22](T22-config-and-edges.md) | Config and edges; `/readyz`; env names | todo | M | T17 | §16 §8 | §2, §5.5, §6, §10, §12.10 |
 | [T23](T23-static-errors.md) | The user sees only static errors | todo | M | T18 T22 | §9 | §4, §6 |
 | [T24](T24-new-tools-and-previews.md) | Calendar, compose, CSPA, enums, NPC corp | todo | L | T14 T19 | §15 §5 | §4, §4.1, §4.2, §12.11 |

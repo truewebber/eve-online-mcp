@@ -56,6 +56,21 @@ func (mr *MockSessionRepositoryMockRecorder) Create(ctx, s any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockSessionRepository)(nil).Create), ctx, s)
 }
 
+// ExpireValidTil mocks base method.
+func (m *MockSessionRepository) ExpireValidTil(ctx context.Context) (session.Revoked, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExpireValidTil", ctx)
+	ret0, _ := ret[0].(session.Revoked)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ExpireValidTil indicates an expected call of ExpireValidTil.
+func (mr *MockSessionRepositoryMockRecorder) ExpireValidTil(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExpireValidTil", reflect.TypeOf((*MockSessionRepository)(nil).ExpireValidTil), ctx)
+}
+
 // LiveByID mocks base method.
 func (m *MockSessionRepository) LiveByID(ctx context.Context, id int64) (*session.Session, error) {
 	m.ctrl.T.Helper()
@@ -97,6 +112,21 @@ func (m *MockSessionRepository) LockForRefresh(ctx context.Context, id int64, fn
 func (mr *MockSessionRepositoryMockRecorder) LockForRefresh(ctx, id, fn any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LockForRefresh", reflect.TypeOf((*MockSessionRepository)(nil).LockForRefresh), ctx, id, fn)
+}
+
+// PurgeRevoked mocks base method.
+func (m *MockSessionRepository) PurgeRevoked(ctx context.Context) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PurgeRevoked", ctx)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PurgeRevoked indicates an expected call of PurgeRevoked.
+func (mr *MockSessionRepositoryMockRecorder) PurgeRevoked(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PurgeRevoked", reflect.TypeOf((*MockSessionRepository)(nil).PurgeRevoked), ctx)
 }
 
 // Revoke mocks base method.

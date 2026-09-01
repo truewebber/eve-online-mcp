@@ -18,6 +18,7 @@ const (
 	characterID int64 = 2112000019
 	capMailSend       = "mail_send"
 	ageSQL            = `UPDATE mutations SET created_at = now() - interval '2 hours' WHERE id = $1`
+	ageOldSQL         = `UPDATE mutations SET created_at = now() - interval '91 days' WHERE character_id = $1 AND summary = $2`
 	listSQL           = `
 		SELECT tool, summary, outcome, esi_status, error
 		FROM mutations WHERE character_id = $1 ORDER BY id`
@@ -100,6 +101,25 @@ func TestAppendDoesNotStoreBody(t *testing.T) {
 	}
 	if tool != mutation.ToolMailSend || outcome != mutation.OutcomeOK || status != nil {
 		t.Fatalf("row %s %s status=%v", tool, outcome, status)
+	}
+}
+
+func TestDeleteOld(t *testing.T) {
+	t.Parallel()
+	repo := openRepo(t)
+	ctx := t.Context()
+	appendOK(t, repo, "mail to 1 recipients, subject 'keep'")
+	appendOK(t, repo, "mail to 1 recipients, subject 'drop'")
+	if _, err := repo.pool.Exec(ctx, ageOldSQL, characterID, "mail to 1 recipients, subject 'drop'"); err != nil {
+		t.Fatal(err)
+	}
+	n, err := repo.DeleteOld(ctx)
+	if err != nil || n != 1 {
+		t.Fatalf("deleted %d %v", n, err)
+	}
+	got, err := repo.CountMailCap(ctx, characterID)
+	if err != nil || got != 1 {
+		t.Fatalf("kept %d %v", got, err)
 	}
 }
 

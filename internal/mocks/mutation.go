@@ -70,6 +70,21 @@ func (mr *MockMutationRepositoryMockRecorder) CountMailCap(ctx, characterID any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountMailCap", reflect.TypeOf((*MockMutationRepository)(nil).CountMailCap), ctx, characterID)
 }
 
+// DeleteOld mocks base method.
+func (m *MockMutationRepository) DeleteOld(ctx context.Context) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteOld", ctx)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteOld indicates an expected call of DeleteOld.
+func (mr *MockMutationRepositoryMockRecorder) DeleteOld(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteOld", reflect.TypeOf((*MockMutationRepository)(nil).DeleteOld), ctx)
+}
+
 // HoldMailCap mocks base method.
 func (m *MockMutationRepository) HoldMailCap(ctx context.Context, characterID int64) (*mutation.Hold, error) {
 	m.ctrl.T.Helper()

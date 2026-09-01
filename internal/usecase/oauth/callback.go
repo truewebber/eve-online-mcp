@@ -19,7 +19,6 @@ type Callback struct {
 }
 
 func (s *Server) CompleteCallback(ctx context.Context, code, eveState string) (Callback, error) {
-	s.purge(ctx)
 	st, err := s.logins.Take(ctx, eveState)
 	if errors.Is(err, loginstate.ErrNotFound) {
 		return Callback{}, ErrUnknownLogin

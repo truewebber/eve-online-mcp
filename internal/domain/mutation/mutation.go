@@ -60,4 +60,5 @@ type Repository interface {
 	Append(ctx context.Context, m Mutation) error
 	CountMailCap(ctx context.Context, characterID int64) (int, error)
 	HoldMailCap(ctx context.Context, characterID int64) (*Hold, error)
+	DeleteOld(ctx context.Context) (int64, error)
 }

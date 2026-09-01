@@ -24,7 +24,20 @@ const (
 	takeSQL = `
 		DELETE FROM auth_codes WHERE code = $1
 		RETURNING code, character_id, refresh_token, scopes, mcp_client_id, redirect_uri, code_challenge, expires_at`
-	deleteExpiredSQL = `DELETE FROM auth_codes WHERE expires_at < now()`
+	revokeCeiling   = 100
+	sweepExpiredSQL = `
+		WITH doomed AS (
+			SELECT code, refresh_token
+			FROM auth_codes
+			WHERE expires_at < now()
+			ORDER BY expires_at
+			LIMIT $1
+			FOR UPDATE
+		)
+		DELETE FROM auth_codes a
+		USING doomed
+		WHERE a.code = doomed.code
+		RETURNING doomed.refresh_token`
 )
 
 type Repo struct {
@@ -77,13 +90,28 @@ func (r *Repo) Take(ctx context.Context, value string) (*authcode.Code, error) {
 	return row, nil
 }
 
-func (r *Repo) DeleteExpired(ctx context.Context) (int64, error) {
-	tag, err := postgres.Q(ctx, r.pool).Exec(ctx, deleteExpiredSQL)
+func (r *Repo) SweepExpired(ctx context.Context) (authcode.Swept, error) {
+	rows, err := postgres.Q(ctx, r.pool).Query(ctx, sweepExpiredSQL, revokeCeiling)
 	if err != nil {
-		return 0, wrap("DeleteExpired", err)
+		return authcode.Swept{}, wrap("SweepExpired", err)
+	}
+	defer rows.Close()
+	out := authcode.Swept{}
+	for rows.Next() {
+		var token string
+		if err := rows.Scan(&token); err != nil {
+			return authcode.Swept{}, wrap("SweepExpired", err)
+		}
+		out.Count++
+		if token != "" {
+			out.Tokens = append(out.Tokens, token)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return authcode.Swept{}, wrap("SweepExpired", err)
 	}
 
-	return tag.RowsAffected(), nil
+	return out, nil
 }
 
 type scanner interface {

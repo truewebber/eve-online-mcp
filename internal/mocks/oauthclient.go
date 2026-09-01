@@ -41,6 +41,21 @@ func (m *MockOauthclientRepository) EXPECT() *MockOauthclientRepositoryMockRecor
 	return m.recorder
 }
 
+// DeleteLongSoftDeleted mocks base method.
+func (m *MockOauthclientRepository) DeleteLongSoftDeleted(ctx context.Context) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteLongSoftDeleted", ctx)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteLongSoftDeleted indicates an expected call of DeleteLongSoftDeleted.
+func (mr *MockOauthclientRepositoryMockRecorder) DeleteLongSoftDeleted(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLongSoftDeleted", reflect.TypeOf((*MockOauthclientRepository)(nil).DeleteLongSoftDeleted), ctx)
+}
+
 // Get mocks base method.
 func (m *MockOauthclientRepository) Get(ctx context.Context, id string) (*oauthclient.Client, error) {
 	m.ctrl.T.Helper()
@@ -54,6 +69,21 @@ func (m *MockOauthclientRepository) Get(ctx context.Context, id string) (*oauthc
 func (mr *MockOauthclientRepositoryMockRecorder) Get(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockOauthclientRepository)(nil).Get), ctx, id)
+}
+
+// SoftDeleteAbandoned mocks base method.
+func (m *MockOauthclientRepository) SoftDeleteAbandoned(ctx context.Context) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SoftDeleteAbandoned", ctx)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SoftDeleteAbandoned indicates an expected call of SoftDeleteAbandoned.
+func (mr *MockOauthclientRepositoryMockRecorder) SoftDeleteAbandoned(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SoftDeleteAbandoned", reflect.TypeOf((*MockOauthclientRepository)(nil).SoftDeleteAbandoned), ctx)
 }
 
 // Upsert mocks base method.
