@@ -9,12 +9,21 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/truewebber/gopkg/log"
 )
 
 const errConfirmUnknown = "That confirm_token is unknown or has expired. Call the tool again without a token to get a fresh preview."
+
+var (
+	errMailHoldAbandoned = errors.New("write: abandoned mail-cap hold")
+	errMailCap           = errors.New("write: mail cap")
+)
+
+// MailCapRejections is the SPEC §11 counter for the mail-cap refusal.
+var MailCapRejections atomic.Int64 //nolint:gochecknoglobals // SPEC §11: increment next to the refusal.
 
 type BlockedError struct{ Msg string }
 
@@ -24,11 +33,21 @@ type Decision struct {
 	Required map[string]any
 }
 
+type Record struct {
+	Tool       string
+	Capability string
+	Args       map[string]any
+	Outcome    string
+	ESIStatus  int
+	Error      string
+}
+
 type Guard struct {
 	persist     Persist
 	characterID int64
 	sessionID   int64
 	logger      log.Logger
+	mailHold    *MailCapHold
 }
 
 func NewGuard(persist Persist, characterID, sessionID int64, logger log.Logger) *Guard {
@@ -63,6 +82,9 @@ func (g *Guard) CheckScope(capability string, granted []string) error {
 }
 
 func (g *Guard) Authorize(ctx context.Context, tool, capability string, args map[string]any, preview map[string]any, confirmToken string, granted []string) (Decision, error) {
+	if relErr := g.releaseMailHold(errMailHoldAbandoned); relErr != nil {
+		g.logMailHold(relErr)
+	}
 	err := g.CheckCapability(capability)
 	if err != nil {
 		return Decision{}, err
@@ -72,18 +94,30 @@ func (g *Guard) Authorize(ctx context.Context, tool, capability string, args map
 		return Decision{}, err
 	}
 	if capability == CapMailSend {
-		err = g.checkMailCap(ctx)
+		if confirmToken != "" {
+			err = g.holdMailCap(ctx)
+		} else {
+			err = g.checkMailCap(ctx)
+		}
 		if err != nil {
 			return Decision{}, err
 		}
 	}
 	digest, err := digestArgs(args)
 	if err != nil {
+		if relErr := g.releaseMailHold(err); relErr != nil {
+			g.logMailHold(relErr)
+		}
+
 		return Decision{}, err
 	}
 	if confirmToken != "" {
 		err := g.consumeConfirm(ctx, tool, digest, confirmToken)
 		if err != nil {
+			if relErr := g.releaseMailHold(err); relErr != nil {
+				g.logMailHold(relErr)
+			}
+
 			return Decision{}, err
 		}
 
@@ -112,24 +146,31 @@ func (g *Guard) Authorize(ctx context.Context, tool, capability string, args map
 	}}, nil
 }
 
-func (g *Guard) Record(ctx context.Context, _ string, capability string, _ map[string]any, _ any) {
-	if capability == CapMailSend && g.persist != nil {
-		err := g.persist.InsertMail(ctx, g.characterID, time.Now().UTC())
-		if err != nil {
-			g.logger.Error("write: record mail_log", "err", err)
-		}
+func (g *Guard) Record(ctx context.Context, rec Record) error {
+	write := func(ctx context.Context) error {
+		return g.appendRecord(ctx, rec)
 	}
+	var err error
+	if g.mailHold != nil {
+		err = g.mailHold.Do(write)
+	} else {
+		err = write(ctx)
+	}
+	if relErr := g.releaseMailHold(err); err == nil {
+		err = relErr
+	}
+
+	return err
 }
 
 func (g *Guard) Status(ctx context.Context) map[string]any {
-	now := time.Now()
 	ref := map[string]string{}
 	for name, cap := range Capabilities() {
 		ref[name] = cap.Summary
 	}
 	mails, pending := 0, 0
 	if g.persist != nil {
-		if n, err := g.persist.CountMailSince(ctx, g.characterID, now.Add(-time.Hour)); err == nil {
+		if n, err := g.persist.CountMailCap(ctx, g.characterID); err == nil {
 			mails = n
 		}
 		if n, err := g.persist.CountConfirm(ctx, g.sessionID); err == nil {
@@ -150,19 +191,89 @@ func (g *Guard) Status(ctx context.Context) map[string]any {
 	}
 }
 
+func (g *Guard) appendRecord(ctx context.Context, rec Record) error {
+	if g.persist == nil {
+		return nil
+	}
+	digest, err := digestArgs(rec.Args)
+	if err != nil {
+		return err
+	}
+	outcome := rec.Outcome
+	if outcome == "" {
+		outcome = OutcomeOK
+	}
+
+	return wrap("Record", g.persist.AppendMutation(ctx, Mutation{
+		CharacterID: g.characterID,
+		SessionID:   g.sessionID,
+		Tool:        rec.Tool,
+		Capability:  rec.Capability,
+		ArgsDigest:  digest,
+		Summary:     truncate(summarize(rec.Tool, rec.Args), auditFieldMax),
+		Outcome:     outcome,
+		ESIStatus:   rec.ESIStatus,
+		Error:       truncate(rec.Error, auditFieldMax),
+	}))
+}
+
 func (g *Guard) checkMailCap(ctx context.Context) error {
 	if g.persist == nil {
 		return nil
 	}
-	n, err := g.persist.CountMailSince(ctx, g.characterID, time.Now().Add(-time.Hour))
+	n, err := g.persist.CountMailCap(ctx, g.characterID)
 	if err != nil {
 		return wrap("checkMailCap", err)
 	}
 	if n >= MailCap {
-		return BlockedError{Msg: fmt.Sprintf("Mail budget exhausted: %d mails in the last hour. Wait until an earlier send drops out of the rolling hour, then try again.", MailCap)}
+		MailCapRejections.Add(1)
+
+		return mailCapBlocked()
 	}
 
 	return nil
+}
+
+func (g *Guard) holdMailCap(ctx context.Context) error {
+	if g.persist == nil {
+		return nil
+	}
+	hold, err := g.persist.HoldMailCap(ctx, g.characterID)
+	if err != nil {
+		return wrap("holdMailCap", err)
+	}
+	if hold.Count >= MailCap {
+		if relErr := hold.Release(errMailCap); relErr != nil {
+			g.logMailHold(relErr)
+		}
+		MailCapRejections.Add(1)
+
+		return mailCapBlocked()
+	}
+	g.mailHold = hold
+
+	return nil
+}
+
+func (g *Guard) releaseMailHold(err error) error {
+	if g.mailHold == nil {
+		return nil
+	}
+	relErr := g.mailHold.Release(err)
+	g.mailHold = nil
+
+	return relErr
+}
+
+func (g *Guard) logMailHold(err error) {
+	if g.logger == nil {
+		return
+	}
+	g.logger.Error("write: mail-cap hold", "err", err)
+}
+
+func mailCapBlocked() BlockedError {
+	return BlockedError{Msg: fmt.Sprintf("Mail budget exhausted: %d mails in the last hour. Wait until an earlier send drops out of the rolling hour, then try again.", MailCap)}
 }
 
 func (g *Guard) consumeConfirm(ctx context.Context, tool, digest, confirmToken string) error {

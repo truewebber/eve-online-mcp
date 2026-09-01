@@ -1,6 +1,6 @@
 # T19 — `mutations` audit log; the mail cap counts from it
 
-- Status: `todo`
+- Status: `done`
 - Size: M
 - Depends on: T17
 - RULES: §2 (constraints are not control flow), §11 (`domain/mutation`),
@@ -105,16 +105,16 @@ mail, which is the line DB.md draws; bodies are on the other side of it.
 
 ## Acceptance
 
-- [ ] Every mutation that reached ESI is recorded, success or failure
-- [ ] Refusals before ESI are not recorded
-- [ ] The cap counts from `mutations` under one advisory lock, with a
+- [x] Every mutation that reached ESI is recorded, success or failure
+- [x] Refusals before ESI are not recorded
+- [x] The cap counts from `mutations` under one advisory lock, with a
       concurrency test against a real database
-- [ ] `mail_log` is gone from the schema and the code
-- [ ] No column holds a mail body, contact list or fitting
-- [ ] `eve_auth_status` reports remaining sends from the log
-- [ ] No clock is injected; no SQLSTATE is inspected; every query is a
+- [x] `mail_log` is gone from the schema and the code
+- [x] No column holds a mail body, contact list or fitting
+- [x] `eve_auth_status` reports remaining sends from the log
+- [x] No clock is injected; no SQLSTATE is inspected; every query is a
       declared const
-- [ ] `go test ./...`, `make test-store` and `make lint` pass
+- [x] `go test ./...`, `make test-store` and `make lint` pass
 
 ## Verify
 

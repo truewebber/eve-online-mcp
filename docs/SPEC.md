@@ -722,7 +722,7 @@ internal/
     authcode/           one-time MCP code + repository; pgx/
     confirm/            one-shot consent token + repository; pgx/
     session/            MCP connection + EVE grant; pgx/
-    mutation/           mail_log (mutations table lands in T19); pgx/
+    mutation/           audit log + mail cap; pgx/
     write/              capability catalog, Guard (confirm cycle, mail cap)
   j/                    map[string]any helpers, above the layer split
   usecase/              business logic

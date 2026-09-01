@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/truewebber/eve-online-mcp/internal/domain/confirm"
 	"github.com/truewebber/eve-online-mcp/internal/domain/mutation"
@@ -47,14 +46,31 @@ func (p guardPersist) CountConfirm(ctx context.Context, sessionID int64) (int, e
 	return n, wrap("CountConfirm", err)
 }
 
-func (p guardPersist) CountMailSince(ctx context.Context, characterID int64, since time.Time) (int, error) {
-	n, err := p.mutations.CountSince(ctx, characterID, since)
+func (p guardPersist) CountMailCap(ctx context.Context, characterID int64) (int, error) {
+	n, err := p.mutations.CountMailCap(ctx, characterID)
 
-	return n, wrap("CountMailSince", err)
+	return n, wrap("CountMailCap", err)
 }
 
-func (p guardPersist) InsertMail(ctx context.Context, characterID int64, at time.Time) error {
-	return wrap("InsertMail", p.mutations.Insert(ctx, mutation.Mail{
-		CharacterID: characterID, SentAt: at,
+func (p guardPersist) AppendMutation(ctx context.Context, m write.Mutation) error {
+	return wrap("AppendMutation", p.mutations.Append(ctx, mutation.Mutation{
+		CharacterID: m.CharacterID,
+		SessionID:   m.SessionID,
+		Tool:        m.Tool,
+		Capability:  m.Capability,
+		ArgsDigest:  m.ArgsDigest,
+		Summary:     m.Summary,
+		Outcome:     m.Outcome,
+		ESIStatus:   m.ESIStatus,
+		Error:       m.Error,
 	}))
+}
+
+func (p guardPersist) HoldMailCap(ctx context.Context, characterID int64) (*write.MailCapHold, error) {
+	h, err := p.mutations.HoldMailCap(ctx, characterID)
+	if err != nil {
+		return nil, wrap("HoldMailCap", err)
+	}
+
+	return write.NewMailCapHold(h.Count, h.Do, h.Release), nil
 }

@@ -58,7 +58,7 @@ func TestGooseAppliesFromEmpty(t *testing.T) {
 		"confirm_tokens",
 		"goose_db_version",
 		"login_states",
-		"mail_log",
+		"mutations",
 		"oauth_clients",
 		"sessions",
 	}

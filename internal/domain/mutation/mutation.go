@@ -2,17 +2,62 @@ package mutation
 
 import (
 	"context"
-	"time"
+	"errors"
 )
 
-// Mail is one mail_log row. The mutations table replaces it in T19.
-type Mail struct {
+var errNoHold = errors.New("mutation: no mail-cap hold")
+
+const (
+	OutcomeOK    = "ok"
+	OutcomeError = "error"
+	ToolMailSend = "eve_mail_send"
+)
+
+type Mutation struct {
 	CharacterID int64
-	SentAt      time.Time
+	SessionID   int64
+	Tool        string
+	Capability  string
+	ArgsDigest  string
+	Summary     string
+	Outcome     string
+	ESIStatus   int
+	Error       string
+}
+
+// Hold is an open mail-cap transaction: the count that authorised a
+// send and the insert that records it share one pg_advisory_xact_lock.
+type Hold struct {
+	Count int
+	do    func(func(context.Context) error) error
+	end   func(error) error
+}
+
+func NewHold(n int, do func(func(context.Context) error) error, end func(error) error) *Hold {
+	return &Hold{Count: n, do: do, end: end}
+}
+
+func (h *Hold) Do(fn func(context.Context) error) error {
+	if h == nil || h.do == nil {
+		return errNoHold
+	}
+
+	return h.do(fn)
+}
+
+func (h *Hold) Release(err error) error {
+	if h == nil || h.end == nil {
+		return nil
+	}
+	fn := h.end
+	h.end = nil
+
+	return fn(err)
 }
 
 //go:generate go tool go.uber.org/mock/mockgen -destination=../../mocks/mutation.go -package=mocks -mock_names=Repository=MockMutationRepository github.com/truewebber/eve-online-mcp/internal/domain/mutation Repository
 type Repository interface {
-	CountSince(ctx context.Context, characterID int64, since time.Time) (int, error)
-	Insert(ctx context.Context, mail Mail) error
+	Append(ctx context.Context, m Mutation) error
+	CountMailCap(ctx context.Context, characterID int64) (int, error)
+	HoldMailCap(ctx context.Context, characterID int64) (*Hold, error)
 }

@@ -17,12 +17,7 @@ const testDestination = "Jita"
 
 type confirmBox struct {
 	tokens map[string]write.Confirm
-	mail   []mailAt
-}
-
-type mailAt struct {
-	characterID int64
-	at          time.Time
+	rows   []write.Mutation
 }
 
 func testGuard(t *testing.T) (*write.Guard, *confirmBox) {
@@ -34,8 +29,9 @@ func testGuard(t *testing.T) (*write.Guard, *confirmBox) {
 	persist.EXPECT().GetConfirm(gomock.Any(), gomock.Any()).DoAndReturn(box.get).AnyTimes()
 	persist.EXPECT().DeleteConfirm(gomock.Any(), gomock.Any()).DoAndReturn(box.drop).AnyTimes()
 	persist.EXPECT().CountConfirm(gomock.Any(), gomock.Any()).DoAndReturn(box.countConfirm).AnyTimes()
-	persist.EXPECT().CountMailSince(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(box.countMail).AnyTimes()
-	persist.EXPECT().InsertMail(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(box.insertMail).AnyTimes()
+	persist.EXPECT().CountMailCap(gomock.Any(), gomock.Any()).DoAndReturn(box.countMail).AnyTimes()
+	persist.EXPECT().AppendMutation(gomock.Any(), gomock.Any()).DoAndReturn(box.append).AnyTimes()
+	persist.EXPECT().HoldMailCap(gomock.Any(), gomock.Any()).DoAndReturn(box.hold).AnyTimes()
 	g := write.NewGuard(persist, 1, 1, mocks.QuietLogger(ctrl))
 
 	return g, box
@@ -74,10 +70,10 @@ func (b *confirmBox) countConfirm(_ context.Context, sessionID int64) (int, erro
 	return n, nil
 }
 
-func (b *confirmBox) countMail(_ context.Context, characterID int64, since time.Time) (int, error) {
+func (b *confirmBox) countMail(_ context.Context, characterID int64) (int, error) {
 	n := 0
-	for _, row := range b.mail {
-		if row.characterID == characterID && !row.at.Before(since) {
+	for _, row := range b.rows {
+		if row.CharacterID == characterID && row.Tool == write.ToolMailSend && row.Outcome == write.OutcomeOK {
 			n++
 		}
 	}
@@ -85,10 +81,27 @@ func (b *confirmBox) countMail(_ context.Context, characterID int64, since time.
 	return n, nil
 }
 
-func (b *confirmBox) insertMail(_ context.Context, characterID int64, at time.Time) error {
-	b.mail = append(b.mail, mailAt{characterID: characterID, at: at})
+func (b *confirmBox) append(_ context.Context, m write.Mutation) error {
+	b.rows = append(b.rows, m)
 
 	return nil
+}
+
+func (b *confirmBox) hold(ctx context.Context, characterID int64) (*write.MailCapHold, error) {
+	n, err := b.countMail(ctx, characterID)
+
+	return write.NewMailCapHold(n, func(fn func(context.Context) error) error {
+		return fn(ctx)
+	}, func(error) error { return nil }), err
+}
+
+func recordMail(t *testing.T, g *write.Guard, args map[string]any) {
+	t.Helper()
+	if err := g.Record(context.Background(), write.Record{
+		Tool: write.ToolMailSend, Capability: write.CapMailSend, Args: args, Outcome: write.OutcomeOK,
+	}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestAuthorizePreviewAndConfirm(t *testing.T) {
@@ -199,8 +212,9 @@ func TestSixthMailIsBlocked(t *testing.T) {
 	ctx := context.Background()
 	g, _ := testGuard(t)
 	scopes := write.Capabilities()[write.CapMailSend].Scopes
+	before := write.MailCapRejections.Load()
 	for range 5 {
-		g.Record(ctx, "eve_mail_send", write.CapMailSend, nil, "ok")
+		recordMail(t, g, nil)
 	}
 	_, err := g.Authorize(ctx, "eve_mail_send", write.CapMailSend, nil, nil, "", scopes)
 	var blocked write.BlockedError
@@ -209,6 +223,68 @@ func TestSixthMailIsBlocked(t *testing.T) {
 	}
 	if !strings.Contains(blocked.Msg, "rolling hour") {
 		t.Fatalf("want actionable message, got %q", blocked.Msg)
+	}
+	if write.MailCapRejections.Load() != before+1 {
+		t.Fatalf("rejections %d want %d", write.MailCapRejections.Load(), before+1)
+	}
+}
+
+func TestPreviewDoesNotRecord(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	g, box := testGuard(t)
+	scopes := write.Capabilities()["waypoint"].Scopes
+	_, err := g.Authorize(ctx, "eve_ui_set_waypoint", "waypoint", map[string]any{"d": testDestination}, nil, "", scopes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(box.rows) != 0 {
+		t.Fatalf("preview recorded %+v", box.rows)
+	}
+}
+
+func TestRecordFailedESI(t *testing.T) {
+	t.Parallel()
+	g, box := testGuard(t)
+	if err := g.Record(context.Background(), write.Record{
+		Tool: write.ToolMailSend, Capability: write.CapMailSend,
+		Args:    map[string]any{"subject": "Fleet tonight", "body": "secret body", "recipients": []any{1, 2}},
+		Outcome: write.OutcomeError, ESIStatus: 520, Error: "ESI 520 on /mail",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(box.rows) != 1 {
+		t.Fatalf("rows %d", len(box.rows))
+	}
+	row := box.rows[0]
+	if row.Outcome != write.OutcomeError || row.ESIStatus != 520 {
+		t.Fatalf("row %+v", row)
+	}
+	if strings.Contains(row.Summary, "secret body") || strings.Contains(row.Error, "secret body") {
+		t.Fatalf("body leaked %+v", row)
+	}
+	n, err := box.countMail(context.Background(), 1)
+	if err != nil || n != 0 {
+		t.Fatalf("error counted toward cap %d %v", n, err)
+	}
+}
+
+func TestRecordOmitsMailBody(t *testing.T) {
+	t.Parallel()
+	g, box := testGuard(t)
+	recordMail(t, g, map[string]any{
+		"subject": "Fleet tonight", "body": "do not store this body",
+		"recipients": []any{map[string]any{"id": 1}, map[string]any{"id": 2}},
+	})
+	if len(box.rows) != 1 {
+		t.Fatalf("rows %d", len(box.rows))
+	}
+	row := box.rows[0]
+	if !strings.Contains(row.Summary, "mail to 2 recipients") || !strings.Contains(row.Summary, "Fleet tonight") {
+		t.Fatalf("summary %q", row.Summary)
+	}
+	if strings.Contains(row.Summary, "do not store this body") {
+		t.Fatalf("body in summary %q", row.Summary)
 	}
 }
 

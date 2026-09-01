@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
+	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 	"github.com/truewebber/eve-online-mcp/internal/j"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 
@@ -88,12 +89,13 @@ func registerWaypoint(s *mcp.Server) {
 			if blocked.Required != nil {
 				return blocked.Required, nil
 			}
-			if _, err := a.ESI.Post(ctx, "/ui/autopilot/waypoint", &token.CharacterID, map[string]any{
+			_, err = a.ESI.Post(ctx, "/ui/autopilot/waypoint", &token.CharacterID, map[string]any{
 				"destination_id": target["id"], "clear_other_waypoints": clearOthers, "add_to_beginning": add,
-			}, nil); err != nil {
+			}, nil)
+			recordWrite(ctx, a, "eve_ui_set_waypoint", "waypoint", args, err)
+			if err != nil {
 				return nil, wrap("registerWaypoint", err)
 			}
-			a.Guard.Record(ctx, "eve_ui_set_waypoint", "waypoint", args, "ok")
 
 			return map[string]any{fStatus: vDone, "waypoint_set_to": target[fName], fNote: clientCaveat}, nil
 		})
@@ -141,10 +143,11 @@ func registerOpenWindow(s *mcp.Server) {
 			if blocked.Required != nil {
 				return blocked.Required, nil
 			}
-			if _, err := a.ESI.Post(ctx, path, &token.CharacterID, params, nil); err != nil {
+			_, err = a.ESI.Post(ctx, path, &token.CharacterID, params, nil)
+			recordWrite(ctx, a, "eve_ui_open_window", "openwindow", args, err)
+			if err != nil {
 				return nil, wrap("registerOpenWindow", err)
 			}
-			a.Guard.Record(ctx, "eve_ui_open_window", "openwindow", args, "ok")
 
 			return map[string]any{fStatus: vDone, "opened": label, fNote: clientCaveat}, nil
 		})
@@ -222,10 +225,10 @@ func eveFittingSave(ctx context.Context, a *session.Session, in fittingSaveIn) (
 		return blocked.Required, nil
 	}
 	result, err := a.ESI.Post(ctx, esiPath("characters", esiID(token.CharacterID), "fittings"), &token.CharacterID, nil, body)
+	recordWrite(ctx, a, "eve_fitting_save", "fittings", args, err)
 	if err != nil {
 		return nil, wrap("eveFittingSave", err)
 	}
-	a.Guard.Record(ctx, "eve_fitting_save", "fittings", args, result)
 
 	return map[string]any{fStatus: vDone, fFittingID: j.Map(result)[fFittingID], fName: name}, nil
 }
@@ -311,10 +314,11 @@ func eveFittingDelete(ctx context.Context, a *session.Session, in fittingDeleteI
 	if blocked.Required != nil {
 		return blocked.Required, nil
 	}
-	if _, err := a.ESI.Delete(ctx, esiPath("characters", esiID(token.CharacterID), "fittings", esiID(in.FittingID)), &token.CharacterID, nil, nil); err != nil {
+	_, err = a.ESI.Delete(ctx, esiPath("characters", esiID(token.CharacterID), "fittings", esiID(in.FittingID)), &token.CharacterID, nil, nil)
+	recordWrite(ctx, a, "eve_fitting_delete", "fittings", args, err)
+	if err != nil {
 		return nil, wrap("eveFittingDelete", err)
 	}
-	a.Guard.Record(ctx, "eve_fitting_delete", "fittings", args, "ok")
 
 	return map[string]any{fStatus: vDone, "deleted": match[fName]}, nil
 }
@@ -360,10 +364,11 @@ func eveMailMark(ctx context.Context, a *session.Session, in mailMarkIn) (any, e
 	if blocked.Required != nil {
 		return blocked.Required, nil
 	}
-	if _, err := a.ESI.Put(ctx, esiPath("characters", esiID(token.CharacterID), "mail", esiID(in.MailID)), &token.CharacterID, nil, map[string]any{fRead: read}); err != nil {
+	_, err = a.ESI.Put(ctx, esiPath("characters", esiID(token.CharacterID), "mail", esiID(in.MailID)), &token.CharacterID, nil, map[string]any{fRead: read})
+	recordWrite(ctx, a, "eve_mail_mark", "mail_organize", args, err)
+	if err != nil {
 		return nil, wrap("eveMailMark", err)
 	}
-	a.Guard.Record(ctx, "eve_mail_mark", "mail_organize", args, "ok")
 
 	return map[string]any{fStatus: vDone, fMailID: in.MailID, fRead: read}, nil
 }
@@ -394,10 +399,11 @@ func eveMailDelete(ctx context.Context, a *session.Session, in mailDeleteIn) (an
 	if blocked.Required != nil {
 		return blocked.Required, nil
 	}
-	if _, err := a.ESI.Delete(ctx, esiPath("characters", esiID(token.CharacterID), "mail", esiID(in.MailID)), &token.CharacterID, nil, nil); err != nil {
+	_, err = a.ESI.Delete(ctx, esiPath("characters", esiID(token.CharacterID), "mail", esiID(in.MailID)), &token.CharacterID, nil, nil)
+	recordWrite(ctx, a, "eve_mail_delete", "mail_organize", args, err)
+	if err != nil {
 		return nil, wrap("eveMailDelete", err)
 	}
-	a.Guard.Record(ctx, "eve_mail_delete", "mail_organize", args, "ok")
 
 	return map[string]any{fStatus: vDone, "deleted_subject": mail[fSubject]}, nil
 }
@@ -460,10 +466,10 @@ func eveMailSend(ctx context.Context, a *session.Session, in mailSendIn) (any, e
 		return blocked.Required, nil
 	}
 	mailID, err := a.ESI.Post(ctx, esiPath("characters", esiID(token.CharacterID), "mail"), &token.CharacterID, nil, payload)
+	recordWrite(ctx, a, write.ToolMailSend, write.CapMailSend, args, err)
 	if err != nil {
 		return nil, wrap("eveMailSend", err)
 	}
-	a.Guard.Record(ctx, "eve_mail_send", "mail_send", args, mailID)
 
 	return map[string]any{fStatus: "sent", fMailID: mailID, "to": resolved.resolvedNames}, nil
 }
@@ -678,10 +684,12 @@ func runContactOp(ctx context.Context, a *session.Session, characterID int, path
 	} else {
 		call = a.ESI.Post
 	}
-	if _, err := call(ctx, path, &characterID, map[string]any{fStanding: standing, fWatched: op.flag}, op.ids); err != nil {
+	args := map[string]any{fContactIDs: op.ids, fStanding: standing, fWatched: op.flag, fCharacterID: characterID, "phase": op.verb}
+	_, err := call(ctx, path, &characterID, map[string]any{fStanding: standing, fWatched: op.flag}, op.ids)
+	recordWrite(ctx, a, "eve_contacts_set", fContacts, args, err)
+	if err != nil {
 		return err
 	}
-	a.Guard.Record(ctx, "eve_contacts_set", fContacts, map[string]any{fContactIDs: op.ids, fStanding: standing, fWatched: op.flag, fCharacterID: characterID, "phase": op.verb}, "ok")
 
 	return nil
 }
@@ -713,10 +721,11 @@ func eveContactsDelete(ctx context.Context, a *session.Session, in contactsDelet
 	if blocked.Required != nil {
 		return blocked.Required, nil
 	}
-	if _, err := a.ESI.Delete(ctx, esiPath("characters", esiID(token.CharacterID), "contacts"), &token.CharacterID, map[string]any{fContactIDs: ids}, nil); err != nil {
+	_, err = a.ESI.Delete(ctx, esiPath("characters", esiID(token.CharacterID), "contacts"), &token.CharacterID, map[string]any{fContactIDs: ids}, nil)
+	recordWrite(ctx, a, "eve_contacts_delete", fContacts, args, err)
+	if err != nil {
 		return nil, wrap("eveContactsDelete", err)
 	}
-	a.Guard.Record(ctx, "eve_contacts_delete", fContacts, args, "ok")
 
 	return map[string]any{fStatus: vDone, "removed": resolved}, nil
 }
@@ -754,10 +763,11 @@ func registerCalendar(s *mcp.Server) {
 			if blocked.Required != nil {
 				return blocked.Required, nil
 			}
-			if _, err := a.ESI.Put(ctx, esiPath("characters", esiID(token.CharacterID), "calendar", esiID(in.EventID)), &token.CharacterID, nil, map[string]any{fResponse: in.Response}); err != nil {
+			_, err = a.ESI.Put(ctx, esiPath("characters", esiID(token.CharacterID), "calendar", esiID(in.EventID)), &token.CharacterID, nil, map[string]any{fResponse: in.Response})
+			recordWrite(ctx, a, "eve_calendar_respond", "calendar", args, err)
+			if err != nil {
 				return nil, wrap("registerCalendar", err)
 			}
-			a.Guard.Record(ctx, "eve_calendar_respond", "calendar", args, "ok")
 
 			return map[string]any{fStatus: vDone, "event": event[fTitle], fResponse: in.Response}, nil
 		})

@@ -12,7 +12,6 @@ package mocks
 import (
 	context "context"
 	reflect "reflect"
-	time "time"
 
 	write "github.com/truewebber/eve-online-mcp/internal/domain/write"
 	gomock "go.uber.org/mock/gomock"
@@ -42,6 +41,20 @@ func (m *MockWritePersist) EXPECT() *MockWritePersistMockRecorder {
 	return m.recorder
 }
 
+// AppendMutation mocks base method.
+func (m_2 *MockWritePersist) AppendMutation(ctx context.Context, m write.Mutation) error {
+	m_2.ctrl.T.Helper()
+	ret := m_2.ctrl.Call(m_2, "AppendMutation", ctx, m)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AppendMutation indicates an expected call of AppendMutation.
+func (mr *MockWritePersistMockRecorder) AppendMutation(ctx, m any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendMutation", reflect.TypeOf((*MockWritePersist)(nil).AppendMutation), ctx, m)
+}
+
 // CountConfirm mocks base method.
 func (m *MockWritePersist) CountConfirm(ctx context.Context, sessionID int64) (int, error) {
 	m.ctrl.T.Helper()
@@ -57,19 +70,19 @@ func (mr *MockWritePersistMockRecorder) CountConfirm(ctx, sessionID any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountConfirm", reflect.TypeOf((*MockWritePersist)(nil).CountConfirm), ctx, sessionID)
 }
 
-// CountMailSince mocks base method.
-func (m *MockWritePersist) CountMailSince(ctx context.Context, characterID int64, since time.Time) (int, error) {
+// CountMailCap mocks base method.
+func (m *MockWritePersist) CountMailCap(ctx context.Context, characterID int64) (int, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountMailSince", ctx, characterID, since)
+	ret := m.ctrl.Call(m, "CountMailCap", ctx, characterID)
 	ret0, _ := ret[0].(int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// CountMailSince indicates an expected call of CountMailSince.
-func (mr *MockWritePersistMockRecorder) CountMailSince(ctx, characterID, since any) *gomock.Call {
+// CountMailCap indicates an expected call of CountMailCap.
+func (mr *MockWritePersistMockRecorder) CountMailCap(ctx, characterID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountMailSince", reflect.TypeOf((*MockWritePersist)(nil).CountMailSince), ctx, characterID, since)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountMailCap", reflect.TypeOf((*MockWritePersist)(nil).CountMailCap), ctx, characterID)
 }
 
 // DeleteConfirm mocks base method.
@@ -101,18 +114,19 @@ func (mr *MockWritePersistMockRecorder) GetConfirm(ctx, token any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConfirm", reflect.TypeOf((*MockWritePersist)(nil).GetConfirm), ctx, token)
 }
 
-// InsertMail mocks base method.
-func (m *MockWritePersist) InsertMail(ctx context.Context, characterID int64, at time.Time) error {
+// HoldMailCap mocks base method.
+func (m *MockWritePersist) HoldMailCap(ctx context.Context, characterID int64) (*write.MailCapHold, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InsertMail", ctx, characterID, at)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret := m.ctrl.Call(m, "HoldMailCap", ctx, characterID)
+	ret0, _ := ret[0].(*write.MailCapHold)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
-// InsertMail indicates an expected call of InsertMail.
-func (mr *MockWritePersistMockRecorder) InsertMail(ctx, characterID, at any) *gomock.Call {
+// HoldMailCap indicates an expected call of HoldMailCap.
+func (mr *MockWritePersistMockRecorder) HoldMailCap(ctx, characterID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertMail", reflect.TypeOf((*MockWritePersist)(nil).InsertMail), ctx, characterID, at)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HoldMailCap", reflect.TypeOf((*MockWritePersist)(nil).HoldMailCap), ctx, characterID)
 }
 
 // PutConfirm mocks base method.

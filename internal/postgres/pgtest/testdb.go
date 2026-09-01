@@ -14,7 +14,7 @@ const (
 	lockSQL         = `SELECT pg_advisory_lock($1)`
 	unlockSQL       = `SELECT pg_advisory_unlock($1)`
 	resetTablesSQL  = `
-	TRUNCATE mail_log, confirm_tokens, auth_codes, login_states,
+	TRUNCATE mutations, confirm_tokens, auth_codes, login_states,
 	         sessions, oauth_clients, characters CASCADE`
 )
 

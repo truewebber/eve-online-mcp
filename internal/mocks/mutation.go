@@ -12,7 +12,6 @@ package mocks
 import (
 	context "context"
 	reflect "reflect"
-	time "time"
 
 	mutation "github.com/truewebber/eve-online-mcp/internal/domain/mutation"
 	gomock "go.uber.org/mock/gomock"
@@ -42,31 +41,46 @@ func (m *MockMutationRepository) EXPECT() *MockMutationRepositoryMockRecorder {
 	return m.recorder
 }
 
-// CountSince mocks base method.
-func (m *MockMutationRepository) CountSince(ctx context.Context, characterID int64, since time.Time) (int, error) {
+// Append mocks base method.
+func (m_2 *MockMutationRepository) Append(ctx context.Context, m mutation.Mutation) error {
+	m_2.ctrl.T.Helper()
+	ret := m_2.ctrl.Call(m_2, "Append", ctx, m)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Append indicates an expected call of Append.
+func (mr *MockMutationRepositoryMockRecorder) Append(ctx, m any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Append", reflect.TypeOf((*MockMutationRepository)(nil).Append), ctx, m)
+}
+
+// CountMailCap mocks base method.
+func (m *MockMutationRepository) CountMailCap(ctx context.Context, characterID int64) (int, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CountSince", ctx, characterID, since)
+	ret := m.ctrl.Call(m, "CountMailCap", ctx, characterID)
 	ret0, _ := ret[0].(int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// CountSince indicates an expected call of CountSince.
-func (mr *MockMutationRepositoryMockRecorder) CountSince(ctx, characterID, since any) *gomock.Call {
+// CountMailCap indicates an expected call of CountMailCap.
+func (mr *MockMutationRepositoryMockRecorder) CountMailCap(ctx, characterID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSince", reflect.TypeOf((*MockMutationRepository)(nil).CountSince), ctx, characterID, since)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountMailCap", reflect.TypeOf((*MockMutationRepository)(nil).CountMailCap), ctx, characterID)
 }
 
-// Insert mocks base method.
-func (m *MockMutationRepository) Insert(ctx context.Context, mail mutation.Mail) error {
+// HoldMailCap mocks base method.
+func (m *MockMutationRepository) HoldMailCap(ctx context.Context, characterID int64) (*mutation.Hold, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Insert", ctx, mail)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret := m.ctrl.Call(m, "HoldMailCap", ctx, characterID)
+	ret0, _ := ret[0].(*mutation.Hold)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
-// Insert indicates an expected call of Insert.
-func (mr *MockMutationRepositoryMockRecorder) Insert(ctx, mail any) *gomock.Call {
+// HoldMailCap indicates an expected call of HoldMailCap.
+func (mr *MockMutationRepositoryMockRecorder) HoldMailCap(ctx, characterID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Insert", reflect.TypeOf((*MockMutationRepository)(nil).Insert), ctx, mail)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HoldMailCap", reflect.TypeOf((*MockMutationRepository)(nil).HoldMailCap), ctx, characterID)
 }
