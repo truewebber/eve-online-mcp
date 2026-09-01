@@ -157,3 +157,19 @@ func RequestedScopes() []string {
 
 	return out
 }
+
+func MissingScopes(granted []string) []string {
+	have := make(map[string]struct{}, len(granted))
+	for _, s := range granted {
+		have[s] = struct{}{}
+	}
+	var missing []string
+	for _, s := range RequestedScopes() {
+		if _, ok := have[s]; !ok {
+			missing = append(missing, s)
+		}
+	}
+	sort.Strings(missing)
+
+	return missing
+}

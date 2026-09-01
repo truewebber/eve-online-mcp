@@ -305,6 +305,39 @@ func TestFailingCCPRevokeLeavesRowRevoked(t *testing.T) {
 	}
 }
 
+func TestScopeDriftRevokesThen401(t *testing.T) {
+	t.Parallel()
+	db := openDB(t)
+	ctx := context.Background()
+	const characterID int64 = 507
+	if err := characters(t, db).Upsert(ctx, character.Character{
+		ID: characterID, Name: janeDoe, OwnerHash: "h",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	row, err := sessions(t, db).Create(ctx, dbsession.Session{
+		CharacterID: characterID, RefreshToken: "rt", Scopes: []string{scopePublic},
+		MCPClientID: "c",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := testServer(t, db)
+	tok, err := s.IssueAccess(int(characterID), row.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.VerifyAccess(ctx, tok, nil); err == nil {
+		t.Fatal("short stored scopes must 401")
+	}
+	if _, err := s.runtime.Sessions.LiveByID(ctx, row.ID); err == nil {
+		t.Fatal("short stored scopes must revoke")
+	}
+	if _, err := s.VerifyAccess(ctx, tok, nil); err == nil {
+		t.Fatal("revoked sid must stay 401")
+	}
+}
+
 func liveSID(t *testing.T, db *postgres.DB, characterID int64) int64 {
 	t.Helper()
 	var id int64

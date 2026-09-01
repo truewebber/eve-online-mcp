@@ -10,6 +10,7 @@ import (
 	"github.com/truewebber/eve-online-mcp/internal/domain/authcode"
 	"github.com/truewebber/eve-online-mcp/internal/domain/character"
 	"github.com/truewebber/eve-online-mcp/internal/domain/loginstate"
+	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 )
 
 type Callback struct {
@@ -36,6 +37,14 @@ func (s *Server) CompleteCallback(ctx context.Context, code, eveState string) (C
 }
 
 func (s *Server) finishMCP(ctx context.Context, p *loginstate.Login, token *sso.CharacterToken) (string, error) {
+	if missing := write.MissingScopes(token.Scopes); len(missing) > 0 {
+		s.logger.Info("oauth: short grant", "character", token.CharacterName, "missing", missing)
+
+		return "", ShortGrantError{Missing: missing}
+	}
+	if err := s.revokeOnOwnerHashChange(ctx, token); err != nil {
+		return "", err
+	}
 	if err := s.runtime.Characters.Upsert(ctx, character.Character{
 		ID: int64(token.CharacterID), Name: token.CharacterName, OwnerHash: token.OwnerHash,
 	}); err != nil {
@@ -71,4 +80,24 @@ func (s *Server) finishMCP(ctx context.Context, p *loginstate.Login, token *sso.
 	s.logger.Info("oauth: mcp authorized", "character", token.CharacterName, "character_id", token.CharacterID)
 
 	return u.String(), nil
+}
+
+func (s *Server) revokeOnOwnerHashChange(ctx context.Context, token *sso.CharacterToken) error {
+	existing, err := s.runtime.Characters.Get(ctx, int64(token.CharacterID))
+	if errors.Is(err, character.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return wrap("revokeOnOwnerHashChange", err)
+	}
+	if existing.OwnerHash == token.OwnerHash {
+		return nil
+	}
+	revoked, err := s.runtime.Sessions.RevokeAllForCharacter(ctx, int64(token.CharacterID))
+	if err != nil {
+		return wrap("revokeOnOwnerHashChange", err)
+	}
+	s.runtime.RevokeAtCCP(ctx, revoked.Tokens)
+
+	return nil
 }

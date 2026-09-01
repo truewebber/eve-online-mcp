@@ -102,7 +102,7 @@ commit as the change to the document that owns it; after the task
 | [T15](T15-postgres-is-not-an-adapter.md) | Retire `adapter/store`; entities and contracts only | done | M | T14 | §11 §12 §16 | §7 |
 | [T16](T16-assembled-urls.md) | URLs are assembled, never concatenated | done | S | T15 | §8 §16 | §3.1, §9 |
 | [T17](T17-sessions-own-the-grant.md) | Sessions own the grant; runtime by `sid` | done | L | T16 | §2 §11 §12 | §3.1–3.4, §12.2–3 |
-| [T18](T18-scope-checks.md) | Both scope checks | todo | M | T17 | §5 §9 | §3.2, §3.5, §12.6 |
+| [T18](T18-scope-checks.md) | Both scope checks | done | M | T17 | §5 §9 | §3.2, §3.5, §12.6 |
 | [T19](T19-audit-log.md) | `mutations` audit log; mail cap counts from it | todo | M | T17 | §2 §11 §12 | §4.1, §5.4, §8, §12.7 |
 | [T20](T20-error-budget.md) | Per-character ESI error budget | todo | M | T17 | §1 §15 | §5.3, §12.8 |
 | [T21](T21-sweeps.md) | Sweeps: expiry, client purge, abandoned grants | todo | M | T17 T19 | §1 §2 §12 | §12.9, DB.md |

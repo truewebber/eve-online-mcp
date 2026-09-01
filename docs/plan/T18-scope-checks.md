@@ -1,6 +1,6 @@
 # T18 — Both scope checks: refuse a short login, revoke on drift
 
-- Status: `todo`
+- Status: `done`
 - Size: M
 - Depends on: T17
 - RULES: §5 (tests), §9 (the user sees only static errors), §6 (the code
@@ -97,15 +97,15 @@ can paste them into the application form.
 
 ## Acceptance
 
-- [ ] A short grant is refused at the callback with the missing scopes
+- [x] A short grant is refused at the callback with the missing scopes
       named, and writes no `auth_codes` row
-- [ ] Scope drift revokes the session; the next call is `401`
-- [ ] `invalid_grant` revokes the requesting `sid` only
-- [ ] `owner_hash` change revokes and re-owns
-- [ ] Transient ESI failures never revoke, covered by a test
-- [ ] The refusal page carries no `err.Error()` and no CCP-supplied
+- [x] Scope drift revokes the session; the next call is `401`
+- [x] `invalid_grant` revokes the requesting `sid` only
+- [x] `owner_hash` change revokes and re-owns
+- [x] Transient ESI failures never revoke, covered by a test
+- [x] The refusal page carries no `err.Error()` and no CCP-supplied
       string; both are in the log
-- [ ] `go test ./...`, `make test-store` and `make lint` pass
+- [x] `go test ./...`, `make test-store` and `make lint` pass
 
 ## Verify
 

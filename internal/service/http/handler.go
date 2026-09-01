@@ -41,28 +41,34 @@ func (h *API) GetAuthLogin(w http.ResponseWriter, r *http.Request) {
 
 func (h *API) GetAuthCallback(w http.ResponseWriter, r *http.Request, _ GetAuthCallbackParams) {
 	if errS := r.URL.Query().Get("error"); errS != "" {
-		detail := r.URL.Query().Get("error_description")
-		if detail == "" {
-			detail = errS
+		if h.OAuth != nil {
+			h.OAuth.LogRefusedLogin(errS, r.URL.Query().Get("error_description"))
 		}
-		pageStatus(w, http.StatusBadRequest, "Login refused", `<p class=warn>`+html.EscapeString(detail)+`</p>`)
+		pageStatus(w, "Login refused", `<p class=warn>The EVE login was refused. Start the login again from the client.</p>`)
 
 		return
 	}
 	code, state := r.URL.Query().Get("code"), r.URL.Query().Get("state")
 	if code == "" || state == "" {
-		pageStatus(w, http.StatusBadRequest, "Bad callback", `<p class=warn>Missing code or state.</p>`)
+		pageStatus(w, "Bad callback", `<p class=warn>Missing code or state.</p>`)
 
 		return
 	}
 	cb, err := h.OAuth.CompleteCallback(r.Context(), code, state)
 	if err != nil {
-		title := "Login failed"
-		detail := err.Error()
+		if short, ok := errors.AsType[oauth.ShortGrantError](err); ok {
+			shortGrant(w, short.Missing)
+
+			return
+		}
+		if h.OAuth != nil {
+			h.OAuth.LogRefusedLogin("callback", err.Error())
+		}
+		detail := "Login failed. Start the login again from the client."
 		if errors.Is(err, oauth.ErrUnknownLogin) {
 			detail = "Unknown or expired login state — start the login again."
 		}
-		pageStatus(w, http.StatusBadRequest, title, `<p class=warn>`+html.EscapeString(detail)+`</p>`)
+		pageStatus(w, "Login failed", `<p class=warn>`+html.EscapeString(detail)+`</p>`)
 
 		return
 	}

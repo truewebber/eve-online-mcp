@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"context"
+	"errors"
 	nhttp "net/http"
 	"net/url"
 	"testing"
@@ -24,6 +25,7 @@ import (
 	oauthclientpgx "github.com/truewebber/eve-online-mcp/internal/domain/oauthclient/pgx"
 	dbsession "github.com/truewebber/eve-online-mcp/internal/domain/session"
 	sessionpgx "github.com/truewebber/eve-online-mcp/internal/domain/session/pgx"
+	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 	"github.com/truewebber/eve-online-mcp/internal/mocks"
 	"github.com/truewebber/eve-online-mcp/internal/postgres"
 	"github.com/truewebber/eve-online-mcp/internal/postgres/pgtest"
@@ -101,6 +103,13 @@ func testServer(t *testing.T, db *postgres.DB) *Server {
 	return testServerSSO(t, db, testSSO(t))
 }
 
+func grantedToken(id int, name, refresh, hash string) *sso.CharacterToken {
+	return &sso.CharacterToken{
+		CharacterID: id, CharacterName: name, RefreshToken: refresh, OwnerHash: hash,
+		Scopes: write.RequestedScopes(),
+	}
+}
+
 func testServerSSO(t *testing.T, db *postgres.DB, ssoClient sso.Client) *Server {
 	t.Helper()
 	logger := mocks.QuietLogger(gomock.NewController(t))
@@ -146,10 +155,7 @@ func TestFinishMCPUpsertsCharacter(t *testing.T) {
 	loc, err := s.finishMCP(ctx, &loginstate.Login{
 		MCPClientID: "c", RedirectURI: redirect,
 		MCPState: "mcp", CodeChallenge: "x",
-	}, &sso.CharacterToken{
-		CharacterID: int(charID), CharacterName: janeDoe, RefreshToken: newRT, OwnerHash: "h1",
-		Scopes: []string{scopePublic},
-	})
+	}, grantedToken(int(charID), janeDoe, newRT, "h1"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,9 +180,7 @@ func TestFinishMCPPreservesClientQuery(t *testing.T) {
 	loc, err := s.finishMCP(t.Context(), &loginstate.Login{
 		MCPClientID: "c", RedirectURI: "http://localhost:1/cb?foo=1&bar=two",
 		MCPState: "st",
-	}, &sso.CharacterToken{
-		CharacterID: 8, CharacterName: janeDoe, RefreshToken: "rt",
-	})
+	}, grantedToken(8, janeDoe, "rt", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,9 +204,7 @@ func TestFinishMCPCreatesCharacter(t *testing.T) {
 	const charID int64 = 42
 	loc, err := s.finishMCP(context.Background(), &loginstate.Login{
 		MCPClientID: "c", RedirectURI: redirect,
-	}, &sso.CharacterToken{
-		CharacterID: int(charID), CharacterName: "New", RefreshToken: "rt",
-	})
+	}, grantedToken(int(charID), "New", "rt", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,16 +229,24 @@ func TestOwnerHashChangeReplacesIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := testServer(t, db)
+	pred, err := sessions(t, db).Create(ctx, dbsession.Session{
+		CharacterID: charID, RefreshToken: "old-rt", Scopes: write.RequestedScopes(),
+		MCPClientID: "c",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.finishMCP(ctx, &loginstate.Login{
 		MCPClientID: "c", RedirectURI: redirect,
-	}, &sso.CharacterToken{
-		CharacterID: int(charID), CharacterName: janeDoe, RefreshToken: newRT, OwnerHash: "new-hash",
-	}); err != nil {
+	}, grantedToken(int(charID), janeDoe, newRT, "new-hash")); err != nil {
 		t.Fatal(err)
 	}
 	row, err := chars.Get(ctx, charID)
 	if err != nil || row.OwnerHash != "new-hash" {
 		t.Fatalf("row %+v err %v", row, err)
+	}
+	if _, err := s.runtime.Sessions.LiveByID(ctx, pred.ID); err == nil {
+		t.Fatal("old session must be revoked")
 	}
 }
 
@@ -248,9 +258,7 @@ func TestLogoutSoftDeleteThenRelogin(t *testing.T) {
 	s := testServer(t, db)
 	if _, err := s.finishMCP(ctx, &loginstate.Login{
 		MCPClientID: "c", RedirectURI: redirect,
-	}, &sso.CharacterToken{
-		CharacterID: int(charID), CharacterName: altName, RefreshToken: "rt-1", OwnerHash: "h",
-	}); err != nil {
+	}, grantedToken(int(charID), altName, "rt-1", "h")); err != nil {
 		t.Fatal(err)
 	}
 	if err := characters(t, db).Delete(ctx, charID); err != nil {
@@ -262,9 +270,7 @@ func TestLogoutSoftDeleteThenRelogin(t *testing.T) {
 	}
 	if _, err := s.finishMCP(ctx, &loginstate.Login{
 		MCPClientID: "c", RedirectURI: redirect,
-	}, &sso.CharacterToken{
-		CharacterID: int(charID), CharacterName: altName, RefreshToken: "rt-2", OwnerHash: "h",
-	}); err != nil {
+	}, grantedToken(int(charID), altName, "rt-2", "h")); err != nil {
 		t.Fatal(err)
 	}
 	row, err = characters(t, db).Get(ctx, charID)
@@ -272,7 +278,7 @@ func TestLogoutSoftDeleteThenRelogin(t *testing.T) {
 		t.Fatalf("want revived, got %+v %v", row, err)
 	}
 	created, err := sessions(t, db).Create(ctx, dbsession.Session{
-		CharacterID: charID, RefreshToken: "rt-2", Scopes: []string{},
+		CharacterID: charID, RefreshToken: "rt-2", Scopes: write.RequestedScopes(),
 		MCPClientID: "c",
 	})
 	if err != nil {
@@ -299,9 +305,7 @@ func TestConcurrentFinishMCP(t *testing.T) {
 		go func() {
 			_, err := s.finishMCP(ctx, &loginstate.Login{
 				MCPClientID: "c", RedirectURI: redirect,
-			}, &sso.CharacterToken{
-				CharacterID: int(charID), CharacterName: janeDoe, RefreshToken: "rt", OwnerHash: "h",
-			})
+			}, grantedToken(int(charID), janeDoe, "rt", "h"))
 			errc <- err
 		}()
 	}
@@ -313,5 +317,32 @@ func TestConcurrentFinishMCP(t *testing.T) {
 	row, err := characters(t, db).Get(ctx, charID)
 	if err != nil || !row.Live() {
 		t.Fatalf("row %+v err %v", row, err)
+	}
+}
+
+func TestShortGrantWritesNoCode(t *testing.T) {
+	t.Parallel()
+	db := openDB(t)
+	ctx := context.Background()
+	s := testServer(t, db)
+	loc, err := s.finishMCP(ctx, &loginstate.Login{
+		MCPClientID: "c", RedirectURI: redirect,
+	}, &sso.CharacterToken{
+		CharacterID: 88, CharacterName: janeDoe, RefreshToken: "rt",
+		Scopes: []string{scopePublic},
+	})
+	short, ok := errors.AsType[ShortGrantError](err)
+	if !ok || loc != "" {
+		t.Fatalf("loc %q err %v", loc, err)
+	}
+	if len(short.Missing) == 0 {
+		t.Fatal("missing scopes empty")
+	}
+	var count int
+	if err := db.Pool().QueryRow(ctx, `SELECT count(*) FROM auth_codes`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("auth_codes %d err %v", count, err)
+	}
+	if _, err := characters(t, db).Get(ctx, 88); err == nil {
+		t.Fatal("short grant must not upsert a character")
 	}
 }

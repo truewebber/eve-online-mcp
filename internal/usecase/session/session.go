@@ -235,6 +235,9 @@ func (s *Session) Character(ctx context.Context) (*sso.CharacterToken, error) {
 	if err != nil || !ident.Live() {
 		return nil, wrap("Character", sso.Err("This connection's character is no longer authorized. Re-authenticate the MCP server (Authentication required) and try again."))
 	}
+	if err := s.revokeIfScopesFallShort(ctx, row.Scopes); err != nil {
+		return nil, wrap("Character", err)
+	}
 
 	return &sso.CharacterToken{
 		CharacterID:   int(ident.ID),

@@ -56,6 +56,7 @@ const (
 var (
 	ErrUnknownLogin = errors.New("unknown or expired login state")
 	ErrHMACTooShort = errors.New("oauth: HMAC key is too short")
+	errShortGrant   = errors.New("oauth: short grant")
 	errBadAlg       = errors.New("alg")
 	errInvalidToken = errors.New("invalid")
 	errNotRefresh   = errors.New("not refresh")
@@ -63,6 +64,14 @@ var (
 	errBadCharacter = errors.New("oauth: character id")
 	errNoSID        = errors.New("oauth: sid")
 )
+
+type ShortGrantError struct {
+	Missing []string
+}
+
+func (ShortGrantError) Error() string { return errShortGrant.Error() }
+
+func (ShortGrantError) Unwrap() error { return errShortGrant }
 
 type Host struct {
 	Listen      string
@@ -151,6 +160,10 @@ func Open(pub Host, runtime *session.Session, opts Options, logger log.Logger) (
 		hmacKey: opts.HMACKey,
 		logger:  logger,
 	}, nil
+}
+
+func (s *Server) LogRefusedLogin(code, description string) {
+	s.logger.Info("oauth: login refused", "error", code, "error_description", description)
 }
 
 func (s *Server) Base() string { return s.pub.BaseURL() }

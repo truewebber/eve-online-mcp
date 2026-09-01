@@ -181,3 +181,117 @@ func TestInvalidGrantRevokesRequestingSID(t *testing.T) {
 		t.Fatal("requesting sid must be revoked")
 	}
 }
+
+func TestInvalidGrantLeavesSiblingLive(t *testing.T) {
+	t.Parallel()
+	logger := mocks.QuietLogger(gomock.NewController(t))
+	db := pgtest.Open(t, logger)
+	ctx := context.Background()
+	chars := characterpgx.New(db.Pool(), logger)
+	repo := sessionpgx.New(db.Pool(), logger)
+	if err := chars.Upsert(ctx, character.Character{ID: 705, Name: "A", OwnerHash: "h"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := chars.Upsert(ctx, character.Character{ID: 706, Name: "B", OwnerHash: "h"}); err != nil {
+		t.Fatal(err)
+	}
+	dead, err := repo.Create(ctx, dbsession.Session{
+		CharacterID: 705, RefreshToken: "dead", Scopes: []string{}, MCPClientID: "c",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, err := repo.Create(ctx, dbsession.Session{
+		CharacterID: 706, RefreshToken: "ok", Scopes: []string{}, MCPClientID: "c",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctrl := gomock.NewController(t)
+	m := mocks.NewMockSSOClient(ctrl)
+	m.EXPECT().AccessToken(gomock.Any(), "dead").Return(nil, sso.ErrInvalidGrant)
+	runtime := testRuntime(t, db, m)
+	if _, err := runtime.ForCharacter(705, dead.ID).eveAccess(ctx); err == nil {
+		t.Fatal("want auth error")
+	}
+	if _, err := runtime.Sessions.LiveByID(ctx, dead.ID); err == nil {
+		t.Fatal("requesting sid must be revoked")
+	}
+	if _, err := runtime.Sessions.LiveByID(ctx, live.ID); err != nil {
+		t.Fatal("sibling session must stay live")
+	}
+}
+
+func TestCharacterRevokesOnScopeDrift(t *testing.T) {
+	t.Parallel()
+	logger := mocks.QuietLogger(gomock.NewController(t))
+	db := pgtest.Open(t, logger)
+	ctx := context.Background()
+	const characterID int64 = 708
+	if err := characterpgx.New(db.Pool(), logger).Upsert(ctx, character.Character{
+		ID: characterID, Name: "P", OwnerHash: "h",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	row, err := sessionpgx.New(db.Pool(), logger).Create(ctx, dbsession.Session{
+		CharacterID: characterID, RefreshToken: "rt", Scopes: []string{"publicData"},
+		MCPClientID: "c",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctrl := gomock.NewController(t)
+	runtime := testRuntime(t, db, mocks.NewMockSSOClient(ctrl))
+	sess := runtime.ForCharacter(int(characterID), row.ID)
+	if _, err := sess.Character(ctx); err == nil {
+		t.Fatal("want drift error")
+	}
+	if _, err := runtime.Sessions.LiveByID(ctx, row.ID); err == nil {
+		t.Fatal("drift must revoke")
+	}
+	if _, err := sess.Character(ctx); err == nil {
+		t.Fatal("revoked session must stay unauthorized")
+	}
+}
+
+func TestTransientESIDoesNotRevoke(t *testing.T) {
+	t.Parallel()
+	logger := mocks.QuietLogger(gomock.NewController(t))
+	db := pgtest.Open(t, logger)
+	ctx := context.Background()
+	const characterID int64 = 707
+	if err := characterpgx.New(db.Pool(), logger).Upsert(ctx, character.Character{
+		ID: characterID, Name: "P", OwnerHash: "h",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	row, err := sessionpgx.New(db.Pool(), logger).Create(ctx, dbsession.Session{
+		CharacterID: characterID, RefreshToken: "rt", Scopes: []string{}, MCPClientID: "c",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctrl := gomock.NewController(t)
+	esiMock := mocks.NewMockESIClient(ctrl)
+	esiMock.EXPECT().ForUser(gomock.Any()).Return(esiMock).AnyTimes()
+	esiMock.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(esi.Result{}, esi.Error{Msg: "esi unavailable", Status: 500})
+	runtime, err := Open(Options{
+		Characters: characterpgx.New(db.Pool(), logger),
+		Sessions:   sessionpgx.New(db.Pool(), logger),
+		Confirms:   confirmpgx.New(db.Pool()),
+		Mutations:  mutationpgx.New(db.Pool()),
+		ESI:        esiMock,
+		SSO:        mocks.NewMockSSOClient(ctrl),
+		Logger:     logger,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.ForCharacter(int(characterID), row.ID).ESI.Get(ctx, "/status", nil, nil, nil); err == nil {
+		t.Fatal("want esi error")
+	}
+	if _, err := runtime.Sessions.LiveByID(ctx, row.ID); err != nil {
+		t.Fatal("transient ESI must not revoke")
+	}
+}

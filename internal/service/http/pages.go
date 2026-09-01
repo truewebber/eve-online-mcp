@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"strings"
 )
 
 func page(w http.ResponseWriter, title, body string) {
@@ -11,9 +12,9 @@ func page(w http.ResponseWriter, title, body string) {
 	fmt.Fprintf(w, pageTmpl, html.EscapeString(title), body)
 }
 
-func pageStatus(w http.ResponseWriter, status int, title, body string) {
+func pageStatus(w http.ResponseWriter, title, body string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(status)
+	w.WriteHeader(http.StatusBadRequest)
 	fmt.Fprintf(w, pageTmpl, html.EscapeString(title), body)
 }
 
@@ -34,3 +35,16 @@ const pageTmpl = `<!doctype html><meta charset=utf-8><title>%s</title>
 </style>
 %s
 `
+
+func shortGrant(w http.ResponseWriter, missing []string) {
+	var b strings.Builder
+	b.WriteString(`<h1>EVE application is missing scopes</h1>`)
+	b.WriteString(`<p>This server needs every scope listed on the instance application at <code>developers.eveonline.com</code>. Add the missing ones and sign in again from the client.</p><ul>`)
+	for _, scope := range missing {
+		b.WriteString("<li><code>")
+		b.WriteString(html.EscapeString(scope))
+		b.WriteString("</code></li>")
+	}
+	b.WriteString(`</ul>`)
+	pageStatus(w, "Login refused", b.String())
+}

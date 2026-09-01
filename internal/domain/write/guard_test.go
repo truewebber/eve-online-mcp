@@ -271,3 +271,26 @@ func TestRequestedScopesIncludesCorpAndWrites(t *testing.T) {
 		}
 	}
 }
+
+func TestMissingScopesSortedDifference(t *testing.T) {
+	t.Parallel()
+	if got := write.MissingScopes(write.RequestedScopes()); len(got) != 0 {
+		t.Fatalf("full grant %v", got)
+	}
+	got := write.MissingScopes(nil)
+	if len(got) != len(write.RequestedScopes()) {
+		t.Fatalf("empty grant %d want %d", len(got), len(write.RequestedScopes()))
+	}
+	for i := 1; i < len(got); i++ {
+		if got[i-1] >= got[i] {
+			t.Fatalf("unsorted %v", got)
+		}
+	}
+	short := append([]string{}, write.RequestedScopes()...)
+	drop := short[len(short)-1]
+	short = short[:len(short)-1]
+	got = write.MissingScopes(short)
+	if len(got) != 1 || got[0] != drop {
+		t.Fatalf("one missing %v want %s", got, drop)
+	}
+}

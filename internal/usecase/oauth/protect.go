@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	dbsession "github.com/truewebber/eve-online-mcp/internal/domain/session"
+	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
@@ -101,6 +102,12 @@ func (s *Server) requireLive(ctx context.Context, ref issued) error {
 	if err != nil || row.CharacterID != int64(ref.CharacterID) {
 		return dbsession.ErrNotFound
 	}
+	if len(write.MissingScopes(row.Scopes)) == 0 {
+		return nil
+	}
+	if _, err := s.runtime.Sessions.Revoke(ctx, ref.SessionID); err != nil {
+		s.logger.Error("oauth: revoke after scope drift", "sid", ref.SessionID, "err", err)
+	}
 
-	return nil
+	return dbsession.ErrNotFound
 }

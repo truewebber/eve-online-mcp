@@ -194,3 +194,14 @@ func (s *Session) eveAccess(ctx context.Context) (string, error) {
 
 	return access, nil
 }
+
+func (s *Session) revokeIfScopesFallShort(ctx context.Context, granted []string) error {
+	if len(write.MissingScopes(granted)) == 0 {
+		return nil
+	}
+	if _, err := s.Sessions.Revoke(ctx, s.SessionID); err != nil {
+		s.Logger.Error("session: revoke after scope drift", "sid", s.SessionID, "err", err)
+	}
+
+	return wrap("revokeIfScopesFallShort", sso.Err("This connection's EVE grant is missing scopes this server requires. Re-authenticate the MCP server (Authentication required) and try again."))
+}

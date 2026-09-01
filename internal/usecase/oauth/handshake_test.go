@@ -98,7 +98,7 @@ func TestCompleteCallbackUnknownState(t *testing.T) {
 	}
 }
 
-func TestExchangeAuthCodeAgainstStore(t *testing.T) {
+func TestExchangeAuthCodeAgainstStore(t *testing.T) { //nolint:tparallel // subtests share the parent's store lock
 	t.Parallel()
 	const (
 		verifier  = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
@@ -238,7 +238,6 @@ func TestExchangeAuthCodeAgainstStore(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			rec := post(tc.setup(t))
 			if rec.Code != tc.status {
 				t.Fatalf("status %d want %d body %s", rec.Code, tc.status, rec.Body.String())
