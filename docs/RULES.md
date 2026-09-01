@@ -261,3 +261,39 @@ A database is a connection string. A listener is host and port. Do
 not name an env `ENDPOINT` or `ADDRESS`. An address is scheme, host,
 port, path — each a field, combined in the name when they travel
 together (`EVE_API_HOST`, `API_HOST_PORT`).
+
+## 17. Nothing is filled in for you
+
+A dependency that is not passed is a failed start, not a default
+and not a no-op. Every field a type uses is set at construction.
+The composition root names every one. Omitting one is not allowed.
+
+An env var has no fallback. Absent or empty is a load error. The
+example file shows what to set; the binary does not invent
+loopback, a timeout, or a name. A value that does not change
+between environments is not an env — it is a constant (rule 16).
+
+A constructor does not repair a missing argument. `if dep == nil
+{ dep = DefaultX() }` and `if timeout == 0 { timeout = 30s }`
+are the same lie. The constructor checks, then returns an error
+or the complete object. That is the only place a dependency is
+tested for presence. After `New` / `Open`, it is there.
+
+**Forbidden** in a usecase, a parent repository, an adapter, or
+any method they expose:
+
+- `if dep == nil { return }`
+- `if dep == nil { return nil, err }` as a substitute for
+  construction
+- treating logger, metrics, a store, a client, or a lock as
+  optional because "tests are easier" or "this path does not
+  need it"
+
+A silent implementation is a type you construct and pass. It is
+not `nil`, and it is not a branch inside the callee. A test
+passes every dependency the production constructor demands.
+
+This rule is not `if err == nil`, not a domain miss
+(`tok == nil` → not found), and not a tool argument whose
+default lives in SPEC (`limit`, `concise`). Those are data.
+A dependency is not data.
