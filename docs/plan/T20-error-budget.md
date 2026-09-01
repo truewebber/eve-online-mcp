@@ -1,6 +1,6 @@
 # T20 — Per-character ESI error budget
 
-- Status: `todo`
+- Status: `done`
 - Size: M
 - Depends on: T17
 - RULES: §1 (time is not a test seam), §15 (one function, one job),
@@ -105,16 +105,16 @@ and not an alarm.
 
 ## Acceptance
 
-- [ ] Every ≥ 400 response is charged to the calling character
-- [ ] The clamp against the shared remainder is implemented and tested
-- [ ] Over budget refuses before any network call, with `retry_at`
-- [ ] Cache hits, 304s and 2xx are never charged
-- [ ] Characters are isolated from each other, covered by a test
-- [ ] Both rejection counters exist
-- [ ] The global fail-fast at remain < 15 still works
-- [ ] `rg -n 'Clock|now func\(\)|WithClock|timeNow'` finds nothing, and
+- [x] Every ≥ 400 response is charged to the calling character
+- [x] The clamp against the shared remainder is implemented and tested
+- [x] Over budget refuses before any network call, with `retry_at`
+- [x] Cache hits, 304s and 2xx are never charged
+- [x] Characters are isolated from each other, covered by a test
+- [x] Both rejection counters exist
+- [x] The global fail-fast at remain < 15 still works
+- [x] `rg -n 'Clock|now func\(\)|WithClock|timeNow'` finds nothing, and
       the window tests run under `synctest`
-- [ ] `go test ./...` and `make lint` pass
+- [x] `go test ./...` and `make lint` pass
 
 ## Verify
 

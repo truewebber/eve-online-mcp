@@ -27,6 +27,21 @@ func TestMapErrorUserRateLimited(t *testing.T) {
 	}
 }
 
+func TestMapErrorErrorBudgetIsUserRateLimited(t *testing.T) {
+	t.Parallel()
+	out := MapError(esi.UserLimitedError{
+		Msg: "This character's ESI error budget is spent", RetrySec: 12,
+		RetryAt: time.Date(2026, 9, 1, 1, 0, 0, 0, time.UTC),
+	})
+	if out["kind"] != "UserRateLimited" {
+		t.Fatalf("kind %v", out["kind"])
+	}
+	msg, ok := out["error"].(string)
+	if !ok || msg == "" || out["retry_after_seconds"] != 12 {
+		t.Fatalf("%+v", out)
+	}
+}
+
 func TestMapErrorEsiRateLimitedUnchanged(t *testing.T) {
 	t.Parallel()
 	out := MapError(esi.RateLimitedError{Msg: "ccp", Status: 420, RetrySec: 8, RetryAt: time.Unix(0, 0).UTC()})

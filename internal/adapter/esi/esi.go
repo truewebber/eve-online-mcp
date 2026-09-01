@@ -41,8 +41,8 @@ type RateLimitedError struct {
 
 func (e RateLimitedError) Error() string { return e.Msg }
 
-// UserLimitedError is this user's ESI request allowance. Do not retry
-// before RetryAt — looping would burn the shared CCP error-limit.
+// UserLimitedError is this character's ESI request allowance or error
+// budget. The message names which; do not retry before RetryAt.
 type UserLimitedError struct {
 	Msg      string
 	RetryAt  time.Time

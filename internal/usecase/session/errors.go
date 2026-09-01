@@ -26,6 +26,8 @@ func MapError(err error) map[string]any {
 	case errors.As(err, &wb):
 		return map[string]any{fieldError: wb.Error(), fieldKind: "WriteBlocked"}
 	case errors.As(err, &ul):
+		// Allowance and error-budget refusals share this kind; the
+		// message names which so the model can tell the user the truth.
 		return map[string]any{
 			fieldError:            ul.Error(),
 			fieldKind:             "UserRateLimited",

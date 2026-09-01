@@ -4,10 +4,14 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
 )
+
+// AllowanceRejections is the SPEC §11 counter for the §5.2 refusal.
+var AllowanceRejections atomic.Int64 //nolint:gochecknoglobals // SPEC §11: increment next to the refusal.
 
 const (
 	UserBucketCapacity = 400.0
@@ -30,6 +34,7 @@ func (b *userBucket) take() error {
 	now := time.Now()
 	b.refillLocked(now)
 	if b.tokens < 1 {
+		AllowanceRejections.Add(1)
 		deficit := 1 - b.tokens
 		wait := deficit / UserBucketRefill
 		retrySec := max(int(math.Ceil(wait)), 1)

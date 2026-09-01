@@ -54,6 +54,7 @@ type Client struct {
 	errorResetAt time.Time
 	errorMu      sync.Mutex
 	bucket       *userBucket
+	budget       *errorBudget
 	logger       log.Logger
 }
 
@@ -73,6 +74,7 @@ func New(opts esi.Options, httpClient *nhttp.Client, logger log.Logger) *Client 
 		sem:         make(chan struct{}, opts.MaxConcurrency),
 		errorRemain: errorLimitBudget,
 		bucket:      newUserBucket(),
+		budget:      newErrorBudget(),
 		logger:      logger,
 	}
 }
@@ -96,6 +98,7 @@ func (c *Client) ForUser(auth esi.TokenSource) esi.Client {
 		sem:         make(chan struct{}, c.opts.MaxConcurrency),
 		errorRemain: errorLimitBudget,
 		bucket:      newUserBucket(),
+		budget:      newErrorBudget(),
 		logger:      c.logger,
 	}
 }
@@ -327,6 +330,9 @@ func (c *Client) cachedGet(ctx context.Context, path string, characterID *int, p
 	if cached != nil && cached.Fresh() {
 		return esi.Result{Data: cached.Data(), FromCache: true, AgeSeconds: cached.AgeSeconds(), ExpiresAt: cached.ExpiresUnix(), Pages: cached.Pages}, nil
 	}
+	if err := c.checkErrorBudget(); err != nil {
+		return esi.Result{}, err
+	}
 	h, err := c.headers(ctx, characterID)
 	if err != nil {
 		return esi.Result{}, err
@@ -377,6 +383,9 @@ func (c *Client) cachedGet(ctx context.Context, path string, characterID *int, p
 func (c *Client) write(ctx context.Context, method, path string, characterID *int, params map[string]any, jsonBody any) (any, error) {
 	if params == nil {
 		params = map[string]any{}
+	}
+	if err := c.checkErrorBudget(); err != nil {
+		return nil, err
 	}
 	h, err := c.headers(ctx, characterID)
 	if err != nil {
@@ -502,6 +511,24 @@ func (c *Client) noteErrorHeaders(resp *nhttp.Response) {
 	if *remain < errorFloor {
 		c.logger.Info("esi: error budget low", "remaining", *remain, "reset_sec", sec)
 	}
+	if resp.StatusCode >= nhttp.StatusBadRequest && c.budget != nil {
+		c.budget.charge()
+	}
+}
+
+func (c *Client) checkErrorBudget() error {
+	if c.budget == nil {
+		return nil
+	}
+
+	return c.budget.check(c.currentRemain())
+}
+
+func (c *Client) currentRemain() int {
+	c.errorMu.Lock()
+	defer c.errorMu.Unlock()
+
+	return c.errorRemain
 }
 
 func (c *Client) awaitErrorBudget() error {
