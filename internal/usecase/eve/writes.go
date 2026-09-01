@@ -251,7 +251,7 @@ func resolveFittingModules(ctx context.Context, a *session.Session, ship string,
 	}
 	shipID := byName[strings.ToLower(strings.TrimSpace(ship))]
 	if shipID == 0 {
-		return fittingResolved{fail: map[string]any{fError: fmt.Sprintf("No hull is named exactly %q. Check the spelling with eve_universe_search.", ship)}}, nil
+		return fittingResolved{fail: unresolvedResult(ship)}, nil
 	}
 	var items []map[string]any
 	var unknown []string
@@ -276,7 +276,7 @@ func resolveFittingModules(ctx context.Context, a *session.Session, ship string,
 		previewMods = append(previewMods, fmt.Sprintf("%s x%d [%s]", name, qty, flag))
 	}
 	if len(unknown) > 0 {
-		return fittingResolved{fail: map[string]any{fError: fmt.Sprintf("These module names do not exist exactly as written: %v. Look each one up with eve_universe_search first.", unknown)}}, nil
+		return fittingResolved{fail: unresolvedResult(unknown...)}, nil
 	}
 
 	return fittingResolved{shipID: shipID, items: items, previewMods: previewMods}, nil
@@ -300,7 +300,11 @@ func eveFittingDelete(ctx context.Context, a *session.Session, in fittingDeleteI
 		}
 	}
 	if match == nil {
-		return map[string]any{fError: fmt.Sprintf("%s has no fitting with id %d. Call eve_fitting_list to see the real ids.", token.CharacterName, in.FittingID)}, nil
+		return map[string]any{
+			fError:     "No fitting with that id. Call eve_fitting_list.",
+			fKind:      kindError,
+			fFittingID: in.FittingID,
+		}, nil
 	}
 	args := map[string]any{fFittingID: in.FittingID, fCharacterID: token.CharacterID}
 	preview := map[string]any{
@@ -500,7 +504,7 @@ func resolveMailRecipients(ctx context.Context, a *session.Session, to []string)
 		}
 	}
 	if len(unknown) > 0 {
-		return mailRecipients{fail: map[string]any{fError: fmt.Sprintf("Could not resolve recipient(s): %v. Names must match exactly; check them with eve_universe_search. Nothing was sent.", unknown)}}, nil
+		return mailRecipients{fail: unresolvedResult(unknown...)}, nil
 	}
 	if len(ambiguous) > 0 {
 		var parts []string
@@ -508,7 +512,7 @@ func resolveMailRecipients(ctx context.Context, a *session.Session, to []string)
 			parts = append(parts, m.Describe())
 		}
 
-		return mailRecipients{fail: map[string]any{fError: "Refusing to send — " + strings.Join(parts, "; ") + ". EVE mail cannot be recalled, so confirm which one is meant with eve_universe_search. Nothing was sent."}}, nil
+		return mailRecipients{fail: ambiguousResult(parts)}, nil
 	}
 
 	return mailRecipients{recipients: recipients, resolvedNames: resolvedNames}, nil
@@ -663,8 +667,12 @@ func applyContactOps(ctx context.Context, a *session.Session, characterID int, s
 			}
 
 			return contactApplyResult{fail: map[string]any{
-				fError: fmt.Sprintf("Partially applied. Standing %v reached %d existing and %d new contact(s) before this failed: %v. Call eve_contacts_set again with the same arguments.", standing, len(appliedU), len(appliedA), err),
-				fKind:  "EsiError", fStatus: status,
+				fError:     "Partially applied. Call eve_contacts_set again with the same arguments.",
+				fKind:      "EsiError",
+				fStatus:    status,
+				"standing": standing,
+				"updated":  len(appliedU),
+				"added":    len(appliedA),
 			}}, nil
 		}
 		if op.verb == vUpdate {
@@ -796,7 +804,7 @@ func resolveContacts(ctx context.Context, a *session.Session, namesIn []string) 
 		}
 	}
 	if len(unknown) > 0 {
-		return nil, map[string]any{fError: fmt.Sprintf("Could not resolve: %v. Names must be exact — check them with eve_universe_search. Nothing was changed.", unknown)}, nil
+		return nil, unresolvedResult(unknown...), nil
 	}
 	if len(ambiguous) > 0 {
 		var parts []string
@@ -804,7 +812,7 @@ func resolveContacts(ctx context.Context, a *session.Session, namesIn []string) 
 			parts = append(parts, m.Describe())
 		}
 
-		return nil, map[string]any{fError: "Refusing to act — " + strings.Join(parts, "; ") + ". Confirm which one is meant with eve_universe_search. Nothing was changed."}, nil
+		return nil, ambiguousResult(parts), nil
 	}
 
 	return matches, nil, nil
@@ -826,7 +834,7 @@ func resolveDestination(ctx context.Context, a *session.Session, name string, ch
 		return out, nil
 	}
 	search, err := a.ESI.Get(ctx, esiPath("characters", esiID(characterID), "search"), &characterID, map[string]any{
-		"categories": []string{fStructure}, "search": name, fStrict: false,
+		fieldCategories: []string{fStructure}, "search": name, fStrict: false,
 	}, nil)
 	if err != nil {
 		return nil, wrap("resolveDestination", err)
@@ -842,7 +850,7 @@ func resolveDestination(ctx context.Context, a *session.Session, name string, ch
 		return map[string]any{"id": sid, fName: sname, fKind: fStructure}, nil
 	}
 
-	return map[string]any{fError: fmt.Sprintf("No system, station or visible structure is named exactly %q. Check the spelling with eve_universe_search.", name)}, nil
+	return unresolvedResult(name), nil
 }
 
 func resolveEntity(ctx context.Context, a *session.Session, name string, characterID int, kind string) (map[string]any, error) {
@@ -876,7 +884,7 @@ func resolveEntity(ctx context.Context, a *session.Session, name string, charact
 		return out, nil
 	}
 
-	return map[string]any{fError: fmt.Sprintf("Could not resolve %q for the %s window. Check the exact name with eve_universe_search.", name, kind)}, nil
+	return unresolvedResult(name), nil
 }
 
 type windowPlan struct {

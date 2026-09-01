@@ -3,6 +3,7 @@ package eve
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"math"
@@ -76,6 +77,10 @@ func Call(ctx context.Context, fn func(*session.Session) (any, error)) (*mcp.Cal
 	}
 	v, err := fn(a)
 	if err != nil {
+		if a.Logger != nil {
+			a.Logger.Error("eve: tool", "err", err, "character", a.CharacterID)
+		}
+
 		return Handle(err)
 	}
 
@@ -83,7 +88,16 @@ func Call(ctx context.Context, fn func(*session.Session) (any, error)) (*mcp.Cal
 }
 
 func Handle(err error) (*mcp.CallToolResult, any, error) {
-	return Result(session.MapError(err))
+	out := session.MapError(err)
+	out[fError] = toolSentence(err)
+	if names := unresolvedNames(err); len(names) > 0 {
+		out["names"] = names
+	}
+	if v, ok := errors.AsType[ValidationError](err); ok {
+		out["field"] = v.Field
+	}
+
+	return Result(out)
 }
 
 func esiPath(elem ...string) string {

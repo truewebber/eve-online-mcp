@@ -19,15 +19,29 @@ const errConfirmUnknown = "That confirm_token is unknown or has expired. Call th
 
 var (
 	errMailHoldAbandoned = errors.New("write: abandoned mail-cap hold")
-	errMailCap           = errors.New("write: mail cap")
+	ErrMailCap           = errors.New("write: mail cap")
+	ErrConfirmUnknown    = errors.New("write: confirm unknown")
+	ErrConfirmArgs       = errors.New("write: confirm args changed")
+	ErrConfirmTool       = errors.New("write: confirm tool mismatch")
+	ErrUnknownCapability = errors.New("write: unknown capability")
+	ErrMissingWriteScope = errors.New("write: missing write scope")
 )
 
 // MailCapRejections is the SPEC §11 counter for the mail-cap refusal.
 var MailCapRejections atomic.Int64 //nolint:gochecknoglobals // SPEC §11: increment next to the refusal.
 
-type BlockedError struct{ Msg string }
+type BlockedError struct {
+	Msg string
+	why error
+}
 
 func (e BlockedError) Error() string { return e.Msg }
+
+func (e BlockedError) Unwrap() error { return e.why }
+
+func blocked(why error, msg string) BlockedError {
+	return BlockedError{Msg: msg, why: why}
+}
 
 type Decision struct {
 	Required map[string]any
@@ -56,7 +70,7 @@ func NewGuard(persist Persist, characterID, sessionID int64, logger log.Logger) 
 
 func (g *Guard) CheckCapability(capability string) error {
 	if _, ok := Capabilities()[capability]; !ok {
-		return BlockedError{Msg: fmt.Sprintf("Unknown write capability %q.", capability)}
+		return blocked(ErrUnknownCapability, fmt.Sprintf("Unknown write capability %q.", capability))
 	}
 
 	return nil
@@ -75,7 +89,7 @@ func (g *Guard) CheckScope(capability string, granted []string) error {
 		}
 	}
 	if len(missing) > 0 {
-		return BlockedError{Msg: fmt.Sprintf("This character was not authorized with %s. Re-authenticate the MCP server (Authentication required) and approve the full scope set.", strings.Join(missing, ", "))}
+		return blocked(ErrMissingWriteScope, fmt.Sprintf("This character was not authorized with %s. Re-authenticate the MCP server (Authentication required) and approve the full scope set.", strings.Join(missing, ", ")))
 	}
 
 	return nil
@@ -243,7 +257,7 @@ func (g *Guard) holdMailCap(ctx context.Context) error {
 		return wrap("holdMailCap", err)
 	}
 	if hold.Count >= MailCap {
-		if relErr := hold.Release(errMailCap); relErr != nil {
+		if relErr := hold.Release(ErrMailCap); relErr != nil {
 			g.logMailHold(relErr)
 		}
 		MailCapRejections.Add(1)
@@ -273,39 +287,39 @@ func (g *Guard) logMailHold(err error) {
 }
 
 func mailCapBlocked() BlockedError {
-	return BlockedError{Msg: fmt.Sprintf("Mail budget exhausted: %d mails in the last hour. Wait until an earlier send drops out of the rolling hour, then try again.", MailCap)}
+	return blocked(ErrMailCap, fmt.Sprintf("Mail budget exhausted: %d mails in the last hour. Wait until an earlier send drops out of the rolling hour, then try again.", MailCap))
 }
 
 func (g *Guard) consumeConfirm(ctx context.Context, tool, digest, confirmToken string) error {
 	if g.persist == nil {
-		return BlockedError{Msg: errConfirmUnknown}
+		return blocked(ErrConfirmUnknown, errConfirmUnknown)
 	}
 	pending, err := g.persist.GetConfirm(ctx, confirmToken)
 	if errors.Is(err, ErrConfirmNotFound) || pending == nil {
-		return BlockedError{Msg: errConfirmUnknown}
+		return blocked(ErrConfirmUnknown, errConfirmUnknown)
 	}
 	if err != nil {
 		return wrap("consumeConfirm", err)
 	}
 	if pending.SessionID != g.sessionID {
-		return BlockedError{Msg: errConfirmUnknown}
+		return blocked(ErrConfirmUnknown, errConfirmUnknown)
 	}
 	if time.Since(pending.CreatedAt) > ConfirmTTL {
 		if err := g.persist.DeleteConfirm(ctx, confirmToken); err != nil {
 			return wrap("consumeConfirm", err)
 		}
 
-		return BlockedError{Msg: errConfirmUnknown}
+		return blocked(ErrConfirmUnknown, errConfirmUnknown)
 	}
 	if pending.Tool != tool {
-		return BlockedError{Msg: fmt.Sprintf("confirm_token was issued for %q, not %q.", pending.Tool, tool)}
+		return blocked(ErrConfirmTool, fmt.Sprintf("confirm_token was issued for %q, not %q.", pending.Tool, tool))
 	}
 	if pending.ArgsDigest != digest {
 		if err := g.persist.DeleteConfirm(ctx, confirmToken); err != nil {
 			return wrap("consumeConfirm", err)
 		}
 
-		return BlockedError{Msg: "The arguments changed since the preview was generated, so the token was discarded. Request a new preview and confirm that one."}
+		return blocked(ErrConfirmArgs, "The arguments changed since the preview was generated, so the token was discarded. Request a new preview and confirm that one.")
 	}
 	if err := g.persist.DeleteConfirm(ctx, confirmToken); err != nil {
 		return wrap("consumeConfirm", err)

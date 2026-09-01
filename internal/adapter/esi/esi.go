@@ -2,8 +2,14 @@ package esi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
+)
+
+var (
+	ErrAllowanceSpent = errors.New("esi: request allowance spent")
+	ErrBudgetSpent    = errors.New("esi: error budget spent")
 )
 
 const DefaultBaseURL = "https://esi.evetech.net"
@@ -42,14 +48,18 @@ type RateLimitedError struct {
 func (e RateLimitedError) Error() string { return e.Msg }
 
 // UserLimitedError is this character's ESI request allowance or error
-// budget. The message names which; do not retry before RetryAt.
+// budget. Reason is ErrAllowanceSpent or ErrBudgetSpent; do not retry
+// before RetryAt.
 type UserLimitedError struct {
 	Msg      string
 	RetryAt  time.Time
 	RetrySec int
+	Reason   error
 }
 
 func (e UserLimitedError) Error() string { return e.Msg }
+
+func (e UserLimitedError) Unwrap() error { return e.Reason }
 
 type Result struct {
 	Data       any

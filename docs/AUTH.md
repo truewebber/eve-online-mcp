@@ -179,6 +179,10 @@ above.
    security shape: the alternative is a session whose grant is known to
    be insufficient, kept alive long enough for someone to reason about
    what it can still do.
+7. Nothing a stranger can read — HTML, OAuth JSON, a `Location`, a tool
+   result — carries a Go error string or a string CCP chose
+   (`error_description`). The log gets the real error; the user gets a
+   catalog sentence (RULES.md §9).
 
 Known deliberate exposure: `confirm_token` enters the chat transcript
 (it is part of the model's context). Accepted: it is single-use,

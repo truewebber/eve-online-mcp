@@ -54,21 +54,21 @@ func registerMarket(s *mcp.Server) {
 
 func eveMarketPrice(ctx context.Context, a *session.Session, in marketPriceIn) (any, error) {
 	if strings.TrimSpace(in.Item) == "" {
-		return map[string]any{fError: "item is required"}, nil
+		return nil, ValidationError{Field: "item", Invariant: "is required"}
 	}
 	match, err := resolveNamed(ctx, a, in.Item, []string{catInventoryTypes})
 	if err != nil {
 		return nil, err
 	}
 	if match.Chosen == nil {
-		return map[string]any{fError: fmt.Sprintf("No item type is named exactly %q. EVE names are exact — call eve_universe_search with this text to find the real spelling.", in.Item)}, nil
+		return nil, UnresolvedError{Names: []string{in.Item}}
 	}
 	place, err := marketPlace(ctx, a, in)
 	if err != nil {
 		return nil, err
 	}
-	if place.err != "" {
-		return map[string]any{fError: place.err}, nil
+	if len(place.names) > 0 {
+		return nil, UnresolvedError{Names: place.names}
 	}
 	quotes, err := a.Resolver.HubQuotes(ctx, match.Chosen.ID, place.regionID, place.station)
 	if err != nil {
@@ -101,7 +101,7 @@ type marketPlaceResult struct {
 	regionID   int
 	regionName string
 	station    *int
-	err        string
+	names      []string
 }
 
 func marketPlace(ctx context.Context, a *session.Session, in marketPriceIn) (marketPlaceResult, error) {
@@ -112,7 +112,7 @@ func marketPlace(ctx context.Context, a *session.Session, in marketPriceIn) (mar
 			return marketPlaceResult{}, err
 		}
 		if r.Chosen == nil {
-			return marketPlaceResult{err: fmt.Sprintf("No region is named exactly %q. Call eve_universe_search with categories='region' to find it.", in.Region)}, nil
+			return marketPlaceResult{names: []string{in.Region}}, nil
 		}
 		out.regionID, out.regionName = r.Chosen.ID, r.Chosen.Name
 	}

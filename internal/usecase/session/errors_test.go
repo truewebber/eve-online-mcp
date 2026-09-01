@@ -36,8 +36,10 @@ func TestMapErrorErrorBudgetIsUserRateLimited(t *testing.T) {
 	if out["kind"] != "UserRateLimited" {
 		t.Fatalf("kind %v", out["kind"])
 	}
-	msg, ok := out["error"].(string)
-	if !ok || msg == "" || out["retry_after_seconds"] != 12 {
+	if _, ok := out["error"]; ok {
+		t.Fatalf("sentence belongs at the transport: %+v", out)
+	}
+	if out["retry_after_seconds"] != 12 {
 		t.Fatalf("%+v", out)
 	}
 }

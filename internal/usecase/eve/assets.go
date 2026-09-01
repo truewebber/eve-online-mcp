@@ -174,7 +174,7 @@ func topItemLines(types map[int]int, typeNames map[int]string, prices map[int]ma
 
 func eveAssetsFind(ctx context.Context, a *session.Session, in assetsFindIn) (any, error) {
 	if strings.TrimSpace(in.Name) == "" {
-		return map[string]any{fError: "name is required"}, nil
+		return nil, ValidationError{Field: "name", Invariant: "is required"}
 	}
 	token, err := a.Character(ctx)
 	if err != nil {

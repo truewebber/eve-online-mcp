@@ -39,6 +39,7 @@ const (
 	altName     = "Alt"
 	testHMACKey = "0123456789abcdef0123456789abcdef"
 	scopePublic = "publicData"
+	testListen  = "127.0.0.1:8765"
 )
 
 func openDB(t *testing.T) *postgres.DB {
@@ -132,7 +133,7 @@ func testServerSSO(t *testing.T, db *postgres.DB, ssoClient sso.Client) *Server 
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := Open(Host{Listen: "127.0.0.1:8765"}, runtime, Options{HMACKey: []byte(testHMACKey)}, logger)
+	s, err := Open(Host{Listen: testListen}, runtime, Options{HMACKey: []byte(testHMACKey)}, logger)
 	if err != nil {
 		t.Fatal(err)
 	}

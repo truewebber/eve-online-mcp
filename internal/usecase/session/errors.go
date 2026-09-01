@@ -10,35 +10,43 @@ import (
 )
 
 const (
-	fieldError = "error"
 	fieldKind  = "kind"
+	kindAuth   = "AuthError"
+	kindWrite  = "WriteBlocked"
+	kindUser   = "UserRateLimited"
+	kindESILim = "EsiRateLimited"
+	kindESI    = "EsiError"
+	kindError  = "Error"
 )
 
 func MapError(err error) map[string]any {
-	var ae sso.Error
-	var wb write.BlockedError
 	var ul esi.UserLimitedError
 	var rl esi.RateLimitedError
 	var ee esi.Error
+	var ae sso.Error
+	var wb write.BlockedError
 	switch {
+	case errors.Is(err, ErrNoSession), errors.Is(err, ErrDeadSession),
+		errors.Is(err, ErrMissingScope), errors.Is(err, sso.ErrInvalidGrant),
+		errors.Is(err, write.ErrMissingWriteScope):
+		return map[string]any{fieldKind: kindAuth}
+	case errors.Is(err, ErrNPCCorp), errors.Is(err, ErrMissingCorpRole),
+		errors.Is(err, ErrNoCorporation):
+		return map[string]any{fieldKind: kindError}
 	case errors.As(err, &ae):
-		return map[string]any{fieldError: ae.Error(), fieldKind: "AuthError"}
-	case errors.As(err, &wb):
-		return map[string]any{fieldError: wb.Error(), fieldKind: "WriteBlocked"}
+		return map[string]any{fieldKind: kindAuth}
+	case errors.As(err, &wb) || writeBlocked(err):
+		return map[string]any{fieldKind: kindWrite}
 	case errors.As(err, &ul):
-		// Allowance and error-budget refusals share this kind; the
-		// message names which so the model can tell the user the truth.
 		return map[string]any{
-			fieldError:            ul.Error(),
-			fieldKind:             "UserRateLimited",
+			fieldKind:             kindUser,
 			"retry_after_seconds": ul.RetrySec,
 			"retry_at":            ul.RetryAt.UTC().Format(time.RFC3339),
 			"hint":                "Wait until retry_at, then call the same tool once. Do not retry in a loop.",
 		}
 	case errors.As(err, &rl):
 		out := map[string]any{
-			fieldError:            rl.Error(),
-			fieldKind:             "EsiRateLimited",
+			fieldKind:             kindESILim,
 			"status":              rl.Status,
 			"retry_after_seconds": rl.RetrySec,
 			"retry_at":            rl.RetryAt.UTC().Format(time.RFC3339),
@@ -53,8 +61,16 @@ func MapError(err error) map[string]any {
 
 		return out
 	case errors.As(err, &ee):
-		return map[string]any{fieldError: ee.Error(), fieldKind: "EsiError", "status": ee.Status}
+		return map[string]any{fieldKind: kindESI, "status": ee.Status}
 	default:
-		return map[string]any{fieldError: err.Error(), fieldKind: "Error"}
+		return map[string]any{fieldKind: kindError}
 	}
+}
+
+func writeBlocked(err error) bool {
+	return errors.Is(err, write.ErrMailCap) ||
+		errors.Is(err, write.ErrConfirmUnknown) ||
+		errors.Is(err, write.ErrConfirmArgs) ||
+		errors.Is(err, write.ErrConfirmTool) ||
+		errors.Is(err, write.ErrUnknownCapability)
 }

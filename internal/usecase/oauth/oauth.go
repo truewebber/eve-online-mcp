@@ -54,15 +54,18 @@ const (
 )
 
 var (
-	ErrUnknownLogin = errors.New("unknown or expired login state")
-	ErrHMACTooShort = errors.New("oauth: HMAC key is too short")
-	errShortGrant   = errors.New("oauth: short grant")
-	errBadAlg       = errors.New("alg")
-	errInvalidToken = errors.New("invalid")
-	errNotRefresh   = errors.New("not refresh")
-	errNoSub        = errors.New("no sub")
-	errBadCharacter = errors.New("oauth: character id")
-	errNoSID        = errors.New("oauth: sid")
+	ErrUnknownLogin   = errors.New("oauth: unknown login")
+	ErrHMACTooShort   = errors.New("oauth: HMAC key is too short")
+	ErrClientMismatch = errors.New("oauth: client or pkce mismatch")
+	ErrLoginRefused   = errors.New("oauth: login refused")
+	ErrUnavailable    = errors.New("oauth: unavailable")
+	errShortGrant     = errors.New("oauth: short grant")
+	errBadAlg         = errors.New("alg")
+	errInvalidToken   = errors.New("invalid")
+	errNotRefresh     = errors.New("not refresh")
+	errNoSub          = errors.New("no sub")
+	errBadCharacter   = errors.New("oauth: character id")
+	errNoSID          = errors.New("oauth: sid")
 )
 
 type ShortGrantError struct {
@@ -168,10 +171,6 @@ func Open(pub Host, runtime *session.Session, opts Options, logger log.Logger) (
 	}, nil
 }
 
-func (s *Server) LogRefusedLogin(code, description string) {
-	s.logger.Info("oauth: login refused", "error", code, "error_description", description)
-}
-
 func (s *Server) Base() string { return s.pub.BaseURL() }
 
 func (s *Server) ResourceURL() string {
@@ -254,7 +253,7 @@ func (s *Server) ServeRegister(w http.ResponseWriter, r *http.Request) {
 	id := randomID(clientIDBytes)
 	err = s.clients.Upsert(r.Context(), oauthclient.Client{ID: id, Name: req.ClientName, RedirectURIs: allowed})
 	if err != nil {
-		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
+		s.writeOAuthError(w, err)
 
 		return
 	}
@@ -297,7 +296,7 @@ func (s *Server) ServeAuthorize(w http.ResponseWriter, r *http.Request) {
 
 	prep, err := s.login.PrepareLogin(nil)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		s.writeOAuthError(w, err)
 
 		return
 	}
@@ -310,7 +309,7 @@ func (s *Server) ServeAuthorize(w http.ResponseWriter, r *http.Request) {
 		MCPState:      state,
 		CodeChallenge: challenge,
 	}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		s.writeOAuthError(w, err)
 
 		return
 	}
@@ -338,6 +337,13 @@ func (s *Server) ServeToken(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, `{"error":"unsupported_grant_type"}`, http.StatusBadRequest)
 	}
+}
+
+func (s *Server) writeOAuthError(w http.ResponseWriter, err error) {
+	if err != nil && s.logger != nil {
+		s.logger.Error("oauth: server_error", "err", err)
+	}
+	http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
 }
 
 func (s *Server) clientRedirectOK(ctx context.Context, clientID, redirect string) bool {
@@ -414,7 +420,7 @@ func randomID(n int) string {
 	return hex.EncodeToString(b)
 }
 
-const headerConnectingIP = "CF-Connecting-IP"
+const headerConnectingIP = "Cf-Connecting-Ip"
 
 func (s *Server) requestIP(r *http.Request) string {
 	return ClientIP(r, s.trustConnectingIP)

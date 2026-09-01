@@ -64,7 +64,7 @@ func publicHandler(h *API, opts ListenOptions) http.Handler {
 }
 
 func mountPublic(h *API, mux *http.ServeMux) {
-	HandlerFromMux(h, mux)
+	h.Mount(mux)
 	prm := h.OAuth.ProtectedResourceHandler()
 	mux.Handle("/.well-known/oauth-protected-resource/", prm)
 	mux.Handle("/.well-known/oauth-protected-resource/mcp", prm)

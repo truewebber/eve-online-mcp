@@ -186,7 +186,7 @@ func (s *Session) eveAccess(ctx context.Context) (string, error) {
 			s.Logger.Error("session: revoke after invalid_grant", "sid", sid, "err", revErr)
 		}
 
-		return "", wrap("eveAccess", sso.Err("This connection's EVE grant was revoked or expired. Re-authenticate the MCP server (Authentication required) and try again."))
+		return "", wrap("eveAccess", err)
 	}
 	if err != nil {
 		return "", wrap("eveAccess", err)
@@ -203,5 +203,5 @@ func (s *Session) revokeIfScopesFallShort(ctx context.Context, granted []string)
 		s.Logger.Error("session: revoke after scope drift", "sid", s.SessionID, "err", err)
 	}
 
-	return wrap("revokeIfScopesFallShort", sso.Err("This connection's EVE grant is missing scopes this server requires. Re-authenticate the MCP server (Authentication required) and try again."))
+	return wrap("revokeIfScopesFallShort", ErrMissingScope)
 }

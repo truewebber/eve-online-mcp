@@ -47,6 +47,7 @@ func (b *userBucket) take() error {
 			),
 			RetryAt:  retryAt,
 			RetrySec: retrySec,
+			Reason:   esi.ErrAllowanceSpent,
 		}
 	}
 	b.tokens--

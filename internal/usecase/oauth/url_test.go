@@ -4,28 +4,28 @@ import "testing"
 
 func TestHostAssemblesURLs(t *testing.T) {
 	t.Parallel()
-	h := Host{Listen: "127.0.0.1:8765", MCPPath: "/mcp"}
-	if got := h.BaseURL(); got != "http://127.0.0.1:8765" {
+	h := Host{Listen: testListen, MCPPath: "/mcp"}
+	if got := h.BaseURL(); got != "http://"+testListen {
 		t.Fatalf("BaseURL %q", got)
 	}
-	if got := h.URL("oauth", "authorize"); got != "http://127.0.0.1:8765/oauth/authorize" {
+	if got := h.URL("oauth", "authorize"); got != "http://"+testListen+"/oauth/authorize" {
 		t.Fatalf("authorize %q", got)
 	}
 	s := &Server{pub: h}
-	if got := s.ResourceURL(); got != "http://127.0.0.1:8765/mcp" {
+	if got := s.ResourceURL(); got != "http://"+testListen+"/mcp" {
 		t.Fatalf("resource %q", got)
 	}
-	if got := s.MetadataURL(); got != "http://127.0.0.1:8765/.well-known/oauth-protected-resource" {
+	if got := s.MetadataURL(); got != "http://"+testListen+"/.well-known/oauth-protected-resource" {
 		t.Fatalf("metadata %q", got)
 	}
 	meta := s.AuthServerMeta()
-	if meta.AuthorizationEndpoint != "http://127.0.0.1:8765/oauth/authorize" {
+	if meta.AuthorizationEndpoint != "http://"+testListen+"/oauth/authorize" {
 		t.Fatalf("meta authorize %q", meta.AuthorizationEndpoint)
 	}
-	if meta.TokenEndpoint != "http://127.0.0.1:8765/oauth/token" {
+	if meta.TokenEndpoint != "http://"+testListen+"/oauth/token" {
 		t.Fatalf("meta token %q", meta.TokenEndpoint)
 	}
-	if meta.RegistrationEndpoint != "http://127.0.0.1:8765/oauth/register" {
+	if meta.RegistrationEndpoint != "http://"+testListen+"/oauth/register" {
 		t.Fatalf("meta register %q", meta.RegistrationEndpoint)
 	}
 }

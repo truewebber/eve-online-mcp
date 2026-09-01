@@ -23,13 +23,13 @@ func (s *Server) IssueAccess(characterID int, sessionID int64) (string, error) {
 func (s *Server) writeTokens(w http.ResponseWriter, characterID int, sessionID int64, validTil time.Time) {
 	access, err := s.issueAccess(characterID, sessionID)
 	if err != nil {
-		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
+		s.writeOAuthError(w, err)
 
 		return
 	}
 	refresh, err := s.issueRefresh(characterID, sessionID, validTil)
 	if err != nil {
-		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
+		s.writeOAuthError(w, err)
 
 		return
 	}

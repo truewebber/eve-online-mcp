@@ -60,6 +60,7 @@ func (b *errorBudget) check(remain int) error {
 		),
 		RetryAt:  retryAt,
 		RetrySec: retrySec,
+		Reason:   esi.ErrBudgetSpent,
 	}
 }
 

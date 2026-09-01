@@ -19,7 +19,7 @@ func (s *Server) exchangeCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
+		s.writeOAuthError(w, err)
 
 		return
 	}
@@ -48,7 +48,7 @@ func (s *Server) exchangeCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
+		s.writeOAuthError(w, err)
 
 		return
 	}

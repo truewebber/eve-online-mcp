@@ -121,7 +121,7 @@ func start(logger log.Logger) error {
 		Logger:    logger,
 	}).Start(context.Background())
 
-	h := httpsvc.New(oauthServer, host)
+	h := httpsvc.New(oauthServer, host, logger)
 	if err := httpsvc.ListenAndServe(h, httpsvc.ListenOptions{
 		Listen:            cfg.Listen,
 		InternalListen:    cfg.InternalListen,

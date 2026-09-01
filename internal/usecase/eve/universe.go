@@ -86,11 +86,11 @@ func registerUniverse(s *mcp.Server) {
 
 func eveUniverseSearch(ctx context.Context, a *session.Session, in universeSearchIn) (any, error) {
 	if len(strings.TrimSpace(in.Query)) < esiSearchMinChars {
-		return map[string]any{fError: "query must be at least 3 characters"}, nil
+		return nil, ValidationError{Field: "query", Invariant: "must be at least 3 characters"}
 	}
 	wanted := universeSearchWanted(in.Categories)
 	if invalid := universeSearchInvalid(wanted); len(invalid) > 0 {
-		return map[string]any{fError: fmt.Sprintf("Unknown categories %v. Valid values: %s", invalid, strings.Join(searchCategories(), ", "))}, nil
+		return nil, ValidationError{Field: fieldCategories, Invariant: "must be a known search category"}
 	}
 	token, err := a.Character(ctx)
 	if err != nil {
@@ -206,7 +206,7 @@ func eveUniverseItem(ctx context.Context, a *session.Session, in universeItemIn)
 	}
 	match := resolved[strings.ToLower(strings.TrimSpace(in.Item))]
 	if match.Chosen == nil {
-		return map[string]any{fError: fmt.Sprintf("No item type is named exactly %q. Call eve_universe_search with this text to find the real name.", in.Item)}, nil
+		return nil, UnresolvedError{Names: []string{in.Item}}
 	}
 	info, err := a.Resolver.TypeInfo(ctx, match.Chosen.ID)
 	if err != nil {
@@ -246,7 +246,7 @@ func eveUniverseSystem(ctx context.Context, a *session.Session, in universeSyste
 	}
 	match := resolved[strings.ToLower(strings.TrimSpace(in.System))]
 	if match.Chosen == nil {
-		return map[string]any{fError: fmt.Sprintf("No solar system is named exactly %q. Call eve_universe_search with categories='solar_system'.", in.System)}, nil
+		return nil, UnresolvedError{Names: []string{in.System}}
 	}
 	sid, name := match.Chosen.ID, match.Chosen.Name
 	got, err := universeSystemLookups(ctx, a, sid)
@@ -332,7 +332,7 @@ func eveUniverseRoute(ctx context.Context, a *session.Session, in universeRouteI
 	}
 	pref, ok := routePref(prefKey)
 	if !ok {
-		return map[string]any{fError: fmt.Sprintf("preference must be one of %v", []string{vShorter, "safer", "less_secure"})}, nil
+		return nil, ValidationError{Field: fieldPreference, Invariant: "must be one of shorter, safer, less_secure"}
 	}
 	found, err := universeResolveSystems(ctx, a, in)
 	if err != nil {
@@ -383,7 +383,7 @@ func universeRouteMissing(in universeRouteIn, oid, did int) map[string]any {
 		missing = append(missing, in.Destination)
 	}
 
-	return map[string]any{fError: fmt.Sprintf("Unknown system name(s): %v. Names must be exact — call eve_universe_search with categories='solar_system'.", missing)}
+	return unresolvedResult(missing...)
 }
 
 func universeRouteBody(in universeRouteIn, found map[string]int, pref string) universeRouteAvoid {

@@ -1,6 +1,6 @@
 # T23 — The user sees only static errors
 
-- Status: `todo`
+- Status: `done`
 - Size: M
 - Depends on: T18, T22
 - RULES: §9 (the user sees only static errors), §7 (only gopkg/log
@@ -105,14 +105,14 @@ is echoed as data in a field, not spliced into the sentence.
 
 ## Acceptance
 
-- [ ] No response body, header or `Location` contains `err.Error()`
-- [ ] No response contains a string received from CCP
-- [ ] Every user-visible message comes from the catalogue, and every
+- [x] No response body, header or `Location` contains `err.Error()`
+- [x] No response contains a string received from CCP
+- [x] Every user-visible message comes from the catalogue, and every
       entry is reachable
-- [ ] The real error is in the log for every catalogue entry rendered
-- [ ] Validation messages name a static field and a static invariant
-- [ ] Tool errors keep their SPEC §4 kind, sentence and extra fields
-- [ ] `go test ./...` and `make lint` pass
+- [x] The real error is in the log for every catalogue entry rendered
+- [x] Validation messages name a static field and a static invariant
+- [x] Tool errors keep their SPEC §4 kind, sentence and extra fields
+- [x] `go test ./...` and `make lint` pass
 
 ## Verify
 

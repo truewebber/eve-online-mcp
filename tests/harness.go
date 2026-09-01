@@ -188,9 +188,9 @@ func seedCharacter(t *testing.T, runtime *session.Session) (int, int64) {
 }
 
 func mcpMux(oauthServer *oauth.Server, host oauth.Host) nhttp.Handler {
-	h := httpsvc.New(oauthServer, host)
+	h := httpsvc.New(oauthServer, host, nil)
 	mux := nhttp.NewServeMux()
-	httpsvc.HandlerFromMux(h, mux)
+	h.Mount(mux)
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name: "eve-online", Title: "EVE Online", Version: testVersion,
 	}, &mcp.ServerOptions{Instructions: svcmcp.Instructions()})

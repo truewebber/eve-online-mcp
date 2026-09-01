@@ -24,11 +24,11 @@ func (s *Server) CompleteCallback(ctx context.Context, code, eveState string) (C
 		return Callback{}, ErrUnknownLogin
 	}
 	if err != nil {
-		return Callback{}, wrap("CompleteCallback", err)
+		return Callback{}, unavailable(err)
 	}
 	token, err := s.login.ExchangeCode(ctx, code, st.PKCEVerifier)
 	if err != nil {
-		return Callback{}, wrap("CompleteCallback", err)
+		return Callback{}, classifySSO(err)
 	}
 	loc, err := s.finishMCP(ctx, st, token)
 
@@ -47,7 +47,7 @@ func (s *Server) finishMCP(ctx context.Context, p *loginstate.Login, token *sso.
 	if err := s.runtime.Characters.Upsert(ctx, character.Character{
 		ID: int64(token.CharacterID), Name: token.CharacterName, OwnerHash: token.OwnerHash,
 	}); err != nil {
-		return "", wrap("finishMCP", err)
+		return "", unavailable(err)
 	}
 	scopes := token.Scopes
 	if scopes == nil {
@@ -64,7 +64,7 @@ func (s *Server) finishMCP(ctx context.Context, p *loginstate.Login, token *sso.
 		CodeChallenge: p.CodeChallenge,
 		ExpiresAt:     time.Now().Add(codeTTL),
 	}); err != nil {
-		return "", wrap("finishMCP", err)
+		return "", unavailable(err)
 	}
 	u, err := url.Parse(p.RedirectURI)
 	if err != nil {
@@ -87,14 +87,14 @@ func (s *Server) revokeOnOwnerHashChange(ctx context.Context, token *sso.Charact
 		return nil
 	}
 	if err != nil {
-		return wrap("revokeOnOwnerHashChange", err)
+		return unavailable(err)
 	}
 	if existing.OwnerHash == token.OwnerHash {
 		return nil
 	}
 	revoked, err := s.runtime.Sessions.RevokeAllForCharacter(ctx, int64(token.CharacterID))
 	if err != nil {
-		return wrap("revokeOnOwnerHashChange", err)
+		return unavailable(err)
 	}
 	s.runtime.RevokeAtCCP(ctx, revoked.Tokens)
 

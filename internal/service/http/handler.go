@@ -6,16 +6,26 @@ import (
 	"html"
 	"net/http"
 
+	"github.com/truewebber/gopkg/log"
+
 	"github.com/truewebber/eve-online-mcp/internal/usecase/oauth"
 )
 
 type API struct {
-	OAuth *oauth.Server
-	Host  oauth.Host
+	OAuth  *oauth.Server
+	Host   oauth.Host
+	Logger log.Logger
 }
 
-func New(oauthServer *oauth.Server, host oauth.Host) *API {
-	return &API{OAuth: oauthServer, Host: host}
+func New(oauthServer *oauth.Server, host oauth.Host, logger log.Logger) *API {
+	return &API{OAuth: oauthServer, Host: host, Logger: logger}
+}
+
+func (h *API) Mount(mux ServeMux) {
+	HandlerWithOptions(h, StdHTTPServerOptions{
+		BaseRouter:       mux,
+		ErrorHandlerFunc: h.bindError,
+	})
 }
 
 func (h *API) GetIndex(w http.ResponseWriter, r *http.Request) {
@@ -41,34 +51,21 @@ func (h *API) GetAuthLogin(w http.ResponseWriter, r *http.Request) {
 
 func (h *API) GetAuthCallback(w http.ResponseWriter, r *http.Request, _ GetAuthCallbackParams) {
 	if errS := r.URL.Query().Get("error"); errS != "" {
-		if h.OAuth != nil {
-			h.OAuth.LogRefusedLogin(errS, r.URL.Query().Get("error_description"))
-		}
-		pageStatus(w, "Login refused", `<p class=warn>The EVE login was refused. Start the login again from the client.</p>`)
+		desc := r.URL.Query().Get("error_description")
+		h.logPage(pageRefused, errCCPRefused, "error", errS, "error_description", desc)
+		writePage(w, pageRefused, "")
 
 		return
 	}
 	code, state := r.URL.Query().Get("code"), r.URL.Query().Get("state")
 	if code == "" || state == "" {
-		pageStatus(w, "Bad callback", `<p class=warn>Missing code or state.</p>`)
+		writePage(w, pageBadCallback, "")
 
 		return
 	}
 	cb, err := h.OAuth.CompleteCallback(r.Context(), code, state)
 	if err != nil {
-		if short, ok := errors.AsType[oauth.ShortGrantError](err); ok {
-			shortGrant(w, short.Missing)
-
-			return
-		}
-		if h.OAuth != nil {
-			h.OAuth.LogRefusedLogin("callback", err.Error())
-		}
-		detail := "Login failed. Start the login again from the client."
-		if errors.Is(err, oauth.ErrUnknownLogin) {
-			detail = "Unknown or expired login state — start the login again."
-		}
-		pageStatus(w, "Login failed", `<p class=warn>`+html.EscapeString(detail)+`</p>`)
+		h.writeErr(w, err)
 
 		return
 	}
@@ -103,4 +100,34 @@ func (h *API) GetOAuthAuthorize(w http.ResponseWriter, r *http.Request, _ GetOAu
 
 func (h *API) PostOAuthToken(w http.ResponseWriter, r *http.Request) {
 	h.OAuth.ServeToken(w, r)
+}
+
+func (h *API) bindError(w http.ResponseWriter, _ *http.Request, err error) {
+	h.logPage(pageGeneric, err)
+	http.Error(w, `{"error":"invalid_request"}`, http.StatusBadRequest)
+}
+
+func (h *API) writeErr(w http.ResponseWriter, err error) {
+	if short, ok := errors.AsType[oauth.ShortGrantError](err); ok {
+		h.logPage(pageShortGrant, err, "missing", short.Missing)
+		shortGrant(w, short.Missing)
+
+		return
+	}
+	entry := lookup(err)
+	h.logPage(entry, err)
+	writePage(w, entry, "")
+}
+
+func (h *API) logPage(entry pageErr, err error, extra ...any) {
+	if h.Logger == nil {
+		return
+	}
+	args := append([]any{"err", err, "title", entry.title}, extra...)
+	if entry.status >= http.StatusInternalServerError {
+		h.Logger.Error("http: callback", args...)
+
+		return
+	}
+	h.Logger.Info("http: callback", args...)
 }

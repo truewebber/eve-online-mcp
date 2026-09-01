@@ -406,8 +406,14 @@ Tool contract (enforced by the catalogue check in `tests/`):
 | `Error` | anything else, including a name that resolved to nothing | — |
 
 A name the server cannot resolve (item, system, contact) is an `Error`
-whose sentence points at `eve_universe_search`; there is no
+whose sentence points at `eve_universe_search`; the name itself is
+echoed in a `names` field, not spliced into the sentence. There is no
 `CharacterNotFound` kind, because nothing takes a character any more.
+
+The transport is the only place an error becomes a response (RULES.md
+§9). Inner layers return real Go errors for the log; the user-visible
+sentence and kind come from a fixed catalog. CCP's `error` /
+`error_description` are logged, never rendered.
 
 Domains: account/auth, character, assets, wallet, industry, market,
 social (mail, notifications, killmails, fittings, calendar), universe,
@@ -681,7 +687,7 @@ cannot steal the route.
 |---|---|
 | `GET /` | Human status page: version, whether ESI is reachable, how to connect. No character data, no counts — it is world-readable |
 | `GET /auth/login` | Redirect to `/oauth/authorize` |
-| `GET /auth/callback` | EVE SSO callback → 302 back to the MCP client |
+| `GET /auth/callback` | EVE SSO callback → 302 back to the MCP client. Failures render a static catalog page; CCP query strings and Go errors stay in the log |
 | `GET /.well-known/oauth-protected-resource` | PRM |
 | `GET /.well-known/oauth-authorization-server` | AS metadata |
 | `POST /oauth/register` | DCR |

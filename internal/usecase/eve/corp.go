@@ -267,7 +267,7 @@ func corpOverviewAttachWallets(ctx context.Context, a *session.Session, corp *ch
 	}
 	wallets, err := a.ESI.Get(ctx, esiPath("corporations", esiID(corp.CorporationID), "wallets"), &corp.Token.CharacterID, nil, nil)
 	if err != nil {
-		out["wallets_note"] = err.Error()
+		out["wallets_note"] = sectionNote(a, "corp wallets", err)
 
 		return
 	}
@@ -757,7 +757,7 @@ func corpMiningAttachExtractions(ctx context.Context, a *session.Session, corp *
 	}
 	ex, err := corpExtractions(ctx, a, corp)
 	if err != nil {
-		out["extractions_note"] = err.Error()
+		out["extractions_note"] = sectionNote(a, "corp extractions", err)
 
 		return
 	}
@@ -772,7 +772,7 @@ func corpMiningAttachLedger(ctx context.Context, a *session.Session, corp *chara
 	}
 	ledger, err := corpMiningLedger(ctx, a, corp, limitOr(in.Limit, limitDefault), concise(in.ResponseFormat))
 	if err != nil {
-		out["ledger_note"] = err.Error()
+		out["ledger_note"] = sectionNote(a, "corp ledger", err)
 
 		return
 	}

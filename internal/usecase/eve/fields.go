@@ -97,6 +97,8 @@ const (
 	vUpdate      = "update"
 
 	catInventoryTypes = "inventory_types"
+	fieldCategories   = "categories"
+	fieldPreference   = "preference"
 
 	roleAccountant     = "Accountant"
 	roleDirector       = "Director"
