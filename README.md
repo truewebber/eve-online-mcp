@@ -105,18 +105,22 @@ client and sign in with EVE — MCP OAuth binds each of them to their own
 characters.
 
 `/healthz`, `/readyz` (and metrics, when added) are served on
-`INTERNAL_LISTEN` (default `127.0.0.1:8766`) — point k8s probes there,
-never route it publicly. Liveness is `/healthz`; readiness is `/readyz`,
-which also pings Postgres, so a pod that cannot reach the database leaves
-the Service instead of being restarted forever. Under Kubernetes both
-listeners need `0.0.0.0:{port}`, or the kubelet cannot reach the probe,
-and `PUBLIC_URL` must be set once the bind is not loopback. Any number of
-replicas works — all durable state is in Postgres — but caches and rate
-counters live in each pod, so above one replica hash `/mcp` onto pods by
-the `Authorization` header. That keeps a character on one pod for as long
-as its access token lives, an hour, which is stickiness rather than a
-guarantee. Replicas buy failover and rolling updates, not ESI headroom:
-CCP's error limit is per IP.
+`INTERNAL_LISTEN_HOST_PORT` (default `127.0.0.1:8766`) — point k8s
+probes there, never route it publicly. Liveness is `/healthz`; readiness
+is `/readyz`, which also pings Postgres, so a pod that cannot reach the
+database leaves the Service instead of being restarted forever. Under
+Kubernetes both listeners need `0.0.0.0:{port}`
+(`LISTEN_HOST_PORT` / `INTERNAL_LISTEN_HOST_PORT`), or the kubelet
+cannot reach the probe, and `PUBLIC_URL` must be set once the bind is
+not loopback. Any number of replicas works — all durable state is in
+Postgres — but caches and rate counters live in each pod, so above one
+replica hash `/mcp` onto pods by the `Authorization` header
+(`upstream-hash-by: "$http_authorization"`). That keeps a character on
+one pod for as long as its access token lives, an hour, which is
+stickiness rather than a guarantee. Size the pool so
+`pool_max_conns × replicas` stays inside Postgres `max_connections`.
+Replicas buy failover and rolling updates, not ESI headroom: CCP's
+error limit is per IP.
 
 If ESI returns `420` / error-limit headers, tools answer
 `kind: EsiRateLimited` with `retry_at` and `retry_after_seconds`. Wait
@@ -192,8 +196,8 @@ See `.env.example`.
 | `CLIENT_ID` | — | **required**, the instance EVE application |
 | `CONTACT` | — | email for the User-Agent |
 | `CLIENT_SECRET` | empty | confidential applications only |
-| `LISTEN` | `127.0.0.1:8765` | public bind address (MCP + OAuth) |
-| `INTERNAL_LISTEN` | `127.0.0.1:8766` | healthz / metrics; never route publicly |
+| `LISTEN_HOST_PORT` | `127.0.0.1:8765` | public bind, host and port (MCP + OAuth) |
+| `INTERNAL_LISTEN_HOST_PORT` | `127.0.0.1:8766` | healthz / readyz / metrics; never route publicly |
 | `PUBLIC_URL` | empty | public base URL (sets the SSO callback); must be HTTPS unless loopback |
 | `EXTRA_REDIRECT_URIS` | empty | extra exact OAuth callbacks, for a client beyond Cursor / Claude |
 | `DATABASE_URL` | — | **required**, Postgres DSN (`make postgres`) |

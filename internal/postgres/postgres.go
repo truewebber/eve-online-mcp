@@ -42,6 +42,18 @@ func (db *DB) Pool() *pgxpool.Pool {
 	return db.pool
 }
 
+func (db *DB) Ping(ctx context.Context) error {
+	if db == nil || db.pool == nil {
+		return ErrEmptyDatabaseURL
+	}
+
+	if err := db.pool.Ping(ctx); err != nil {
+		return fmt.Errorf("postgres: ping: %w", err)
+	}
+
+	return nil
+}
+
 func (db *DB) Close() {
 	if db != nil && db.pool != nil {
 		db.pool.Close()

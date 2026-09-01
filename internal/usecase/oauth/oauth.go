@@ -126,19 +126,23 @@ func (h Host) root() url.URL {
 }
 
 type Options struct {
-	HMACKey []byte
+	HMACKey           []byte
+	ExtraRedirects    []string
+	TrustConnectingIP bool
 }
 
 type Server struct {
-	pub      Host
-	runtime  *session.Session
-	clients  oauthclient.Repository
-	logins   loginstate.Repository
-	codes    authcode.Repository
-	login    sso.Client
-	hmacKey  []byte
-	sessions sync.Map
-	logger   log.Logger
+	pub               Host
+	runtime           *session.Session
+	clients           oauthclient.Repository
+	logins            loginstate.Repository
+	codes             authcode.Repository
+	login             sso.Client
+	hmacKey           []byte
+	extraRedirects    []string
+	trustConnectingIP bool
+	sessions          sync.Map
+	logger            log.Logger
 }
 
 func Open(pub Host, runtime *session.Session, opts Options, logger log.Logger) (*Server, error) {
@@ -151,14 +155,16 @@ func Open(pub Host, runtime *session.Session, opts Options, logger log.Logger) (
 	}
 
 	return &Server{
-		pub:     pub,
-		runtime: runtime,
-		clients: runtime.Clients,
-		logins:  runtime.Logins,
-		codes:   runtime.Codes,
-		login:   runtime.Opts.SSO,
-		hmacKey: opts.HMACKey,
-		logger:  logger,
+		pub:               pub,
+		runtime:           runtime,
+		clients:           runtime.Clients,
+		logins:            runtime.Logins,
+		codes:             runtime.Codes,
+		login:             runtime.Opts.SSO,
+		hmacKey:           opts.HMACKey,
+		extraRedirects:    opts.ExtraRedirects,
+		trustConnectingIP: opts.TrustConnectingIP,
+		logger:            logger,
 	}, nil
 }
 
@@ -236,7 +242,7 @@ func (s *Server) ServeRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	var allowed []string
 	for _, u := range req.RedirectURIs {
-		if redirectOK(u) {
+		if s.redirectAllowed(u) {
 			allowed = append(allowed, u)
 		}
 	}
@@ -335,7 +341,7 @@ func (s *Server) ServeToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) clientRedirectOK(ctx context.Context, clientID, redirect string) bool {
-	if !redirectOK(redirect) {
+	if !s.redirectAllowed(redirect) {
 		return false
 	}
 	c, err := s.clients.Get(ctx, clientID)
@@ -356,6 +362,14 @@ func (s *Server) clientName(ctx context.Context, clientID string) string {
 	}
 
 	return c.Name
+}
+
+func (s *Server) redirectAllowed(raw string) bool {
+	if redirectOK(raw) {
+		return true
+	}
+
+	return slices.Contains(s.extraRedirects, raw)
 }
 
 func redirectOK(raw string) bool {
@@ -400,7 +414,18 @@ func randomID(n int) string {
 	return hex.EncodeToString(b)
 }
 
-func requestIP(r *http.Request) string {
+const headerConnectingIP = "CF-Connecting-IP"
+
+func (s *Server) requestIP(r *http.Request) string {
+	return ClientIP(r, s.trustConnectingIP)
+}
+
+func ClientIP(r *http.Request, trustConnectingIP bool) string {
+	if trustConnectingIP {
+		if ip := strings.TrimSpace(r.Header.Get(headerConnectingIP)); ip != "" {
+			return ip
+		}
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr

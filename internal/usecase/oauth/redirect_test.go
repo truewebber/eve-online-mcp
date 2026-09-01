@@ -27,6 +27,18 @@ func TestRedirectOK(t *testing.T) {
 	}
 }
 
+func TestExtraRedirectAllowed(t *testing.T) {
+	t.Parallel()
+	const extra = "https://app.example.com/oauth/callback"
+	s := &Server{extraRedirects: []string{extra}}
+	if !s.redirectAllowed(extra) {
+		t.Fatal("extra URI should be allowed")
+	}
+	if s.redirectAllowed("https://evil.example/callback") {
+		t.Fatal("unknown extra URI")
+	}
+}
+
 func TestPKCE(t *testing.T) {
 	t.Parallel()
 	verifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"

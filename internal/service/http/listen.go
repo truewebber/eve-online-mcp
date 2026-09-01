@@ -1,6 +1,7 @@
 package httpsvc
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -19,26 +20,58 @@ const (
 	readTimeout       = 15 * time.Second
 	writeTimeout      = 2 * time.Minute
 	idleTimeout       = 2 * time.Minute
+	readyTimeout      = 2 * time.Second
+	readyOK           = `{"status":"ok"}`
+	readyDown         = `{"status":"unavailable"}`
 )
 
 type ListenOptions struct {
-	Listen         string
-	InternalListen string
-	MCPPath        string
-	Version        string
-	Logger         log.Logger
+	Listen            string
+	InternalListen    string
+	MCPPath           string
+	Version           string
+	TrustConnectingIP bool
+	Ready             func(context.Context) error
+	Logger            log.Logger
 }
 
-// The internal listener (healthz, later metrics) must never be exposed.
+// The internal listener (healthz, readyz, later metrics) must never be exposed.
 func ListenAndServe(h *API, opts ListenOptions) error {
-	mux := http.NewServeMux()
-	HandlerFromMux(h, mux)
+	errs := make(chan error, httpServers)
+	go func() { errs <- serve(opts.InternalListen, internalMux(opts.Ready)) }()
 
+	base := h.Host.BaseURL()
+	path := mcpPath(opts.MCPPath)
+	opts.Logger.Info("writes: confirm, mail cap 5/hour")
+	opts.Logger.Info("MCP endpoint (OAuth — clients show Authentication required)", "base", base, "path", path)
+	opts.Logger.Info("EVE callback must be exactly this URL", "url", h.Host.CallbackURL)
+	opts.Logger.Info("internal endpoint (healthz, readyz)", "addr", opts.InternalListen)
+
+	go func() { errs <- serve(opts.Listen, publicHandler(h, opts)) }()
+
+	return <-errs
+}
+
+func publicHandler(h *API, opts ListenOptions) http.Handler {
+	public := http.NewServeMux()
+	mountPublic(h, public)
+	limited := newLimiter(opts.Logger).wrap(public, opts.TrustConnectingIP)
+	root := http.NewServeMux()
+	mountMCP(root, h, opts)
+	root.Handle("/", limited)
+
+	return root
+}
+
+func mountPublic(h *API, mux *http.ServeMux) {
+	HandlerFromMux(h, mux)
 	prm := h.OAuth.ProtectedResourceHandler()
 	mux.Handle("/.well-known/oauth-protected-resource/", prm)
 	mux.Handle("/.well-known/oauth-protected-resource/mcp", prm)
 	mux.HandleFunc("/.well-known/oauth-authorization-server/", h.OAuth.ServeASMeta)
+}
 
+func mountMCP(mux *http.ServeMux, h *API, opts ListenOptions) {
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name: "eve-online", Title: "EVE Online", Version: opts.Version,
 	}, &mcp.ServerOptions{Instructions: svcmcp.Instructions()})
@@ -50,27 +83,19 @@ func ListenAndServe(h *API, opts ListenOptions) error {
 		DisableLocalhostProtection: true,
 	})
 	protected := h.OAuth.ProtectMCP(stream)
-	path := opts.MCPPath
-	if path == "" {
-		path = "/mcp"
-	}
+	path := mcpPath(opts.MCPPath)
 	mux.Handle(path, protected)
 	if !strings.HasSuffix(path, "/") {
 		mux.Handle(path+"/", protected)
 	}
+}
 
-	errs := make(chan error, httpServers)
-	go func() { errs <- serve(opts.InternalListen, internalMux()) }()
+func mcpPath(path string) string {
+	if path == "" {
+		return "/mcp"
+	}
 
-	base := h.Host.BaseURL()
-	opts.Logger.Info("writes: confirm, mail cap 5/hour")
-	opts.Logger.Info("MCP endpoint (OAuth — clients show Authentication required)", "base", base, "path", path)
-	opts.Logger.Info("EVE callback must be exactly this URL", "url", h.Host.CallbackURL)
-	opts.Logger.Info("internal endpoint (healthz)", "addr", opts.InternalListen)
-
-	go func() { errs <- serve(opts.Listen, mux) }()
-
-	return <-errs
+	return path
 }
 
 func serve(addr string, h http.Handler) error {
@@ -82,7 +107,6 @@ func serve(addr string, h http.Handler) error {
 		WriteTimeout:      writeTimeout,
 		IdleTimeout:       idleTimeout,
 	}
-
 	if err := s.ListenAndServe(); err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
@@ -90,15 +114,37 @@ func serve(addr string, h http.Handler) error {
 	return nil
 }
 
-// Not on the public mux — k8s probes only.
-func internalMux() *http.ServeMux {
+func internalMux(ready func(context.Context) error) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
-			return
-		}
-	})
+	mux.HandleFunc("/healthz", serveHealthz)
+	mux.HandleFunc("/readyz", serveReadyz(ready))
 
 	return mux
+}
+
+func serveHealthz(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, readyOK)
+}
+
+func serveReadyz(ready func(context.Context) error) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if ready != nil {
+			ctx, cancel := context.WithTimeout(r.Context(), readyTimeout)
+			defer cancel()
+			if err := ready(ctx); err != nil {
+				writeJSON(w, http.StatusServiceUnavailable, readyDown)
+
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, readyOK)
+	}
+}
+
+func writeJSON(w http.ResponseWriter, status int, body string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if _, err := w.Write([]byte(body)); err != nil {
+		return
+	}
 }

@@ -101,7 +101,11 @@ func start(logger log.Logger) error {
 		MCPPath:     "/mcp",
 		CallbackURL: cfg.CallbackURL,
 	}
-	oauthServer, err := oauth.Open(host, runtime, oauth.Options{HMACKey: cfg.hmacKey}, logger)
+	oauthServer, err := oauth.Open(host, runtime, oauth.Options{
+		HMACKey:           cfg.hmacKey,
+		ExtraRedirects:    cfg.ExtraRedirects,
+		TrustConnectingIP: cfg.TrustConnectingIP,
+	}, logger)
 	if err != nil {
 		return fmt.Errorf("open oauth: %w", err)
 	}
@@ -119,11 +123,13 @@ func start(logger log.Logger) error {
 
 	h := httpsvc.New(oauthServer, host)
 	if err := httpsvc.ListenAndServe(h, httpsvc.ListenOptions{
-		Listen:         cfg.Listen,
-		InternalListen: cfg.InternalListen,
-		MCPPath:        host.MCPPath,
-		Version:        version,
-		Logger:         logger,
+		Listen:            cfg.Listen,
+		InternalListen:    cfg.InternalListen,
+		MCPPath:           host.MCPPath,
+		Version:           version,
+		TrustConnectingIP: cfg.TrustConnectingIP,
+		Ready:             db.Ping,
+		Logger:            logger,
 	}); err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
@@ -139,6 +145,8 @@ Usage:
 Required env: CLIENT_ID — the EVE application from developers.eveonline.com.
 DATABASE_URL — Postgres DSN (make postgres). HMAC_KEY — MCP JWT signing
 key, min 32 bytes (openssl rand -hex 32). See .env.example.
+LISTEN_HOST_PORT / INTERNAL_LISTEN_HOST_PORT default to loopback.
+PUBLIC_URL is required when the public bind is not loopback.
 See .env.example for the full list. Clients connect to http://127.0.0.1:8765/mcp
 and sign in with their EVE account in the browser.
 `

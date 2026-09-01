@@ -22,13 +22,19 @@ func validConfig() config {
 	}
 }
 
+func ready(t *testing.T, c *config) {
+	t.Helper()
+	if err := c.validate(); err != nil {
+		t.Fatal(err)
+	}
+	c.derive()
+}
+
 func TestCallbackURLFromPublicURL(t *testing.T) {
 	t.Parallel()
 	c := validConfig()
 	c.PublicURL = "https://eve.example.com/"
-	if err := c.validate(); err != nil {
-		t.Fatal(err)
-	}
+	ready(t, &c)
 	if c.CallbackURL != "https://eve.example.com/auth/callback" {
 		t.Fatalf("callback %q", c.CallbackURL)
 	}
@@ -37,12 +43,75 @@ func TestCallbackURLFromPublicURL(t *testing.T) {
 func TestCallbackURLLoopback(t *testing.T) {
 	t.Parallel()
 	c := validConfig()
-	c.Listen = "0.0.0.0:9000"
-	if err := c.validate(); err != nil {
-		t.Fatal(err)
-	}
+	c.Listen = "127.0.0.1:9000"
+	ready(t, &c)
 	if c.CallbackURL != "http://127.0.0.1:9000/auth/callback" {
 		t.Fatalf("callback %q", c.CallbackURL)
+	}
+}
+
+func TestPublicURLRequiredOffLoopback(t *testing.T) {
+	t.Parallel()
+	c := validConfig()
+	c.Listen = "0.0.0.0:8765"
+	if err := c.validate(); !errors.Is(err, errPublicURLRequired) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestPublicURLHTTPOnPublicHost(t *testing.T) {
+	t.Parallel()
+	c := validConfig()
+	c.PublicURL = "http://eve.example.com"
+	if err := c.validate(); !errors.Is(err, errPublicURLScheme) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestPublicURLHTTPOnLoopback(t *testing.T) {
+	t.Parallel()
+	c := validConfig()
+	c.PublicURL = "http://127.0.0.1:8765"
+	ready(t, &c)
+	if !c.TrustConnectingIP {
+		t.Fatal("loopback bind should trust CF-Connecting-IP")
+	}
+}
+
+func TestWildcardRedirectRefused(t *testing.T) {
+	t.Parallel()
+	c := validConfig()
+	c.RedirectsRaw = "https://*.example.com/cb"
+	if err := c.validate(); !errors.Is(err, errRedirectWildcard) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestFragmentRedirectRefused(t *testing.T) {
+	t.Parallel()
+	c := validConfig()
+	c.RedirectsRaw = "https://app.example.com/cb#frag"
+	if err := c.validate(); !errors.Is(err, errRedirectFragment) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestRelativeRedirectRefused(t *testing.T) {
+	t.Parallel()
+	c := validConfig()
+	c.RedirectsRaw = "/callback"
+	if err := c.validate(); !errors.Is(err, errRedirectAbsolute) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestExtraRedirectAccepted(t *testing.T) {
+	t.Parallel()
+	c := validConfig()
+	c.RedirectsRaw = "https://app.example.com/oauth/callback"
+	ready(t, &c)
+	if len(c.ExtraRedirects) != 1 || c.ExtraRedirects[0] != "https://app.example.com/oauth/callback" {
+		t.Fatalf("redirects %v", c.ExtraRedirects)
 	}
 }
 
@@ -70,5 +139,16 @@ func TestHMACKeyNotHex(t *testing.T) {
 	c.HMACKey = "not-hex"
 	if err := c.validate(); !errors.Is(err, errHMACHex) {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestNonLoopbackDoesNotTrustCF(t *testing.T) {
+	t.Parallel()
+	c := validConfig()
+	c.Listen = "0.0.0.0:8765"
+	c.PublicURL = "https://eve.example.com"
+	ready(t, &c)
+	if c.TrustConnectingIP {
+		t.Fatal("wildcard bind must not trust CF-Connecting-IP")
 	}
 }

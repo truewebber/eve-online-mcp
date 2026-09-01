@@ -1,6 +1,6 @@
 # T22 — Config and edges: env names, `PUBLIC_URL`, the per-IP limit, `/readyz`
 
-- Status: `todo`
+- Status: `done`
 - Size: M
 - Depends on: T17
 - RULES: §16 (config is env on the binary), §8 (assembled URLs),
@@ -128,18 +128,18 @@ the socket address unconditionally pending this task.
 
 ## Acceptance
 
-- [ ] No env is named for an address; the listener envs carry
+- [x] No env is named for an address; the listener envs carry
       `_HOST_PORT`, and SPEC §2 says the same
-- [ ] Boot validation covers `PUBLIC_URL`, its scheme, the redirect URIs
+- [x] Boot validation covers `PUBLIC_URL`, its scheme, the redirect URIs
       and `HMAC_KEY`, each with a test
-- [ ] The base URL never comes from `Host`
-- [ ] Every unauthenticated public route is rate-limited, `GET /`
+- [x] The base URL never comes from `Host`
+- [x] Every unauthenticated public route is rate-limited, `GET /`
       included
-- [ ] `CF-Connecting-IP` is trusted only under the documented condition,
+- [x] `CF-Connecting-IP` is trusted only under the documented condition,
       and the same helper fills `sessions.ip`
-- [ ] `/readyz` pings Postgres; `/healthz` does not
-- [ ] No new env for a value SPEC §2 calls a constant
-- [ ] `go test ./...` and `make lint` pass
+- [x] `/readyz` pings Postgres; `/healthz` does not
+- [x] No new env for a value SPEC §2 calls a constant
+- [x] `go test ./...` and `make lint` pass
 
 ## Verify
 

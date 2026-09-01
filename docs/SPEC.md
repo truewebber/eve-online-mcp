@@ -63,8 +63,8 @@ Each pod runs two HTTP listeners:
 
 | Listener | Env | Default | Serves | Exposure |
 |---|---|---|---|---|
-| Public | `LISTEN` | `127.0.0.1:8765` | `/mcp`, OAuth endpoints, human pages | Ingress / Cloudflare tunnel |
-| Internal | `INTERNAL_LISTEN` | `127.0.0.1:8766` | `/healthz`, `/metrics` (future) | Cluster-only. Never routed publicly |
+| Public | `LISTEN_HOST_PORT` | `127.0.0.1:8765` | `/mcp`, OAuth endpoints, human pages | Ingress / Cloudflare tunnel |
+| Internal | `INTERNAL_LISTEN_HOST_PORT` | `127.0.0.1:8766` | `/healthz`, `/readyz`, `/metrics` (future) | Cluster-only. Never routed publicly |
 
 Defaults bind loopback because the common local case is a laptop. Under
 Kubernetes both must be set to `0.0.0.0:<port>` or the kubelet cannot
@@ -83,9 +83,9 @@ into per-module `Options`.
 | `CLIENT_ID` | **yes** | — | The instance EVE application (developers.eveonline.com). Its registration must carry **every** scope in `RequestedScopes()` (§4.2): a scope the application does not list is a scope EVE will never grant, and §3.2 refuses such a login at the callback |
 | `CLIENT_SECRET` | no | empty | Only for confidential applications; PKCE is used either way |
 | `CONTACT` | no | empty | Operator email for the User-Agent; strongly recommended |
-| `LISTEN` | no | `127.0.0.1:8765` | Public bind address |
-| `INTERNAL_LISTEN` | no | `127.0.0.1:8766` | Internal bind address |
-| `PUBLIC_URL` | when `LISTEN` is not loopback | empty | Public base URL; also fixes the EVE callback to `{PUBLIC_URL}/auth/callback` |
+| `LISTEN_HOST_PORT` | no | `127.0.0.1:8765` | Public bind (host and port) |
+| `INTERNAL_LISTEN_HOST_PORT` | no | `127.0.0.1:8766` | Internal bind (host and port) |
+| `PUBLIC_URL` | when `LISTEN_HOST_PORT` is not loopback | empty | Public base URL; also fixes the EVE callback to `{PUBLIC_URL}/auth/callback` |
 | `EXTRA_REDIRECT_URIS` | no | empty | Comma-separated exact redirect URIs added to the built-in allowlist (§3.1), for an MCP client we do not ship support for |
 | `DATABASE_URL` | **yes** | — | PostgreSQL DSN; sole durable store (see DB.md) |
 | `HMAC_KEY` | **yes** | — | MCP JWT signing key, min 32 bytes (`openssl rand -hex 32`). Rotation = new secret + restart → all clients re-authenticate |
@@ -96,15 +96,15 @@ Validation at boot, fatal on failure:
 - `PUBLIC_URL`, when set, is an absolute URL and its scheme is `https`
   unless the host is loopback — authorization codes travel in browser
   URLs (AUTH.md, standing requirement 1);
-- `PUBLIC_URL` is **set** whenever `LISTEN` does not bind a loopback
-  address. It is the `iss` of every token we sign, the `resource` of the
-  PRM document and the EVE callback, and none of the three may vary
-  between requests;
+- `PUBLIC_URL` is **set** whenever `LISTEN_HOST_PORT` does not bind a
+  loopback address. It is the `iss` of every token we sign, the
+  `resource` of the PRM document and the EVE callback, and none of the
+  three may vary between requests;
 - every entry of `EXTRA_REDIRECT_URIS` is an absolute URL with no
   wildcard and no fragment;
 - `HMAC_KEY` decodes to at least 32 bytes.
 
-The base URL is `PUBLIC_URL` when set and `http://{LISTEN}` otherwise —
+The base URL is `PUBLIC_URL` when set and the loopback bind otherwise —
 **never** the request's `Host` header, which is attacker-controlled and
 would let a caller mint metadata pointing anywhere. The callback URL
 therefore defaults to `http://127.0.0.1:{port}/auth/callback`.
@@ -802,12 +802,12 @@ the mail cap counts from (§5.4). It stores no message bodies.
 
 - **Kubernetes (primary):** Deployment, `replicas >= 1`, rolling
   updates, no volumes; env (`DATABASE_URL`, `CLIENT_ID`, `HMAC_KEY`, …)
-  from a Secret; `LISTEN` and `INTERNAL_LISTEN` set to `0.0.0.0:{port}`
-  so the kubelet and the Service can reach them; `PUBLIC_URL` set,
-  because the binds are not loopback (§2); liveness → `GET /healthz` and
-  readiness → `GET /readyz` on the internal port; internal port has no
-  Ingress exposure. Postgres is a cluster service, provisioned
-  separately.
+  from a Secret; `LISTEN_HOST_PORT` and `INTERNAL_LISTEN_HOST_PORT` set
+  to `0.0.0.0:{port}` so the kubelet and the Service can reach them;
+  `PUBLIC_URL` set, because the binds are not loopback (§2); liveness →
+  `GET /healthz` and readiness → `GET /readyz` on the internal port;
+  internal port has no Ingress exposure. Postgres is a cluster service,
+  provisioned separately.
 - **Above one replica:** hash `/mcp` onto pods by the `Authorization`
   header (nginx ingress `upstream-hash-by: "$http_authorization"`) so a
   character keeps its cache and its counters for as long as its access
@@ -818,10 +818,10 @@ the mail cap counts from (§5.4). It stores no message bodies.
   `max_connections`, and past a few dozen pods that means PgBouncer.
 - **Reaching the public listener:** the Cloudflare tunnel is the only
   intended path in. If the tunnel runs as a sidecar in the same pod,
-  keep `LISTEN` on loopback and treat `CF-Connecting-IP` as trusted
-  (§3.1); if it terminates elsewhere, the Service must not be reachable
-  from anywhere but the tunnel, and until that is true the header is
-  ignored in favour of the socket address.
+  keep `LISTEN_HOST_PORT` on loopback and treat `CF-Connecting-IP` as
+  trusted (§3.1); if it terminates elsewhere, the Service must not be
+  reachable from anywhere but the tunnel, and until that is true the
+  header is ignored in favour of the socket address.
 - **Local dev:** any reachable Postgres (e.g. `docker run postgres`),
   `DATABASE_URL` in `./.env`, `./eve-mcp` in the foreground.
 - **Rollout:** migrations are forward-only and run in the deploy
@@ -832,7 +832,7 @@ the mail cap counts from (§5.4). It stores no message bodies.
 
 ## 11. Observability
 
-- Now: `/healthz`, structured process logs to stdout,
+- Now: `/healthz`, `/readyz`, structured process logs to stdout,
   and the `mutations` audit log (§8), which is queryable with SQL and is
   the only durable record of in-game changes.
 - Next (internal listener): Prometheus `/metrics` — ESI requests/errors

@@ -1,3 +1,7 @@
+# Postgres only. The eve-mcp binary runs on the host (`make run`).
+# Kubernetes: LISTEN_HOST_PORT and INTERNAL_LISTEN_HOST_PORT = 0.0.0.0:{port},
+# PUBLIC_URL required off loopback, liveness /healthz and readiness /readyz
+# on the internal port.
 services:
   postgres:
     image: postgres:16-alpine

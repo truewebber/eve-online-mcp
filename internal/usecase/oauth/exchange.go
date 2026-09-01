@@ -40,7 +40,7 @@ func (s *Server) exchangeCode(w http.ResponseWriter, r *http.Request) {
 		Scopes:       ac.Scopes,
 		MCPClientID:  ac.MCPClientID,
 		ClientName:   s.clientName(r.Context(), ac.MCPClientID),
-		IP:           requestIP(r),
+		IP:           s.requestIP(r),
 	})
 	if errors.Is(err, authcode.ErrNotFound) {
 		http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)

@@ -26,8 +26,9 @@ info:
     they log in and pick a character. Characters group under a server-side
     user; the MCP bearer token carries that user id.
 
-    Liveness and metrics live on the internal listener (`INTERNAL_LISTEN`),
-    outside this contract, and must not be routed publicly.
+    Liveness and readiness live on the internal listener
+    (`INTERNAL_LISTEN_HOST_PORT`), outside this contract, and must not
+    be routed publicly.
 servers:
   - url: /
 paths:

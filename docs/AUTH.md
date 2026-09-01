@@ -23,7 +23,7 @@ sees it.
 actors:
   browser:      "player's browser (also carries redirects between parties)"
   mcp_client:   "Cursor / Claude app (OAuth client; holds its PKCE verifier + MCP tokens)"
-  eve_mcp:      "our server, any replica count, public listener (LISTEN / PUBLIC_URL, TLS via CF tunnel)"
+  eve_mcp:      "our server, any replica count, public listener (LISTEN_HOST_PORT / PUBLIC_URL, TLS via CF tunnel)"
   postgres:     "durable store (DATABASE_URL, cluster-internal)"
   eve_sso:      "login.eveonline.com (CCP)"
   esi:          "esi.evetech.net (CCP)"
