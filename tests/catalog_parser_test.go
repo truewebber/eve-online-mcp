@@ -181,7 +181,7 @@ func TestCatalogParserRealTOOLS(t *testing.T) {
 
 func TestCatalogParserExtractLiteralAndCtor(t *testing.T) {
 	t.Parallel()
-	calls, err := extractSource("sample.go", readTestdata(t, "catalog/src_literal.go"))
+	calls, err := extractSource(readTestdata(t, "catalog/src_literal.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestCatalogParserExtractLiteralAndCtor(t *testing.T) {
 
 func TestCatalogParserExtractParamFromCaller(t *testing.T) {
 	t.Parallel()
-	calls, err := extractSource("sample.go", readTestdata(t, "catalog/src_caller.go"))
+	calls, err := extractSource(readTestdata(t, "catalog/src_caller.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,11 +213,38 @@ func TestCatalogParserExtractParamFromCaller(t *testing.T) {
 
 func TestCatalogParserExtractAssignedMethods(t *testing.T) {
 	t.Parallel()
-	calls, err := extractSource("sample.go", readTestdata(t, "catalog/src_assign.go"))
+	calls, err := extractSource(readTestdata(t, "catalog/src_assign.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !hasCall(calls, methodPOST, "/characters/{}/contacts") || !hasCall(calls, methodPUT, "/characters/{}/contacts") {
+		t.Fatalf("%+v", calls)
+	}
+}
+
+func TestCatalogParserExtractConstSegment(t *testing.T) {
+	t.Parallel()
+	calls, err := extractSource(readTestdata(t, "catalog/src_const.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCall(calls, methodGET, "/characters/{}/fittings") ||
+		!hasCall(calls, methodPOST, "/characters/{}/fittings") ||
+		!hasCall(calls, methodDELETE, "/characters/{}/fittings/{}") {
+		t.Fatalf("%+v", calls)
+	}
+}
+
+func TestCatalogParserExtractStructField(t *testing.T) {
+	t.Parallel()
+	calls, err := extractSource(readTestdata(t, "catalog/src_field.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCall(calls, methodGET, "/characters/{}/killmails/recent") ||
+		!hasCall(calls, methodGET, "/characters/{}/wallet/transactions") ||
+		!hasCall(calls, methodPOST, "/characters/{}/contacts") ||
+		!hasCall(calls, methodPUT, "/characters/{}/contacts") {
 		t.Fatalf("%+v", calls)
 	}
 }

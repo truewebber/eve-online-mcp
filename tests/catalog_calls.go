@@ -34,7 +34,8 @@ func esiVerb(name string) (string, bool) {
 }
 
 type pkgIndex struct {
-	funcs map[string]*fnScope
+	funcs  map[string]*fnScope
+	consts map[string]string
 }
 
 type fnScope struct {
@@ -87,7 +88,8 @@ func extractCalls(root string) ([]esiCall, error) {
 	return dedupeCalls(out), nil
 }
 
-func extractSource(filename, src string) ([]esiCall, error) {
+func extractSource(src string) ([]esiCall, error) {
+	const filename = "sample.go"
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, filename, src, 0)
 	if err != nil {
@@ -99,23 +101,53 @@ func extractSource(filename, src string) ([]esiCall, error) {
 }
 
 func indexPackage(files []*ast.File) *pkgIndex {
-	idx := &pkgIndex{funcs: map[string]*fnScope{}}
+	idx := &pkgIndex{funcs: map[string]*fnScope{}, consts: map[string]string{}}
 	for _, f := range files {
-		for _, d := range f.Decls {
-			fd, ok := d.(*ast.FuncDecl)
-			if !ok || fd.Body == nil {
-				continue
-			}
-			sc := walkFunc(fd.Name.Name, fd.Type, fd.Body)
-			idx.funcs[fd.Name.Name] = sc
-			for name, inner := range nestedFuncs(fd.Body) {
-				idx.funcs[fd.Name.Name+"."+name] = inner
-				idx.funcs[name] = inner
-			}
-		}
+		indexConsts(idx, f)
+		indexFuncs(idx, f)
 	}
 
 	return idx
+}
+
+func indexConsts(idx *pkgIndex, f *ast.File) {
+	for _, d := range f.Decls {
+		gd, ok := d.(*ast.GenDecl)
+		if !ok || gd.Tok != token.CONST {
+			continue
+		}
+		for _, spec := range gd.Specs {
+			vs, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for i, name := range vs.Names {
+				if i >= len(vs.Values) {
+					continue
+				}
+				s, ok := stringLit(vs.Values[i])
+				if !ok {
+					continue
+				}
+				idx.consts[name.Name] = s
+			}
+		}
+	}
+}
+
+func indexFuncs(idx *pkgIndex, f *ast.File) {
+	for _, d := range f.Decls {
+		fd, ok := d.(*ast.FuncDecl)
+		if !ok || fd.Body == nil {
+			continue
+		}
+		sc := walkFunc(fd.Name.Name, fd.Type, fd.Body)
+		idx.funcs[fd.Name.Name] = sc
+		for name, inner := range nestedFuncs(fd.Body) {
+			idx.funcs[fd.Name.Name+"."+name] = inner
+			idx.funcs[name] = inner
+		}
+	}
 }
 
 func walkFunc(name string, sig *ast.FuncType, body *ast.BlockStmt) *fnScope {
@@ -302,12 +334,12 @@ func methodsOf(sc *fnScope, fun ast.Expr) []string {
 }
 
 func resolvePath(pkg *pkgIndex, sc *fnScope, e ast.Expr) []string {
-	if p, ok := pathOf(sc, e); ok {
+	if p, ok := pathOf(pkg, sc, e); ok {
 		return []string{p}
 	}
 	switch t := e.(type) {
 	case *ast.Ident:
-		if got := pathsFromAssigns(sc, t.Name); len(got) > 0 {
+		if got := pathsFromAssigns(pkg, sc, t.Name); len(got) > 0 {
 			return got
 		}
 		idx := paramIndex(sc, t.Name)
@@ -317,19 +349,24 @@ func resolvePath(pkg *pkgIndex, sc *fnScope, e ast.Expr) []string {
 
 		return callerPaths(pkg, sc.name, idx)
 	case *ast.SelectorExpr:
-		if identName(t.Sel) == pathIdent {
-			return pathsFromAssigns(sc, ".path")
+		if identName(t.Sel) != pathIdent {
+			return nil
 		}
+		if got := pathsFromAssigns(pkg, sc, "."+pathIdent); len(got) > 0 {
+			return got
+		}
+
+		return fieldPaths(pkg, sc, t.X)
 	}
 
 	return nil
 }
 
-func pathOf(sc *fnScope, e ast.Expr) (string, bool) {
+func pathOf(pkg *pkgIndex, sc *fnScope, e ast.Expr) (string, bool) {
 	switch t := e.(type) {
 	case *ast.BasicLit:
-		s, err := strconv.Unquote(t.Value)
-		if err != nil || !strings.HasPrefix(s, "/") {
+		s, ok := stringLit(t)
+		if !ok || !strings.HasPrefix(s, "/") {
 			return "", false
 		}
 
@@ -339,13 +376,13 @@ func pathOf(sc *fnScope, e ast.Expr) (string, bool) {
 			return "", false
 		}
 
-		return buildPath(t.Args), true
+		return buildPath(pkg, t.Args), true
 	case *ast.Ident:
 		if sc == nil {
 			return "", false
 		}
 		for _, rhs := range sc.assign[t.Name] {
-			if p, ok := pathOf(sc, rhs); ok {
+			if p, ok := pathOf(pkg, sc, rhs); ok {
 				return p, true
 			}
 		}
@@ -354,10 +391,10 @@ func pathOf(sc *fnScope, e ast.Expr) (string, bool) {
 	return "", false
 }
 
-func pathsFromAssigns(sc *fnScope, name string) []string {
+func pathsFromAssigns(pkg *pkgIndex, sc *fnScope, name string) []string {
 	var out []string
 	for _, rhs := range sc.assign[name] {
-		if p, ok := pathOf(sc, rhs); ok {
+		if p, ok := pathOf(pkg, sc, rhs); ok {
 			out = appendUnique(out, p)
 		}
 	}
@@ -365,27 +402,91 @@ func pathsFromAssigns(sc *fnScope, name string) []string {
 	return out
 }
 
-func callerPaths(pkg *pkgIndex, fn string, arg int) []string {
-	short := fn
-	if i := strings.LastIndex(fn, "."); i >= 0 {
-		short = fn[i+1:]
+func fieldPaths(pkg *pkgIndex, sc *fnScope, recv ast.Expr) []string {
+	id, ok := recv.(*ast.Ident)
+	if !ok {
+		return nil
 	}
+	var out []string
+	for _, rhs := range sc.assign[id.Name] {
+		out = mergePaths(out, compositeFieldPaths(pkg, sc, rhs))
+	}
+	idx := paramIndex(sc, id.Name)
+	if idx < 0 {
+		return out
+	}
+
+	return mergePaths(out, callerFieldPaths(pkg, sc.name, idx))
+}
+
+func callerPaths(pkg *pkgIndex, fn string, arg int) []string {
 	var out []string
 	for _, sc := range pkg.funcs {
 		for _, inv := range sc.invoc {
-			if inv.name != fn && inv.name != short {
+			if !calleeMatches(inv.name, fn) || arg >= len(inv.args) {
 				continue
 			}
-			if arg >= len(inv.args) {
-				continue
-			}
-			for _, p := range resolvePath(pkg, sc, inv.args[arg]) {
-				out = appendUnique(out, p)
-			}
+			out = mergePaths(out, resolvePath(pkg, sc, inv.args[arg]))
 		}
 	}
 
 	return out
+}
+
+func callerFieldPaths(pkg *pkgIndex, fn string, arg int) []string {
+	var out []string
+	for _, sc := range pkg.funcs {
+		for _, inv := range sc.invoc {
+			if !calleeMatches(inv.name, fn) || arg >= len(inv.args) {
+				continue
+			}
+			out = mergePaths(out, compositeFieldPaths(pkg, sc, inv.args[arg]))
+		}
+	}
+
+	return out
+}
+
+func compositeFieldPaths(pkg *pkgIndex, sc *fnScope, e ast.Expr) []string {
+	switch t := e.(type) {
+	case *ast.CompositeLit:
+		return kvFieldPaths(pkg, sc, t)
+	case *ast.UnaryExpr:
+		return compositeFieldPaths(pkg, sc, t.X)
+	case *ast.Ident:
+		var out []string
+		for _, rhs := range sc.assign[t.Name] {
+			out = mergePaths(out, compositeFieldPaths(pkg, sc, rhs))
+		}
+
+		return out
+	default:
+		return nil
+	}
+}
+
+func kvFieldPaths(pkg *pkgIndex, sc *fnScope, lit *ast.CompositeLit) []string {
+	var out []string
+	for _, elt := range lit.Elts {
+		kv, ok := elt.(*ast.KeyValueExpr)
+		if !ok || identName(kv.Key) != pathIdent {
+			continue
+		}
+		out = mergePaths(out, resolvePath(pkg, sc, kv.Value))
+	}
+
+	return out
+}
+
+func calleeMatches(invName, fn string) bool {
+	if invName == fn {
+		return true
+	}
+	if i := strings.LastIndex(fn, "."); i >= 0 {
+		return invName == fn[i+1:]
+	}
+
+	return false
 }
 
 func calleeName(fun ast.Expr) string {
@@ -409,17 +510,11 @@ func paramIndex(sc *fnScope, name string) int {
 	return -1
 }
 
-func buildPath(args []ast.Expr) string {
+func buildPath(pkg *pkgIndex, args []ast.Expr) string {
 	var parts []string
 	for _, a := range args {
-		lit, ok := a.(*ast.BasicLit)
+		s, ok := pathSegment(pkg, a)
 		if !ok {
-			parts = append(parts, "{}")
-
-			continue
-		}
-		s, err := strconv.Unquote(lit.Value)
-		if err != nil {
 			parts = append(parts, "{}")
 
 			continue
@@ -428,6 +523,40 @@ func buildPath(args []ast.Expr) string {
 	}
 
 	return normalizePath("/" + path.Join(parts...))
+}
+
+func pathSegment(pkg *pkgIndex, e ast.Expr) (string, bool) {
+	if s, ok := stringLit(e); ok {
+		return s, true
+	}
+	id, ok := e.(*ast.Ident)
+	if !ok || pkg == nil {
+		return "", false
+	}
+	s, ok := pkg.consts[id.Name]
+
+	return s, ok
+}
+
+func stringLit(e ast.Expr) (string, bool) {
+	lit, ok := e.(*ast.BasicLit)
+	if !ok || lit.Kind != token.STRING {
+		return "", false
+	}
+	s, err := strconv.Unquote(lit.Value)
+	if err != nil {
+		return "", false
+	}
+
+	return s, true
+}
+
+func mergePaths(dst, extra []string) []string {
+	for _, p := range extra {
+		dst = appendUnique(dst, p)
+	}
+
+	return dst
 }
 
 func identName(e ast.Expr) string {
