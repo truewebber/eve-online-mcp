@@ -1,6 +1,6 @@
 # T25 — The catalogue check: TOOLS.md and ESI.md as tests
 
-- Status: `todo`
+- Status: `done`
 - Size: M
 - Depends on: T24
 - RULES: §5 (tests are the only proof), §10 (one result),
@@ -122,21 +122,21 @@ that consumes it (RULES §15).
 
 ## Acceptance
 
-- [ ] `go test ./tests -run TestCatalog` fails against the current
+- [x] `go test ./tests -run TestCatalog` fails against the current
       server, naming every divergence with tool, field and both sides.
       It is **not** expected to pass — T26 and T27 make it so
-- [ ] The findings are written down and split by which task fixes them
-- [ ] Renaming a tool, changing a parameter type, dropping a bound, or
+- [x] The findings are written down and split by which task fixes them
+- [x] Renaming a tool, changing a parameter type, dropping a bound, or
       editing a description in either place makes it fail with a precise
       message
-- [ ] Editing the instructions in code but not in TOOLS.md fails
-- [ ] Adding an ESI call with no row fails; deleting a call site while
+- [x] Editing the instructions in code but not in TOOLS.md fails
+- [x] Adding an ESI call with no row fails; deleting a call site while
       leaving its row fails
-- [ ] The parser has its own unit tests, one per rule, including broken
+- [x] The parser has its own unit tests, one per rule, including broken
       fixtures
-- [ ] No tool description, schema or `patchBounds` entry changed in this
+- [x] No tool description, schema or `patchBounds` entry changed in this
       commit — the ruler does not move the thing it measures
-- [ ] `make lint` passes, and `go test ./...` fails only on this new
+- [x] `make lint` passes, and `go test ./...` fails only on this new
       check
 
 ## Verify
@@ -146,6 +146,65 @@ go test ./tests -run TestCatalogParser -count=1   # green
 go test ./tests -run TestCatalog -count=1         # red, with the findings
 git diff --stat -- internal/usecase/eve           # must be empty
 ```
+
+## Findings
+
+`go test ./tests -run TestCatalog` (needs `DATABASE_URL`) reports **43**
+findings. ESI.md ↔ call sites is clean after T24 — no row without a
+caller, no caller without a row.
+
+### T26 fixes this
+
+Names, descriptions, types, required-ness, bounds, instructions.
+
+**`instructions`** — the served string still talks about "one player's
+own account", names CCP headers on `EsiRateLimited`, and omits the
+single-character wording, error budget, pagination walk, and
+`eve_mail_compose`. TOOLS.md's Server instructions block is the target.
+
+**Tool descriptions** (TOOLS.md has the extra sentence unless noted):
+
+- `eve_auth_status` — "who this connection is" vs "who is authorized here"
+- `eve_auth_logout` — revoke-and-sign-out wording vs soft-delete identity
+- `eve_calendar_list` — missing Returns/`next_cursor` line
+- `eve_mail_list` — missing "next_cursor when older mail exists"
+- `eve_mail_read` — missing "text other players wrote" sentence
+- `eve_mail_mark` — code adds "Needs a confirm_token in confirm mode"
+- `eve_mail_compose` — missing "prefer over send" and "window requested" paragraphs
+- `eve_mail_send` — missing compose/cap closing sentence
+- `eve_mail_read.mail_id` — schema description still carries `,minimum=1`
+- `eve_market_contracts` — "within the page" + `page, total_pages` in Returns
+- `eve_social_killmails` — Returns missing `page, total_pages`
+- `eve_assets_blueprints` — Returns missing "the counts describe the page"
+- `eve_ui_open_window` — refuse-with-the-list vs "outside market, info or contract"
+- `eve_market_price.history_days` — `,minimum=0,maximum=365` left in the tag
+- `eve_contacts_set.standing` — `,minimum=-10,maximum=10` left in the tag
+- `eve_assets_list` / `eve_corp_assets_list` `min_value` — `,minimum=0` in the tag
+- `eve_assets_list` / `eve_corp_assets_list` `items` — `,minimum=1,maximum=200` in the tag
+
+**Bounds** (schema vs Bounds column; bound syntax in tags is the same T26 pass):
+
+- `min_value` on both asset-list tools: TOOLS.md `≥ 0`, schema has none
+- `items` on both asset-list tools: TOOLS.md `1–200`, `patchBounds` applies `1–500`
+- `standing` on `eve_contacts_set`: TOOLS.md `−10–10`, schema has none
+
+### T27 fixes this
+
+Missing pagination **input** parameters (TOOLS.md table vs `tools/list`).
+`tools/list` has no output schema, so `next_cursor` / `page`+`total_pages`
+/ `total` are not findings here — they travel with the same class.
+
+**`page` absent:** `eve_assets_blueprints`, `eve_market_contracts`,
+`eve_social_killmails`, `eve_corp_blueprints`, `eve_corp_contracts`,
+`eve_corp_industry_jobs`, `eve_corp_killmails`, `eve_corp_orders`,
+`eve_corp_structures`.
+
+**`offset` absent:** `eve_assets_list`, `eve_assets_find`,
+`eve_industry_mining`, `eve_wallet_history`, `eve_corp_assets_list`,
+`eve_corp_assets_find`, `eve_corp_mining`, `eve_corp_wallet`.
+
+**Cursor absent:** `eve_mail_list.last_mail_id`.
+`eve_calendar_list.from_event` already matches.
 
 ## Done
 

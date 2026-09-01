@@ -109,7 +109,7 @@ commit as the change to the document that owns it; after the task
 | [T22](T22-config-and-edges.md) | Config and edges; `/readyz`; env names | done | M | T17 | §16 §8 | §2, §5.5, §6, §10, §12.10 |
 | [T23](T23-static-errors.md) | The user sees only static errors | done | M | T18 T22 | §9 | §4, §6 |
 | [T24](T24-new-tools-and-previews.md) | Calendar, compose, CSPA, enums, NPC corp | done | L | T14 T19 | §15 §5 | §4, §4.1, §4.2, §12.11 |
-| [T25](T25-catalog-check.md) | The catalogue check: TOOLS.md and ESI.md as tests | todo | M | T24 | §5 §10 | §4.3, §12.13 |
+| [T25](T25-catalog-check.md) | The catalogue check: TOOLS.md and ESI.md as tests | done | M | T24 | §5 §10 | §4.3, §12.13 |
 | [T26](T26-catalog-conformance.md) | Catalog conformance and server instructions | todo | M | T25 | §5 §6 | §4, §4.3, §12.11 |
 | [T27](T27-pagination.md) | Pagination across the list tools | todo | L | T26 | §10 §15 | §4, §12.12 |
 | [T28](T28-one-function-one-job.md) | One function, one job; one result | todo | L | T27 | §15 §10 §3 | §7 |
