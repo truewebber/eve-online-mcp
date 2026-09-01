@@ -237,8 +237,7 @@ Two prices exist. Asset and mining valuations use CCP's global *average*. `eve_m
 ```bash
 make postgres                     # local Postgres (loopback :5432)
 make migrate                      # goose, against DATABASE_URL
-go build -o eve-mcp ./cmd/eve-mcp
-./eve-mcp                         # foreground, reads ./.env
+make run                          # Postgres, schema, then the binary (reads ./.env)
 make test                         # offline: fixtures; store tests skip without DATABASE_URL
 make test-store                   # everything that needs DATABASE_URL
 make ci                           # lint, unit tests, store tests, tests/

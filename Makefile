@@ -1,4 +1,5 @@
-.PHONY: build run lint lint-fix lint-check gen generate postgres migrate down test test-store ci
+SHELL := /bin/bash
+.DEFAULT_GOAL := help
 
 GO ?= go
 COMPOSE ?= docker compose
@@ -7,42 +8,16 @@ GOLANGCI_LINT ?= $(GO) tool github.com/golangci/golangci-lint/v2/cmd/golangci-li
 GOOSE ?= $(GO) tool github.com/pressly/goose/v3/cmd/goose
 DATABASE_URL ?= postgres://eve:eve@127.0.0.1:5432/eve_mcp?sslmode=disable
 SQL_DIR := sql
+BINARY := eve-mcp
+CMD_PATH := ./cmd/eve-mcp
 
-build:
-	$(GO) build -o eve-mcp ./cmd/eve-mcp
+.PHONY: help
+help: ## Show this help message
+	@echo 'Usage: make [target]'
+	@echo ''
+	@echo 'Available targets:'
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "  %-25s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-run: postgres migrate build
-	./eve-mcp
-
-postgres:
-	$(COMPOSE) up -d --wait postgres
-
-migrate:
-	$(GOOSE) -dir $(SQL_DIR) postgres "$(DATABASE_URL)" up
-
-down:
-	$(COMPOSE) down
-
-lint:
-	$(GOLANGCI_LINT) run ./...
-
-lint-fix:
-	$(GOLANGCI_LINT) run --fix ./...
-
-gen:
-	$(OAPI_CODEGEN) -config api/http.cfg.yaml api/http.yaml
-
-generate:
-	$(GO) generate ./...
-
-test:
-	@echo "offline: recorded ESI fixtures; store and migration tests skip without DATABASE_URL — use make test-store"
-	$(GO) test ./...
-
-test-store: postgres migrate
-	DATABASE_URL=$(DATABASE_URL) $(GO) test ./internal/postgres ./internal/postgres/pgtest ./internal/adapter/sso ./internal/adapter/sso/http ./internal/adapter/esi ./internal/adapter/esi/http ./internal/usecase/oauth ./internal/usecase/session ./internal/usecase/sweep ./internal/domain/write ./internal/domain/character/pgx ./internal/domain/oauthclient/pgx ./internal/domain/loginstate/pgx ./internal/domain/authcode/pgx ./internal/domain/confirm/pgx ./internal/domain/mutation/pgx ./internal/domain/session/pgx -count=1
-
-ci: lint
-	DATABASE_URL= $(GO) test ./...
-	$(MAKE) test-store
-	DATABASE_URL=$(DATABASE_URL) $(GO) test ./tests/... -count=1
+include .make/go.mk
+include .make/postgres.mk
+include .make/helm.mk

@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Chart.Name | quote }}
+  annotations:
+    repo: {{ .Values.repo | quote }}
+spec:
+  strategy:
+    rollingUpdate:
+      maxSurge: 100%
+      maxUnavailable: 0%
+    type: RollingUpdate
+  replicas: {{ .Values.minReplicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Chart.Name | quote }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ .Values | toJson | sha256sum }}
+      labels:
+        app: {{ .Chart.Name | quote }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+          env:
+            - name: LISTEN_HOST_PORT
+              value: "{{ .Values.app.listenHost }}:{{ .Values.app.port }}"
+            - name: INTERNAL_LISTEN_HOST_PORT
+              value: "{{ .Values.app.internalListenHost }}:{{ .Values.app.metricsPort }}"
+            - name: PUBLIC_URL
+              value: {{ .Values.app.public_url | quote }}
+            - name: CONTACT
+              value: {{ .Values.app.contact | quote }}
+            - name: EXTRA_REDIRECT_URIS
+              value: {{ .Values.app.extra_redirect_uris | quote }}
+            - name: CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}
+                  key: client_id
+            - name: CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}
+                  key: client_secret
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}
+                  key: database_url
+            - name: HMAC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}
+                  key: hmac_key
+          ports:
+            - name: http
+              containerPort: {{ .Values.app.port }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.app.metricsPort }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              port: {{ .Values.app.metricsPort }}
+              path: /healthz
+            initialDelaySeconds: 20
+            timeoutSeconds: 15
+          readinessProbe:
+            httpGet:
+              port: {{ .Values.app.metricsPort }}
+              path: /readyz
+            initialDelaySeconds: 15
+            timeoutSeconds: 9
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: {{ .Chart.Name | quote }}

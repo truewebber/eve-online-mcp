@@ -803,14 +803,21 @@ the mail cap counts from (§5.4). It stores no message bodies.
 
 ## 10. Deployment
 
-- **Kubernetes (primary):** Deployment, `replicas >= 1`, rolling
-  updates, no volumes; env (`DATABASE_URL`, `CLIENT_ID`, `HMAC_KEY`, …)
-  from a Secret; `LISTEN_HOST_PORT` and `INTERNAL_LISTEN_HOST_PORT` set
-  to `0.0.0.0:{port}` so the kubelet and the Service can reach them;
-  `PUBLIC_URL` set (§2); liveness →
+- **Kubernetes (primary):** the chart is `helm/eve-mcp`. Deployment,
+  `replicas >= 1`, rolling updates, no volumes; env (`DATABASE_URL`,
+  `CLIENT_ID`, `HMAC_KEY`, …) from a Secret; `LISTEN_HOST_PORT` and
+  `INTERNAL_LISTEN_HOST_PORT` set to `0.0.0.0:{port}` so the kubelet
+  and the Service can reach them; `PUBLIC_URL` set (§2); liveness →
   `GET /healthz` and readiness → `GET /readyz` on the internal port;
   internal port has no Ingress exposure. Postgres is a cluster service,
-  provisioned separately.
+  provisioned separately. `values.yaml` is generic defaults (ports,
+  image, empty secrets). The instance overlay is `values.local.yaml`,
+  gitignored; `values.local.yaml.example` is the shape.
+  `make helm-upgrade` packages the chart at
+  `AppVersion=$(git rev-parse HEAD)` and `helm upgrade --install`
+  with `-f values.yaml -f values.local.yaml`.
+  No `vals`, no Secret Manager refs. Goose stays outside the chart
+  (rollout below).
 - **Above one replica:** hash `/mcp` onto pods by the `Authorization`
   header (nginx ingress `upstream-hash-by: "$http_authorization"`) so a
   character keeps its cache and its counters for as long as its access

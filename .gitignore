@@ -1,6 +1,8 @@
 # Secrets — never commit
 .env
 .env.local
+**/values.local.yaml
+*.tgz
 data/
 tokens.json
 *.sqlite3

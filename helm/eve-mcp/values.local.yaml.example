@@ -1,0 +1,22 @@
+# Instance overlay. Copy to values.local.yaml (gitignored) and fill in.
+# make helm-upgrade applies values.yaml first, then this file.
+
+host: ""
+
+app:
+  public_url: "https://example.invalid"
+  contact: ""
+  extra_redirect_uris: ""
+  client_id: ""
+  client_secret: ""
+  database_url: ""
+  hmac_key: ""
+
+ingress:
+  enabled: false
+  className: nginx
+  clusterIssuer: ""
+  tlsSecretName: ""
+
+image:
+  pullSecrets: []
