@@ -63,9 +63,9 @@ func TestCacheHitDoesNotObserve(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	obs := mocks.NewMockESIObserver(ctrl)
 	obs.EXPECT().Request(nhttp.MethodGet, nhttp.StatusOK, "/fw/stats", gomock.Any()).Times(1)
-	c := New(esi.Options{
-		BaseURL: srv.URL, CompatDate: testCompatDate, Observe: obs,
-	}, srv.Client(), mocks.QuietLogger(ctrl))
+	opts := testOptions(srv.URL)
+	opts.Observe = obs
+	c := mustClient(t, opts, srv.Client())
 	if _, err := c.Get(t.Context(), "/fw/stats", nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -85,9 +85,9 @@ func TestObserverSeesNetworkFailure(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	obs := mocks.NewMockESIObserver(ctrl)
 	obs.EXPECT().Request(nhttp.MethodGet, 0, "/fw/stats", gomock.Any()).MinTimes(1)
-	c := New(esi.Options{
-		BaseURL: srv.URL, CompatDate: testCompatDate, Observe: obs,
-	}, client, mocks.QuietLogger(ctrl))
+	opts := testOptions(srv.URL)
+	opts.Observe = obs
+	c := mustClient(t, opts, client)
 	if _, err := c.Get(t.Context(), "/fw/stats", nil, nil, nil); err == nil {
 		t.Fatal("want network error")
 	}
@@ -106,7 +106,8 @@ func observedClient(t *testing.T, status int, body string) (*Client, *mocks.Mock
 	ctrl := gomock.NewController(t)
 	obs := mocks.NewMockESIObserver(ctrl)
 
-	return New(esi.Options{
-		BaseURL: srv.URL, CompatDate: testCompatDate, Observe: obs,
-	}, srv.Client(), mocks.QuietLogger(ctrl)), obs
+	opts := testOptions(srv.URL)
+	opts.Observe = obs
+
+	return mustClient(t, opts, srv.Client()), obs
 }

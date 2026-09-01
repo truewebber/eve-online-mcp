@@ -10,9 +10,18 @@ import (
 
 var errReadyDown = errors.New("postgres: ping")
 
+func testMetrics() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte("ok")); err != nil {
+			return
+		}
+	})
+}
+
 func TestReadyzDownHealthzUp(t *testing.T) {
 	t.Parallel()
-	mux := internalMux(func(context.Context) error { return errReadyDown }, nil)
+	mux := internalMux(func(context.Context) error { return errReadyDown }, testMetrics())
 	ready := httptest.NewRecorder()
 	mux.ServeHTTP(ready, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/readyz", nil))
 	if ready.Code != http.StatusServiceUnavailable {
@@ -27,7 +36,7 @@ func TestReadyzDownHealthzUp(t *testing.T) {
 
 func TestReadyzOK(t *testing.T) {
 	t.Parallel()
-	mux := internalMux(func(context.Context) error { return nil }, nil)
+	mux := internalMux(func(context.Context) error { return nil }, testMetrics())
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/readyz", nil))
 	if rec.Code != http.StatusOK {
@@ -37,21 +46,11 @@ func TestReadyzOK(t *testing.T) {
 
 func TestInternalMetrics(t *testing.T) {
 	t.Parallel()
-	mux := internalMux(nil, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte("ok")); err != nil {
-			t.Fatal(err)
-		}
-	}))
+	mux := internalMux(func(context.Context) error { return nil }, testMetrics())
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("/metrics %d", rec.Code)
-	}
-	missing := httptest.NewRecorder()
-	internalMux(nil, nil).ServeHTTP(missing, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil))
-	if missing.Code != http.StatusNotFound {
-		t.Fatalf("nil metrics %d", missing.Code)
 	}
 }
 

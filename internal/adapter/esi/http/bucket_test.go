@@ -9,13 +9,13 @@ import (
 	"testing/synctest"
 	"time"
 
-	"go.uber.org/mock/gomock"
-
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
-	"github.com/truewebber/eve-online-mcp/internal/mocks"
 )
 
-const testCompatDate = "2026-08-18"
+const (
+	testCompatDate = "2026-08-18"
+	testUserAgent  = "eve-mcp-test"
+)
 
 func TestUserBucketExhausted(t *testing.T) {
 	t.Parallel()
@@ -80,7 +80,7 @@ func TestFreshCacheHitDoesNotTakeToken(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	c := New(esi.Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), mocks.QuietLogger(gomock.NewController(t)))
+	c := mustClient(t, testOptions(srv.URL), srv.Client())
 	if _, err := c.Get(t.Context(), "/status", nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -109,14 +109,14 @@ func TestNetworkGetTakesToken(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	c := New(esi.Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), mocks.QuietLogger(gomock.NewController(t)))
+	c := mustClient(t, testOptions(srv.URL), srv.Client())
 	if _, err := c.Get(t.Context(), "/status", nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := c.bucket.remaining(); got >= UserBucketCapacity {
 		t.Fatalf("tokens %v, network GET must consume a token", got)
 	}
-	c2 := New(esi.Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), mocks.QuietLogger(gomock.NewController(t)))
+	c2 := mustClient(t, testOptions(srv.URL), srv.Client())
 	for c2.bucket.remaining() >= 1 {
 		err := c2.bucket.take()
 		if err != nil {
@@ -147,7 +147,7 @@ func TestNotModifiedRefundsToken(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	c := New(esi.Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), mocks.QuietLogger(gomock.NewController(t)))
+	c := mustClient(t, testOptions(srv.URL), srv.Client())
 	if _, err := c.Get(t.Context(), "/status", nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestCacheSharedAcrossForUser(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	base := New(esi.Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), mocks.QuietLogger(gomock.NewController(t)))
+	base := mustClient(t, testOptions(srv.URL), srv.Client())
 	a := base.ForUser(nil)
 	b := base.ForUser(nil)
 	if _, err := a.Get(t.Context(), "/status", nil, nil, nil); err != nil {
@@ -217,7 +217,7 @@ func TestOversizedBodyIsServedAndNotStored(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	c := New(esi.Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), mocks.QuietLogger(gomock.NewController(t)))
+	c := mustClient(t, testOptions(srv.URL), srv.Client())
 	res, err := c.Get(t.Context(), "/status", nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)

@@ -19,6 +19,8 @@ const errConfirmUnknown = "That confirm_token is unknown or has expired. Call th
 
 var (
 	errMailHoldAbandoned = errors.New("write: abandoned mail-cap hold")
+	errPersistRequired   = errors.New("write: persist is required")
+	errLoggerRequired    = errors.New("write: logger is required")
 	ErrMailCap           = errors.New("write: mail cap")
 	ErrConfirmUnknown    = errors.New("write: confirm unknown")
 	ErrConfirmArgs       = errors.New("write: confirm args changed")
@@ -64,8 +66,15 @@ type Guard struct {
 	mailHold    *MailCapHold
 }
 
-func NewGuard(persist Persist, characterID, sessionID int64, logger log.Logger) *Guard {
-	return &Guard{persist: persist, characterID: characterID, sessionID: sessionID, logger: logger}
+func NewGuard(persist Persist, characterID, sessionID int64, logger log.Logger) (*Guard, error) {
+	if persist == nil {
+		return nil, errPersistRequired
+	}
+	if logger == nil {
+		return nil, errLoggerRequired
+	}
+
+	return &Guard{persist: persist, characterID: characterID, sessionID: sessionID, logger: logger}, nil
 }
 
 func (g *Guard) CheckCapability(capability string) error {
@@ -104,7 +113,7 @@ type Authz struct {
 
 func (g *Guard) Authorize(ctx context.Context, in Authz) (Decision, error) {
 	if relErr := g.releaseMailHold(errMailHoldAbandoned); relErr != nil {
-		g.logMailHold(relErr)
+		g.logger.Error("write: mail-cap hold", "err", relErr)
 	}
 	err := g.CheckCapability(in.Capability)
 	if err != nil {
@@ -120,7 +129,7 @@ func (g *Guard) Authorize(ctx context.Context, in Authz) (Decision, error) {
 	digest, err := digestArgs(in.Args)
 	if err != nil {
 		if relErr := g.releaseMailHold(err); relErr != nil {
-			g.logMailHold(relErr)
+			g.logger.Error("write: mail-cap hold", "err", relErr)
 		}
 
 		return Decision{}, err
@@ -155,13 +164,11 @@ func (g *Guard) Status(ctx context.Context) map[string]any {
 		ref[name] = cap.Summary
 	}
 	mails, pending := 0, 0
-	if g.persist != nil {
-		if n, err := g.persist.CountMailCap(ctx, g.characterID); err == nil {
-			mails = n
-		}
-		if n, err := g.persist.CountConfirm(ctx, g.sessionID); err == nil {
-			pending = n
-		}
+	if n, err := g.persist.CountMailCap(ctx, g.characterID); err == nil {
+		mails = n
+	}
+	if n, err := g.persist.CountConfirm(ctx, g.sessionID); err == nil {
+		pending = n
 	}
 	remaining := max(MailCap-mails, 0)
 
@@ -192,7 +199,7 @@ func (g *Guard) confirmWrite(ctx context.Context, in Authz, digest string) (Deci
 	err := g.consumeConfirm(ctx, in.Tool, digest, in.Token)
 	if err != nil {
 		if relErr := g.releaseMailHold(err); relErr != nil {
-			g.logMailHold(relErr)
+			g.logger.Error("write: mail-cap hold", "err", relErr)
 		}
 
 		return Decision{}, err
@@ -206,14 +213,12 @@ func (g *Guard) previewWrite(ctx context.Context, in Authz, digest string) (Deci
 	if err != nil {
 		return Decision{}, err
 	}
-	if g.persist != nil {
-		err := g.persist.PutConfirm(ctx, Confirm{
-			Token: token, SessionID: g.sessionID, Tool: in.Tool,
-			ArgsDigest: digest, CreatedAt: time.Now().UTC(),
-		})
-		if err != nil {
-			return Decision{}, wrap("Authorize", err)
-		}
+	err = g.persist.PutConfirm(ctx, Confirm{
+		Token: token, SessionID: g.sessionID, Tool: in.Tool,
+		ArgsDigest: digest, CreatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		return Decision{}, wrap("Authorize", err)
 	}
 	ttlSec := int(ConfirmTTL / time.Second)
 
@@ -229,9 +234,6 @@ func (g *Guard) previewWrite(ctx context.Context, in Authz, digest string) (Deci
 }
 
 func (g *Guard) appendRecord(ctx context.Context, rec Record) error {
-	if g.persist == nil {
-		return nil
-	}
 	digest, err := digestArgs(rec.Args)
 	if err != nil {
 		return err
@@ -255,9 +257,6 @@ func (g *Guard) appendRecord(ctx context.Context, rec Record) error {
 }
 
 func (g *Guard) checkMailCap(ctx context.Context) error {
-	if g.persist == nil {
-		return nil
-	}
 	n, err := g.persist.CountMailCap(ctx, g.characterID)
 	if err != nil {
 		return wrap("checkMailCap", err)
@@ -272,16 +271,13 @@ func (g *Guard) checkMailCap(ctx context.Context) error {
 }
 
 func (g *Guard) holdMailCap(ctx context.Context) error {
-	if g.persist == nil {
-		return nil
-	}
 	hold, err := g.persist.HoldMailCap(ctx, g.characterID)
 	if err != nil {
 		return wrap("holdMailCap", err)
 	}
 	if hold.Count >= MailCap {
 		if relErr := hold.Release(ErrMailCap); relErr != nil {
-			g.logMailHold(relErr)
+			g.logger.Error("write: mail-cap hold", "err", relErr)
 		}
 		MailCapRejections.Add(1)
 
@@ -302,21 +298,11 @@ func (g *Guard) releaseMailHold(err error) error {
 	return relErr
 }
 
-func (g *Guard) logMailHold(err error) {
-	if g.logger == nil {
-		return
-	}
-	g.logger.Error("write: mail-cap hold", "err", err)
-}
-
 func mailCapBlocked() BlockedError {
 	return blocked(ErrMailCap, fmt.Sprintf("Mail budget exhausted: %d mails in the last hour. Wait until an earlier send drops out of the rolling hour, then try again.", MailCap))
 }
 
 func (g *Guard) consumeConfirm(ctx context.Context, tool, digest, confirmToken string) error {
-	if g.persist == nil {
-		return blocked(ErrConfirmUnknown, errConfirmUnknown)
-	}
 	pending, err := g.persist.GetConfirm(ctx, confirmToken)
 	if errors.Is(err, ErrConfirmNotFound) || pending == nil {
 		return blocked(ErrConfirmUnknown, errConfirmUnknown)

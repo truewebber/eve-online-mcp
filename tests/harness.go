@@ -30,6 +30,7 @@ import (
 	sessionpgx "github.com/truewebber/eve-online-mcp/internal/domain/session/pgx"
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 	"github.com/truewebber/eve-online-mcp/internal/mocks"
+	"github.com/truewebber/eve-online-mcp/internal/observe"
 	"github.com/truewebber/eve-online-mcp/internal/postgres"
 	"github.com/truewebber/eve-online-mcp/internal/postgres/pgtest"
 	httpsvc "github.com/truewebber/eve-online-mcp/internal/service/http"
@@ -77,7 +78,7 @@ func openEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hs.Config.Handler = mcpMux(oauthServer, host)
+	hs.Config.Handler = mcpMux(t, oauthServer, host, logger)
 	hs.Start()
 	t.Cleanup(hs.Close)
 	sess := connect(t, hs.URL+"/mcp", token)
@@ -111,34 +112,40 @@ type wireIn struct {
 func wire(t *testing.T, in wireIn) (*session.Session, *oauth.Server) {
 	t.Helper()
 	pool := in.db.Pool()
-	opts := session.Options{
+	esiClient, err := esihttp.New(esi.Options{
+		BaseURL:    esi.DefaultBaseURL,
 		UserAgent:  testUserAgent,
-		Characters: characterpgx.New(pool, in.logger),
-		Sessions:   sessionpgx.New(pool, in.logger),
+		CompatDate: esitest.CompatDate,
+		Observe:    observe.New(),
+	}, in.httpClient, in.logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ssoClient, err := ssohttp.New(sso.Options{
+		ClientID:    "test-eve-client",
+		CallbackURL: in.host.CallbackURL,
+		UserAgent:   testUserAgent,
+		Scopes:      write.RequestedScopes(),
+	}, in.httpClient, in.logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := session.Options{
+		Characters: characterpgx.New(pool),
+		Sessions:   sessionpgx.New(pool),
 		Clients:    oauthclientpgx.New(pool),
 		Logins:     loginstatepgx.New(pool),
 		Codes:      authcodepgx.New(pool),
 		Confirms:   confirmpgx.New(pool),
 		Mutations:  mutationpgx.New(pool),
-		HTTP:       in.httpClient,
 		WithinTx: func(ctx context.Context, fn func(context.Context) error) error {
 			return postgres.WithinTx(ctx, pool, fn)
 		},
+		ESI:    esiClient,
 		Logger: in.logger,
 	}
-	opts.ESI = esihttp.New(esi.Options{
-		UserAgent:  testUserAgent,
-		CompatDate: esitest.CompatDate,
-	}, in.httpClient, in.logger)
 	ssoMock := mocks.NewMockSSOClient(gomock.NewController(t))
-	ssoMock.EXPECT().PrepareLogin(gomock.Any()).DoAndReturn(
-		ssohttp.New(sso.Options{
-			ClientID:    "test-eve-client",
-			CallbackURL: in.host.CallbackURL,
-			UserAgent:   testUserAgent,
-			Scopes:      write.RequestedScopes(),
-		}, in.httpClient, in.logger).PrepareLogin,
-	).AnyTimes()
+	ssoMock.EXPECT().PrepareLogin(gomock.Any()).DoAndReturn(ssoClient.PrepareLogin).AnyTimes()
 	ssoMock.EXPECT().AccessToken(gomock.Any(), gomock.Any()).Return(&sso.CharacterToken{
 		CharacterID:     esitest.FixtureCharacterID,
 		CharacterName:   fixtureName,
@@ -188,8 +195,12 @@ func seedCharacter(t *testing.T, runtime *session.Session) (int, int64) {
 	return id, row.ID
 }
 
-func mcpMux(oauthServer *oauth.Server, host oauth.Host) nhttp.Handler {
-	h := httpsvc.New(oauthServer, host, nil)
+func mcpMux(t *testing.T, oauthServer *oauth.Server, host oauth.Host, logger log.Logger) nhttp.Handler {
+	t.Helper()
+	h, err := httpsvc.New(oauthServer, host, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
 	mux := nhttp.NewServeMux()
 	h.Mount(mux)
 	mcpServer := mcp.NewServer(&mcp.Implementation{

@@ -9,10 +9,7 @@ import (
 	"testing/synctest"
 	"time"
 
-	"go.uber.org/mock/gomock"
-
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
-	"github.com/truewebber/eve-online-mcp/internal/mocks"
 )
 
 func TestErrorBudgetTwentyThenRefuse(t *testing.T) {
@@ -124,7 +121,7 @@ func TestErrorBudgetClientCharges4xxNot2xx(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	c := New(esi.Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), mocks.QuietLogger(gomock.NewController(t)))
+	c := mustClient(t, testOptions(srv.URL), srv.Client())
 	if _, err := c.Get(t.Context(), "/ok", nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +147,7 @@ func TestErrorBudgetClientCharges4xxNot2xx(t *testing.T) {
 
 func TestErrorBudgetCharges420And429(t *testing.T) {
 	t.Parallel()
-	c := New(esi.Options{CompatDate: testCompatDate}, nil, mocks.QuietLogger(gomock.NewController(t)))
+	c := mustClient(t, testOptions(esi.DefaultBaseURL), &nhttp.Client{})
 	for _, status := range []int{statusErrorLimited, nhttp.StatusTooManyRequests} {
 		resp := &nhttp.Response{StatusCode: status, Header: nhttp.Header{}}
 		resp.Header.Set("X-Esi-Error-Limit-Remain", "80")
@@ -180,7 +177,7 @@ func TestErrorBudgetClientNotModifiedNotCharged(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	c := New(esi.Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), mocks.QuietLogger(gomock.NewController(t)))
+	c := mustClient(t, testOptions(srv.URL), srv.Client())
 	if _, err := c.Get(t.Context(), "/status", nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +198,7 @@ func TestErrorBudgetClientRefusesBeforeNetwork(t *testing.T) {
 		w.WriteHeader(nhttp.StatusForbidden)
 	}))
 	t.Cleanup(srv.Close)
-	c := New(esi.Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), mocks.QuietLogger(gomock.NewController(t)))
+	c := mustClient(t, testOptions(srv.URL), srv.Client())
 	for range errorBudgetCap {
 		if _, err := c.Get(t.Context(), "/deny", nil, nil, nil); err == nil {
 			t.Fatal("want 403")
@@ -223,7 +220,7 @@ func TestErrorBudgetClientCharactersIsolated(t *testing.T) {
 		w.WriteHeader(nhttp.StatusForbidden)
 	}))
 	t.Cleanup(srv.Close)
-	base := New(esi.Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), mocks.QuietLogger(gomock.NewController(t)))
+	base := mustClient(t, testOptions(srv.URL), srv.Client())
 	a, ok := base.ForUser(nil).(*Client)
 	if !ok {
 		t.Fatal("ForUser")
@@ -256,7 +253,7 @@ func TestGlobalFailFastStillWorks(t *testing.T) {
 		w.WriteHeader(nhttp.StatusOK)
 	}))
 	t.Cleanup(srv.Close)
-	c := New(esi.Options{BaseURL: srv.URL, CompatDate: testCompatDate}, srv.Client(), mocks.QuietLogger(gomock.NewController(t)))
+	c := mustClient(t, testOptions(srv.URL), srv.Client())
 	c.errorRemain = 10
 	c.errorResetAt = time.Now().Add(30 * time.Second)
 	_, err := c.Get(t.Context(), "/status", nil, nil, nil)

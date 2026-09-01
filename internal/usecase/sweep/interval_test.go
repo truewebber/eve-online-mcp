@@ -22,7 +22,7 @@ func TestIntervalOneRunPerTick(t *testing.T) {
 		opts := idleOpts(ctrl, func() { n.Add(1) })
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		go New(opts).Start(ctx)
+		go mustRunner(t, opts).Start(ctx)
 		synctest.Wait()
 		if got := n.Load(); got != 1 {
 			t.Fatalf("after start %d", got)
@@ -47,13 +47,23 @@ func TestIntervalSkipsWhenLockHeld(t *testing.T) {
 		opts.Lock = lock
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		go New(opts).Start(ctx)
+		go mustRunner(t, opts).Start(ctx)
 		synctest.Wait()
 		time.Sleep(Interval)
 		synctest.Wait()
 		cancel()
 		synctest.Wait()
 	})
+}
+
+func mustRunner(t *testing.T, opts Options) *Runner {
+	t.Helper()
+	r, err := New(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return r
 }
 
 func idleOpts(ctrl *gomock.Controller, onRun func()) Options {

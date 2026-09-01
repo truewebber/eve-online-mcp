@@ -27,6 +27,7 @@ import (
 	sessionpgx "github.com/truewebber/eve-online-mcp/internal/domain/session/pgx"
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 	"github.com/truewebber/eve-online-mcp/internal/mocks"
+	"github.com/truewebber/eve-online-mcp/internal/observe"
 	"github.com/truewebber/eve-online-mcp/internal/postgres"
 	"github.com/truewebber/eve-online-mcp/internal/postgres/pgtest"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
@@ -51,13 +52,13 @@ func openDB(t *testing.T) *postgres.DB {
 func characters(t *testing.T, db *postgres.DB) character.Repository {
 	t.Helper()
 
-	return characterpgx.New(db.Pool(), mocks.QuietLogger(gomock.NewController(t)))
+	return characterpgx.New(db.Pool())
 }
 
 func sessions(t *testing.T, db *postgres.DB) dbsession.Repository {
 	t.Helper()
 
-	return sessionpgx.New(db.Pool(), mocks.QuietLogger(gomock.NewController(t)))
+	return sessionpgx.New(db.Pool())
 }
 
 func logins(db *postgres.DB) loginstate.Repository {
@@ -72,20 +73,41 @@ func confirms(db *postgres.DB) confirm.Repository {
 	return confirmpgx.New(db.Pool())
 }
 
+func testHost() Host {
+	return Host{
+		PublicURL:   "http://" + testListen,
+		MCPPath:     "/mcp",
+		CallbackURL: "http://" + testListen + "/auth/callback",
+	}
+}
+
 func testESI(t *testing.T) esi.Client {
 	t.Helper()
+	c, err := esihttp.New(esi.Options{
+		BaseURL:    esi.DefaultBaseURL,
+		CompatDate: "2026-08-18",
+		UserAgent:  "eve-mcp-test",
+		Observe:    observe.New(),
+	}, nhttp.DefaultClient, mocks.QuietLogger(gomock.NewController(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	return esihttp.New(esi.Options{}, nhttp.DefaultClient, mocks.QuietLogger(gomock.NewController(t)))
+	return c
 }
 
 func testSSO(t *testing.T) sso.Client {
 	t.Helper()
 	ctrl := gomock.NewController(t)
 	m := mocks.NewMockSSOClient(ctrl)
-	login := ssohttp.New(sso.Options{
+	login, err := ssohttp.New(sso.Options{
 		ClientID:    "test-eve-client",
 		CallbackURL: "http://127.0.0.1/auth/callback",
+		UserAgent:   "eve-mcp-test",
 	}, nhttp.DefaultClient, mocks.QuietLogger(ctrl))
+	if err != nil {
+		t.Fatal(err)
+	}
 	m.EXPECT().PrepareLogin(gomock.Any()).DoAndReturn(login.PrepareLogin).AnyTimes()
 	m.EXPECT().ExchangeCode(gomock.Any(), gomock.Any(), gomock.Any()).Return(&sso.CharacterToken{
 		CharacterID: 1, CharacterName: janeDoe, RefreshToken: "rt",
@@ -133,7 +155,7 @@ func testServerSSO(t *testing.T, db *postgres.DB, ssoClient sso.Client) *Server 
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := Open(Host{Listen: testListen}, runtime, Options{HMACKey: []byte(testHMACKey)}, logger)
+	s, err := Open(testHost(), runtime, Options{HMACKey: []byte(testHMACKey)}, logger)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,7 +8,7 @@ import (
 
 var (
 	ErrConfirmNotFound = errors.New("write: confirm not found")
-	errNoMailCapHold   = errors.New("write: no mail-cap hold")
+	errHoldRequired    = errors.New("write: mail-cap hold funcs are required")
 )
 
 const (
@@ -56,22 +56,19 @@ type MailCapHold struct {
 	end   func(error) error
 }
 
-func NewMailCapHold(n int, do func(func(context.Context) error) error, end func(error) error) *MailCapHold {
-	return &MailCapHold{Count: n, do: do, end: end}
+func NewMailCapHold(n int, do func(func(context.Context) error) error, end func(error) error) (*MailCapHold, error) {
+	if do == nil || end == nil {
+		return nil, errHoldRequired
+	}
+
+	return &MailCapHold{Count: n, do: do, end: end}, nil
 }
 
 func (h *MailCapHold) Do(fn func(context.Context) error) error {
-	if h == nil || h.do == nil {
-		return errNoMailCapHold
-	}
-
 	return h.do(fn)
 }
 
 func (h *MailCapHold) Release(err error) error {
-	if h == nil || h.end == nil {
-		return nil
-	}
 	fn := h.end
 	h.end = nil
 

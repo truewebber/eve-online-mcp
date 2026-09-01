@@ -1,18 +1,14 @@
 package http
 
 import (
+	nhttp "net/http"
 	"testing"
 	"time"
-
-	"go.uber.org/mock/gomock"
-
-	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
-	"github.com/truewebber/eve-online-mcp/internal/mocks"
 )
 
 func TestAccessCacheHitSkipsNetwork(t *testing.T) {
 	t.Parallel()
-	c := New(sso.Options{}, nil, mocks.QuietLogger(gomock.NewController(t)))
+	c := mustSSO(t, testSSOOptions(), &nhttp.Client{})
 	c.access.put("rt", accessMem{
 		AccessToken:     "at",
 		AccessExpiresAt: time.Now().Add(time.Hour),
@@ -28,7 +24,7 @@ func TestAccessCacheHitSkipsNetwork(t *testing.T) {
 
 func TestAccessCacheMissEmptyRefresh(t *testing.T) {
 	t.Parallel()
-	c := New(sso.Options{}, nil, mocks.QuietLogger(gomock.NewController(t)))
+	c := mustSSO(t, testSSOOptions(), &nhttp.Client{})
 	if _, err := c.AccessToken(t.Context(), ""); err == nil {
 		t.Fatal("want error")
 	}
@@ -36,6 +32,6 @@ func TestAccessCacheMissEmptyRefresh(t *testing.T) {
 
 func TestRevokeEmptyIsNoop(t *testing.T) {
 	t.Parallel()
-	c := New(sso.Options{}, nil, mocks.QuietLogger(gomock.NewController(t)))
+	c := mustSSO(t, testSSOOptions(), &nhttp.Client{})
 	c.Revoke(t.Context(), "")
 }

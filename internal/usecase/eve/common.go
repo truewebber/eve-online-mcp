@@ -86,9 +86,7 @@ func Call(ctx context.Context, fn func(*session.Session) (any, error)) (*mcp.Cal
 	}
 	v, err := fn(a)
 	if err != nil {
-		if a.Logger != nil {
-			a.Logger.Error("eve: tool", "err", err, "character", a.CharacterID)
-		}
+		a.Logger.Error("eve: tool", "err", err, "character", a.CharacterID)
 
 		return Handle(err)
 	}

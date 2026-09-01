@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/truewebber/gopkg/log"
-
 	"github.com/truewebber/eve-online-mcp/internal/domain/session"
 	"github.com/truewebber/eve-online-mcp/internal/postgres"
 
@@ -83,7 +81,11 @@ const (
 	purgeRevokedSQL = `DELETE FROM sessions WHERE revoked_at < now() - interval '90 days'`
 )
 
-func New(pool *pgxpool.Pool, _ log.Logger) *Repo {
+func New(pool *pgxpool.Pool) *Repo {
+	if pool == nil {
+		panic("session/pgx: pool is required")
+	}
+
 	return &Repo{pool: pool}
 }
 

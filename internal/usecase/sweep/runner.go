@@ -2,6 +2,7 @@ package sweep
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/truewebber/gopkg/log"
@@ -16,6 +17,19 @@ import (
 )
 
 const Interval = 5 * time.Minute
+
+var (
+	errLockRequired      = errors.New("sweep: lock is required")
+	errLoginsRequired    = errors.New("sweep: login-state repository is required")
+	errCodesRequired     = errors.New("sweep: auth-code repository is required")
+	errConfirmsRequired  = errors.New("sweep: confirm repository is required")
+	errSessionsRequired  = errors.New("sweep: session repository is required")
+	errMutationsRequired = errors.New("sweep: mutation repository is required")
+	errClientsRequired   = errors.New("sweep: oauth client repository is required")
+	errSSORequired       = errors.New("sweep: SSO client is required")
+	errLoggerRequired    = errors.New("sweep: logger is required")
+	errPoolRequired      = errors.New("sweep: pool is required")
+)
 
 type Options struct {
 	Lock      Lock
@@ -52,7 +66,28 @@ type counts struct {
 	ClientsHard     int64
 }
 
-func New(opts Options) *Runner {
+func New(opts Options) (*Runner, error) {
+	switch {
+	case opts.Lock == nil:
+		return nil, errLockRequired
+	case opts.Logins == nil:
+		return nil, errLoginsRequired
+	case opts.Codes == nil:
+		return nil, errCodesRequired
+	case opts.Confirms == nil:
+		return nil, errConfirmsRequired
+	case opts.Sessions == nil:
+		return nil, errSessionsRequired
+	case opts.Mutations == nil:
+		return nil, errMutationsRequired
+	case opts.Clients == nil:
+		return nil, errClientsRequired
+	case opts.SSO == nil:
+		return nil, errSSORequired
+	case opts.Logger == nil:
+		return nil, errLoggerRequired
+	}
+
 	return &Runner{
 		lock:      opts.Lock,
 		logins:    opts.Logins,
@@ -63,7 +98,7 @@ func New(opts Options) *Runner {
 		clients:   opts.Clients,
 		sso:       opts.SSO,
 		logger:    opts.Logger,
-	}
+	}, nil
 }
 
 func (r *Runner) Start(ctx context.Context) {

@@ -1,6 +1,7 @@
 package httpsvc
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -35,7 +36,7 @@ func TestCallbackCCPErrorIsStatic(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet,
 		"/auth/callback?error=access_denied&error_description="+payload, nil)
-	(&API{}).GetAuthCallback(rec, req, GetAuthCallbackParams{})
+	(&API{Logger: mocks.QuietLogger(gomock.NewController(t))}).GetAuthCallback(rec, req, GetAuthCallbackParams{})
 	assertStaticPage(t, rec, pageRefused)
 	if strings.Contains(rec.Body.String(), payload) || strings.Contains(rec.Body.String(), "access_denied") {
 		t.Fatalf("ccp string rendered: %s", rec.Body.String())
@@ -53,7 +54,7 @@ func TestCallbackMissingCodeIsBadCallback(t *testing.T) {
 	t.Parallel()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/auth/callback?state=st", nil)
-	(&API{}).GetAuthCallback(rec, req, GetAuthCallbackParams{})
+	(&API{Logger: mocks.QuietLogger(gomock.NewController(t))}).GetAuthCallback(rec, req, GetAuthCallbackParams{})
 	assertStaticPage(t, rec, pageBadCallback)
 }
 
@@ -62,7 +63,7 @@ func TestCallbackUnknownLogin(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	logins := mocks.NewMockLoginstateRepository(ctrl)
 	logins.EXPECT().Take(gomock.Any(), "st").Return(nil, loginstate.ErrNotFound)
-	h := callbackAPI(t, mocks.QuietLogger(ctrl), logins, mocks.NewMockSSOClient(ctrl), nil, nil)
+	h := callbackAPI(t, mocks.QuietLogger(ctrl), logins, mocks.NewMockSSOClient(ctrl), mocks.NewMockCharacterRepository(ctrl), mocks.NewMockAuthcodeRepository(ctrl))
 	rec := callCallback(t, h)
 	assertStaticPage(t, rec, pageUnknownLogin)
 }
@@ -79,7 +80,7 @@ func TestCallbackDatabaseFailureIsGenericAndLogged(t *testing.T) {
 		})
 	logins := mocks.NewMockLoginstateRepository(ctrl)
 	logins.EXPECT().Take(gomock.Any(), "st").Return(nil, errDialRefused)
-	h := callbackAPI(t, logger, logins, mocks.NewMockSSOClient(ctrl), nil, nil)
+	h := callbackAPI(t, logger, logins, mocks.NewMockSSOClient(ctrl), mocks.NewMockCharacterRepository(ctrl), mocks.NewMockAuthcodeRepository(ctrl))
 	rec := callCallback(t, h)
 	assertStaticPage(t, rec, pageUnavailable)
 	if strings.Contains(rec.Body.String(), "connection refused") || strings.Contains(rec.Body.String(), errDialRefused.Error()) {
@@ -94,7 +95,7 @@ func TestCallbackClientMismatch(t *testing.T) {
 	logins.EXPECT().Take(gomock.Any(), "st").Return(&loginstate.Login{PKCEVerifier: "v"}, nil)
 	ssoC := mocks.NewMockSSOClient(ctrl)
 	ssoC.EXPECT().ExchangeCode(gomock.Any(), "x", "v").Return(nil, sso.ErrInvalidGrant)
-	h := callbackAPI(t, mocks.QuietLogger(ctrl), logins, ssoC, nil, nil)
+	h := callbackAPI(t, mocks.QuietLogger(ctrl), logins, ssoC, mocks.NewMockCharacterRepository(ctrl), mocks.NewMockAuthcodeRepository(ctrl))
 	rec := callCallback(t, h)
 	assertStaticPage(t, rec, pageMismatch)
 	if strings.Contains(rec.Body.String(), sso.ErrInvalidGrant.Error()) {
@@ -109,7 +110,7 @@ func TestCallbackLoginRefused(t *testing.T) {
 	logins.EXPECT().Take(gomock.Any(), "st").Return(&loginstate.Login{PKCEVerifier: "v"}, nil)
 	ssoC := mocks.NewMockSSOClient(ctrl)
 	ssoC.EXPECT().ExchangeCode(gomock.Any(), "x", "v").Return(nil, sso.Err(errCCPBody.Error()))
-	h := callbackAPI(t, mocks.QuietLogger(ctrl), logins, ssoC, nil, nil)
+	h := callbackAPI(t, mocks.QuietLogger(ctrl), logins, ssoC, mocks.NewMockCharacterRepository(ctrl), mocks.NewMockAuthcodeRepository(ctrl))
 	rec := callCallback(t, h)
 	assertStaticPage(t, rec, pageRefused)
 	if strings.Contains(rec.Body.String(), errCCPBody.Error()) {
@@ -126,7 +127,7 @@ func TestCallbackShortGrant(t *testing.T) {
 	ssoC.EXPECT().ExchangeCode(gomock.Any(), "x", "v").Return(&sso.CharacterToken{
 		CharacterID: 1, CharacterName: "Pilot",
 	}, nil)
-	h := callbackAPI(t, mocks.QuietLogger(ctrl), logins, ssoC, nil, nil)
+	h := callbackAPI(t, mocks.QuietLogger(ctrl), logins, ssoC, mocks.NewMockCharacterRepository(ctrl), mocks.NewMockAuthcodeRepository(ctrl))
 	rec := callCallback(t, h)
 	assertStaticPage(t, rec, pageShortGrant)
 	if !strings.Contains(rec.Body.String(), "esi-") {
@@ -210,11 +211,10 @@ func callbackAPI(
 	ctrl := gomock.NewController(t)
 	esiC := mocks.NewMockESIClient(ctrl)
 	esiC.EXPECT().ForUser(gomock.Any()).Return(esiC).AnyTimes()
-	if chars == nil {
-		chars = mocks.NewMockCharacterRepository(ctrl)
-	}
-	if codes == nil {
-		codes = mocks.NewMockAuthcodeRepository(ctrl)
+	host := oauth.Host{
+		PublicURL:   "http://127.0.0.1:8765",
+		MCPPath:     "/mcp",
+		CallbackURL: "http://127.0.0.1:8765/auth/callback",
 	}
 	runtime, err := session.Open(session.Options{
 		Mutations:  mocks.NewMockMutationRepository(ctrl),
@@ -224,15 +224,22 @@ func callbackAPI(
 		Characters: chars,
 		Codes:      codes,
 		Sessions:   mocks.NewMockSessionRepository(ctrl),
+		Clients:    mocks.NewMockOauthclientRepository(ctrl),
+		Confirms:   mocks.NewMockConfirmRepository(ctrl),
+		WithinTx:   func(ctx context.Context, fn func(context.Context) error) error { return fn(ctx) },
 		Logger:     mocks.QuietLogger(ctrl),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := oauth.Open(oauth.Host{Listen: "127.0.0.1:8765"}, runtime, oauth.Options{HMACKey: []byte(testHMACKey)}, mocks.QuietLogger(ctrl))
+	srv, err := oauth.Open(host, runtime, oauth.Options{HMACKey: []byte(testHMACKey)}, mocks.QuietLogger(ctrl))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := New(srv, host, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	return New(srv, oauth.Host{}, logger)
+	return h
 }

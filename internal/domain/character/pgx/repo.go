@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/truewebber/gopkg/log"
-
 	"github.com/truewebber/eve-online-mcp/internal/domain/character"
 	"github.com/truewebber/eve-online-mcp/internal/postgres"
 
@@ -37,7 +35,11 @@ const (
 		WHERE character_id = $1 AND deleted_at IS NULL`
 )
 
-func New(pool *pgxpool.Pool, _ log.Logger) *Repo {
+func New(pool *pgxpool.Pool) *Repo {
+	if pool == nil {
+		panic("character/pgx: pool is required")
+	}
+
 	return &Repo{pool: pool}
 }
 

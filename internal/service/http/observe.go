@@ -13,10 +13,6 @@ type Observer interface {
 }
 
 func observePublic(next http.Handler, obs Observer) http.Handler {
-	if obs == nil {
-		return next
-	}
-
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}

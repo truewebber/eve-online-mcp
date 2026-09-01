@@ -11,6 +11,7 @@ import (
 	esihttp "github.com/truewebber/eve-online-mcp/internal/adapter/esi/http"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi/http/esitest"
 	"github.com/truewebber/eve-online-mcp/internal/mocks"
+	"github.com/truewebber/eve-online-mcp/internal/observe"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 )
 
@@ -20,11 +21,15 @@ func TestServerStatusAgainstFixtures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client := esihttp.New(esi.Options{
+	client, err := esihttp.New(esi.Options{
 		BaseURL:    esi.DefaultBaseURL,
 		CompatDate: esitest.CompatDate,
 		UserAgent:  "eve-mcp-test",
+		Observe:    observe.New(),
 	}, &nhttp.Client{Transport: tr}, mocks.QuietLogger(gomock.NewController(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := eveServerStatus(t.Context(), &session.Session{ESI: client}, empty{})
 	if err != nil {
 		t.Fatal(err)

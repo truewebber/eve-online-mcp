@@ -39,6 +39,10 @@ type Repo struct {
 }
 
 func New(pool *pgxpool.Pool) *Repo {
+	if pool == nil {
+		panic("confirm/pgx: pool is required")
+	}
+
 	return &Repo{pool: pool}
 }
 

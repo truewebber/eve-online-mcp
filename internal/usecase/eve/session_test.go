@@ -17,6 +17,7 @@ import (
 	dbsession "github.com/truewebber/eve-online-mcp/internal/domain/session"
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 	"github.com/truewebber/eve-online-mcp/internal/mocks"
+	"github.com/truewebber/eve-online-mcp/internal/observe"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 )
 
@@ -26,11 +27,15 @@ func fixtureSession(t *testing.T) *session.Session {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client := esihttp.New(esi.Options{
+	client, err := esihttp.New(esi.Options{
 		BaseURL:    esi.DefaultBaseURL,
 		CompatDate: esitest.CompatDate,
 		UserAgent:  "eve-mcp-test",
+		Observe:    observe.New(),
 	}, &nhttp.Client{Transport: &esitest.Fallback{Inner: tr}}, mocks.QuietLogger(gomock.NewController(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	return toolSession(t, client, true)
 }
@@ -74,6 +79,10 @@ func toolSession(t *testing.T, esiClient esi.Client, refresh bool) *session.Sess
 	runtime, err := session.Open(session.Options{
 		ESI: esiClient, SSO: ssoC, Characters: chars, Sessions: sess,
 		Mutations: muts, Confirms: confs, Logger: logger,
+		Clients:  mocks.NewMockOauthclientRepository(ctrl),
+		Logins:   mocks.NewMockLoginstateRepository(ctrl),
+		Codes:    mocks.NewMockAuthcodeRepository(ctrl),
+		WithinTx: func(ctx context.Context, fn func(context.Context) error) error { return fn(ctx) },
 	})
 	if err != nil {
 		t.Fatal(err)

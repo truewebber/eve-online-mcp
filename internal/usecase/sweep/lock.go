@@ -26,8 +26,12 @@ type poolLock struct {
 	conn *pgxpool.Conn
 }
 
-func NewPoolLock(pool *pgxpool.Pool) Lock {
-	return &poolLock{pool: pool}
+func NewPoolLock(pool *pgxpool.Pool) (Lock, error) {
+	if pool == nil {
+		return nil, errPoolRequired
+	}
+
+	return &poolLock{pool: pool}, nil
 }
 
 func (l *poolLock) Try(ctx context.Context) (bool, error) {

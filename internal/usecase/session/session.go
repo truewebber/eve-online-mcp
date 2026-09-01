@@ -26,43 +26,50 @@ import (
 	"github.com/truewebber/eve-online-mcp/internal/j"
 )
 
-const idleConnFactor = 2
+const (
+	idleConnFactor = 2
+	requestTimeout = 30 * time.Second
+	maxConcurrency = 8
+)
 
 var (
-	ErrMutationsRequired = errors.New("session: mutation repository is required")
-	ErrESIRequired       = errors.New("session: ESI client is required")
-	ErrSSORequired       = errors.New("session: SSO client is required")
-	ErrNoSession         = errors.New("session: not tied to a login")
-	ErrDeadSession       = errors.New("session: character no longer authorized")
-	ErrMissingScope      = errors.New("session: missing scope")
-	ErrNPCCorp           = errors.New("session: npc corporation")
-	ErrMissingCorpRole   = errors.New("session: missing corp role")
-	ErrNoCorporation     = errors.New("session: no corporation_id")
+	ErrMutationsRequired  = errors.New("session: mutation repository is required")
+	ErrESIRequired        = errors.New("session: ESI client is required")
+	ErrSSORequired        = errors.New("session: SSO client is required")
+	ErrCharactersRequired = errors.New("session: character repository is required")
+	ErrSessionsRequired   = errors.New("session: session repository is required")
+	ErrClientsRequired    = errors.New("session: oauth client repository is required")
+	ErrLoginsRequired     = errors.New("session: login-state repository is required")
+	ErrCodesRequired      = errors.New("session: auth-code repository is required")
+	ErrConfirmsRequired   = errors.New("session: confirm repository is required")
+	ErrWithinTxRequired   = errors.New("session: transaction runner is required")
+	ErrLoggerRequired     = errors.New("session: logger is required")
+	ErrNoSession          = errors.New("session: not tied to a login")
+	ErrDeadSession        = errors.New("session: character no longer authorized")
+	ErrMissingScope       = errors.New("session: missing scope")
+	ErrNPCCorp            = errors.New("session: npc corporation")
+	ErrMissingCorpRole    = errors.New("session: missing corp role")
+	ErrNoCorporation      = errors.New("session: no corporation_id")
 )
 
 type TxRunner func(ctx context.Context, fn func(context.Context) error) error
 
 type Options struct {
-	UserAgent         string
-	RequestTimeoutSec float64
-	MaxConcurrency    int
-	HTTP              *http.Client
-	ESI               esi.Client
-	SSO               sso.Client
-	Characters        character.Repository
-	Sessions          dbsession.Repository
-	Clients           oauthclient.Repository
-	Logins            loginstate.Repository
-	Codes             authcode.Repository
-	Confirms          confirm.Repository
-	Mutations         mutation.Repository
-	WithinTx          TxRunner
-	Logger            log.Logger
+	ESI        esi.Client
+	SSO        sso.Client
+	Characters character.Repository
+	Sessions   dbsession.Repository
+	Clients    oauthclient.Repository
+	Logins     loginstate.Repository
+	Codes      authcode.Repository
+	Confirms   confirm.Repository
+	Mutations  mutation.Repository
+	WithinTx   TxRunner
+	Logger     log.Logger
 }
 
 type Session struct {
 	Opts        Options
-	HTTP        *http.Client
 	Characters  character.Repository
 	Sessions    dbsession.Repository
 	Clients     oauthclient.Repository
@@ -83,22 +90,19 @@ type Session struct {
 }
 
 func Open(opts Options) (*Session, error) {
-	if opts.Mutations == nil {
-		return nil, ErrMutationsRequired
+	if err := checkOptions(opts); err != nil {
+		return nil, err
 	}
-	if opts.ESI == nil {
-		return nil, ErrESIRequired
+	resolver, err := esihttp.NewResolver(opts.ESI, opts.Logger)
+	if err != nil {
+		return nil, wrap("Open", err)
 	}
-	if opts.SSO == nil {
-		return nil, ErrSSORequired
-	}
-	opts = normalize(opts)
-	if opts.HTTP == nil {
-		opts.HTTP = NewHTTPClient(opts)
+	guard, err := write.NewGuard(guardPersist{mutations: opts.Mutations, confirms: opts.Confirms}, 0, 0, opts.Logger)
+	if err != nil {
+		return nil, wrap("Open", err)
 	}
 	s := &Session{
 		Opts:       opts,
-		HTTP:       opts.HTTP,
 		Characters: opts.Characters,
 		Sessions:   opts.Sessions,
 		Clients:    opts.Clients,
@@ -108,8 +112,8 @@ func Open(opts Options) (*Session, error) {
 		Mutations:  opts.Mutations,
 		WithinTx:   opts.WithinTx,
 		SSO:        opts.SSO,
-		Resolver:   esihttp.NewResolver(opts.ESI, opts.Logger),
-		Guard:      write.NewGuard(guardPersist{mutations: opts.Mutations, confirms: opts.Confirms}, 0, 0, opts.Logger),
+		Resolver:   resolver,
+		Guard:      guard,
 		Logger:     opts.Logger,
 		grant:      &grantState{},
 	}
@@ -118,27 +122,43 @@ func Open(opts Options) (*Session, error) {
 	return s, nil
 }
 
-func NewHTTPClient(opts Options) *http.Client {
-	opts = normalize(opts)
-
-	return &http.Client{
-		Timeout: time.Duration(opts.RequestTimeoutSec * float64(time.Second)),
-		Transport: &http.Transport{
-			MaxIdleConns:        opts.MaxConcurrency * idleConnFactor,
-			MaxIdleConnsPerHost: opts.MaxConcurrency * idleConnFactor,
-		},
+func checkOptions(opts Options) error {
+	switch {
+	case opts.Mutations == nil:
+		return ErrMutationsRequired
+	case opts.ESI == nil:
+		return ErrESIRequired
+	case opts.SSO == nil:
+		return ErrSSORequired
+	case opts.Characters == nil:
+		return ErrCharactersRequired
+	case opts.Sessions == nil:
+		return ErrSessionsRequired
+	case opts.Clients == nil:
+		return ErrClientsRequired
+	case opts.Logins == nil:
+		return ErrLoginsRequired
+	case opts.Codes == nil:
+		return ErrCodesRequired
+	case opts.Confirms == nil:
+		return ErrConfirmsRequired
+	case opts.WithinTx == nil:
+		return ErrWithinTxRequired
+	case opts.Logger == nil:
+		return ErrLoggerRequired
+	default:
+		return nil
 	}
 }
 
-func normalize(opts Options) Options {
-	if opts.RequestTimeoutSec <= 0 {
-		opts.RequestTimeoutSec = 30
+func NewHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: requestTimeout,
+		Transport: &http.Transport{
+			MaxIdleConns:        maxConcurrency * idleConnFactor,
+			MaxIdleConnsPerHost: maxConcurrency * idleConnFactor,
+		},
 	}
-	if opts.MaxConcurrency < 1 {
-		opts.MaxConcurrency = 8
-	}
-
-	return opts
 }
 
 type ctxKey struct{}
@@ -158,9 +178,15 @@ func From(ctx context.Context) (*Session, error) {
 
 func (s *Session) ForCharacter(characterID int, sessionID int64) *Session {
 	opts := s.Opts
+	guard, err := write.NewGuard(
+		guardPersist{mutations: s.Mutations, confirms: s.Confirms},
+		int64(characterID), sessionID, s.Logger,
+	)
+	if err != nil {
+		panic(err)
+	}
 	out := &Session{
 		Opts:        opts,
-		HTTP:        s.HTTP,
 		Characters:  s.Characters,
 		Sessions:    s.Sessions,
 		Clients:     s.Clients,
@@ -173,12 +199,9 @@ func (s *Session) ForCharacter(characterID int, sessionID int64) *Session {
 		SessionID:   sessionID,
 		SSO:         s.SSO,
 		Resolver:    s.Resolver,
-		Guard: write.NewGuard(
-			guardPersist{mutations: s.Mutations, confirms: s.Confirms},
-			int64(characterID), sessionID, s.Logger,
-		),
-		Logger: s.Logger,
-		grant:  &grantState{},
+		Guard:       guard,
+		Logger:      s.Logger,
+		grant:       &grantState{},
 	}
 	out.ESI = opts.ESI.ForUser(ssoTokens{s: out})
 	out.Resolver = s.Resolver.ForUser(out.ESI)

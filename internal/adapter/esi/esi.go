@@ -24,11 +24,10 @@ type Observer interface {
 }
 
 type Options struct {
-	BaseURL        string
-	UserAgent      string
-	CompatDate     string
-	MaxConcurrency int
-	Observe        Observer
+	BaseURL    string
+	UserAgent  string
+	CompatDate string
+	Observe    Observer
 }
 
 type Error struct {

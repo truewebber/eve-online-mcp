@@ -17,6 +17,7 @@ func validConfig() config {
 	return config{
 		Listen:         testListen,
 		InternalListen: testInternal,
+		PublicURL:      "http://" + testListen,
 		DatabaseURL:    testDatabase,
 		HMACKey:        testHMACKeyHex,
 	}
@@ -40,21 +41,31 @@ func TestCallbackURLFromPublicURL(t *testing.T) {
 	}
 }
 
-func TestCallbackURLLoopback(t *testing.T) {
+func TestCallbackURLFromListenIsNotInvented(t *testing.T) {
 	t.Parallel()
 	c := validConfig()
 	c.Listen = "127.0.0.1:9000"
+	c.PublicURL = "http://127.0.0.1:9000"
 	ready(t, &c)
 	if c.CallbackURL != "http://127.0.0.1:9000/auth/callback" {
 		t.Fatalf("callback %q", c.CallbackURL)
 	}
 }
 
-func TestPublicURLRequiredOffLoopback(t *testing.T) {
+func TestPublicURLRequired(t *testing.T) {
 	t.Parallel()
 	c := validConfig()
-	c.Listen = "0.0.0.0:8765"
+	c.PublicURL = ""
 	if err := c.validate(); !errors.Is(err, errPublicURLRequired) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestListenRequired(t *testing.T) {
+	t.Parallel()
+	c := validConfig()
+	c.Listen = ""
+	if err := c.validate(); !errors.Is(err, errListenRequired) {
 		t.Fatalf("got %v", err)
 	}
 }

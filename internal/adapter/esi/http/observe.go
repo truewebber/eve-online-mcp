@@ -6,9 +6,6 @@ import (
 )
 
 func (c *Client) observeRequest(method string, status int, path string, d time.Duration) {
-	if c.observe == nil {
-		return
-	}
 	c.observe.Request(method, status, templatePath(path), d)
 }
 

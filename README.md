@@ -26,7 +26,7 @@ https://developers.eveonline.com/applications → **Create New Application**.
 | Field | Value |
 |---|---|
 | Connection Type | **Authentication & API Access** |
-| Callback URL | `http://127.0.0.1:8765/auth/callback` locally, or `{PUBLIC_URL}/auth/callback` — exactly |
+| Callback URL | `{PUBLIC_URL}/auth/callback` — exactly |
 | Permissions | **every** scope the build asks for — all 51, listed in `internal/domain/write/policy.go` (`RequestedScopes`) |
 
 Permissions is not a place to pick and choose: EVE grants only what the
@@ -41,10 +41,13 @@ Config is env only (see `.env.example`). Put a `.env` in the working
 directory of the process, or set real env vars:
 
 ```bash
-CLIENT_ID=...                # required, from step 1
-DATABASE_URL=postgres://...  # required, the only durable store
-HMAC_KEY=...                 # required, openssl rand -hex 32
-CONTACT=you@example.com      # identifies you to CCP
+CLIENT_ID=...                         # required, from step 1
+DATABASE_URL=postgres://...           # required, the only durable store
+HMAC_KEY=...                          # required, openssl rand -hex 32
+LISTEN_HOST_PORT=127.0.0.1:8765       # required, public bind
+INTERNAL_LISTEN_HOST_PORT=127.0.0.1:8766
+PUBLIC_URL=http://127.0.0.1:8765      # required; sets the EVE callback
+CONTACT=you@example.com               # identifies you to CCP
 ```
 
 ### 3. Build and run
@@ -105,14 +108,13 @@ client and sign in with EVE — MCP OAuth binds each of them to their own
 characters.
 
 `/healthz`, `/readyz` and `/metrics` are served on
-`INTERNAL_LISTEN_HOST_PORT` (default `127.0.0.1:8766`) — point k8s
-probes there, never route it publicly. Liveness is `/healthz`; readiness
-is `/readyz`, which also pings Postgres, so a pod that cannot reach the
-database leaves the Service instead of being restarted forever. Under
-Kubernetes both listeners need `0.0.0.0:{port}`
-(`LISTEN_HOST_PORT` / `INTERNAL_LISTEN_HOST_PORT`), or the kubelet
-cannot reach the probe, and `PUBLIC_URL` must be set once the bind is
-not loopback. Any number of replicas works — all durable state is in
+`INTERNAL_LISTEN_HOST_PORT` — point k8s probes there, never route it
+publicly. Liveness is `/healthz`; readiness is `/readyz`, which also
+pings Postgres, so a pod that cannot reach the database leaves the
+Service instead of being restarted forever. Under Kubernetes both
+listeners need `0.0.0.0:{port}` (`LISTEN_HOST_PORT` /
+`INTERNAL_LISTEN_HOST_PORT`), or the kubelet cannot reach the probe.
+`PUBLIC_URL` is always required. Any number of replicas works — all durable state is in
 Postgres — but caches and rate counters live in each pod, so above one
 replica hash `/mcp` onto pods by the `Authorization` header
 (`upstream-hash-by: "$http_authorization"`). That keeps a character on
@@ -191,20 +193,20 @@ logged in on that character.
 Env only — process environment, or a `.env` in the working directory.
 See `.env.example`.
 
-| Env | Default | Meaning |
-|---|---|---|
-| `CLIENT_ID` | — | **required**, the instance EVE application |
-| `CONTACT` | — | email for the User-Agent |
-| `CLIENT_SECRET` | empty | confidential applications only |
-| `LISTEN_HOST_PORT` | `127.0.0.1:8765` | public bind, host and port (MCP + OAuth) |
-| `INTERNAL_LISTEN_HOST_PORT` | `127.0.0.1:8766` | healthz / readyz / metrics; never route publicly |
-| `PUBLIC_URL` | empty | public base URL (sets the SSO callback); must be HTTPS unless loopback |
-| `EXTRA_REDIRECT_URIS` | empty | extra exact OAuth callbacks, for a client beyond Cursor / Claude |
-| `DATABASE_URL` | — | **required**, Postgres DSN (`make postgres`) |
-| `HMAC_KEY` | — | **required**, MCP JWT signing key, min 32 bytes (`openssl rand -hex 32`) |
+| Env | Meaning |
+|---|---|
+| `CLIENT_ID` | **required**, the instance EVE application |
+| `CONTACT` | email for the User-Agent; empty is fine |
+| `CLIENT_SECRET` | confidential applications only; empty means PKCE without a secret |
+| `LISTEN_HOST_PORT` | **required**, public bind, host and port (MCP + OAuth) |
+| `INTERNAL_LISTEN_HOST_PORT` | **required**, healthz / readyz / metrics; never route publicly |
+| `PUBLIC_URL` | **required**, public base URL (sets the SSO callback); must be HTTPS unless loopback |
+| `EXTRA_REDIRECT_URIS` | extra exact OAuth callbacks, for a client beyond Cursor / Claude |
+| `DATABASE_URL` | **required**, Postgres DSN (`make postgres`) |
+| `HMAC_KEY` | **required**, MCP JWT signing key, min 32 bytes (`openssl rand -hex 32`) |
 
 Refresh tokens are access to the EVE account; they live in Postgres.
-Default listen is loopback. Revoke access with `eve_auth_logout` or from
+A local `.env` typically binds loopback. Revoke access with `eve_auth_logout` or from
 [authorized-apps](https://developers.eveonline.com/authorized-apps) —
 either way the connection dies and the client asks for a new sign-in.
 

@@ -43,16 +43,12 @@ func (c *Client) noteErrorHeaders(resp *nhttp.Response) {
 	if *remain < errorFloor {
 		c.logger.Info("esi: error budget low", "remaining", *remain, "reset_sec", sec)
 	}
-	if resp.StatusCode >= nhttp.StatusBadRequest && c.budget != nil {
+	if resp.StatusCode >= nhttp.StatusBadRequest {
 		c.budget.charge()
 	}
 }
 
 func (c *Client) checkErrorBudget() error {
-	if c.budget == nil {
-		return nil
-	}
-
 	return c.budget.check(c.currentRemain())
 }
 
@@ -404,11 +400,11 @@ func lessAny(a, b any) bool {
 	return j.Float(a) < j.Float(b)
 }
 
-func esiBase(raw string) url.URL {
+func parseBase(raw string) (url.URL, error) {
 	u, err := url.Parse(raw)
-	if err == nil && u.Host != "" {
-		return *u
+	if err != nil || u.Host == "" || !u.IsAbs() {
+		return url.URL{}, errBaseURLRequired
 	}
 
-	return url.URL{Scheme: "https", Host: "esi.evetech.net"}
+	return *u, nil
 }

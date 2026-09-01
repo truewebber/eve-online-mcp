@@ -54,18 +54,21 @@ const (
 )
 
 var (
-	ErrUnknownLogin   = errors.New("oauth: unknown login")
-	ErrHMACTooShort   = errors.New("oauth: HMAC key is too short")
-	ErrClientMismatch = errors.New("oauth: client or pkce mismatch")
-	ErrLoginRefused   = errors.New("oauth: login refused")
-	ErrUnavailable    = errors.New("oauth: unavailable")
-	errShortGrant     = errors.New("oauth: short grant")
-	errBadAlg         = errors.New("alg")
-	errInvalidToken   = errors.New("invalid")
-	errNotRefresh     = errors.New("not refresh")
-	errNoSub          = errors.New("no sub")
-	errBadCharacter   = errors.New("oauth: character id")
-	errNoSID          = errors.New("oauth: sid")
+	ErrUnknownLogin    = errors.New("oauth: unknown login")
+	ErrHMACTooShort    = errors.New("oauth: HMAC key is too short")
+	ErrClientMismatch  = errors.New("oauth: client or pkce mismatch")
+	ErrLoginRefused    = errors.New("oauth: login refused")
+	ErrUnavailable     = errors.New("oauth: unavailable")
+	errShortGrant      = errors.New("oauth: short grant")
+	errBadAlg          = errors.New("alg")
+	errInvalidToken    = errors.New("invalid")
+	errNotRefresh      = errors.New("not refresh")
+	errNoSub           = errors.New("no sub")
+	errBadCharacter    = errors.New("oauth: character id")
+	errNoSID           = errors.New("oauth: sid")
+	errHostRequired    = errors.New("oauth: public URL, MCP path and callback URL are required")
+	errRuntimeRequired = errors.New("oauth: session runtime is required")
+	errLoggerRequired  = errors.New("oauth: logger is required")
 )
 
 type ShortGrantError struct {
@@ -77,7 +80,6 @@ func (ShortGrantError) Error() string { return errShortGrant.Error() }
 func (ShortGrantError) Unwrap() error { return errShortGrant }
 
 type Host struct {
-	Listen      string
 	PublicURL   string
 	MCPPath     string
 	CallbackURL string
@@ -103,21 +105,12 @@ func (h Host) withBase() Host {
 }
 
 func (h Host) computeBase() url.URL {
-	if h.PublicURL != "" {
-		u, err := url.Parse(strings.TrimRight(h.PublicURL, "/"))
-		if err == nil && u.Host != "" {
-			return *u
-		}
-	}
-	host, port, err := net.SplitHostPort(h.Listen)
-	if err != nil {
-		return url.URL{Scheme: schemeHTTP, Host: "127.0.0.1:8765"}
-	}
-	if host == "0.0.0.0" || host == "::" || host == "" {
-		host = "127.0.0.1"
+	u, err := url.Parse(strings.TrimRight(h.PublicURL, "/"))
+	if err != nil || u.Host == "" || !u.IsAbs() {
+		panic(errHostRequired)
 	}
 
-	return url.URL{Scheme: schemeHTTP, Host: net.JoinHostPort(host, port)}
+	return *u
 }
 
 func (h Host) root() url.URL {
@@ -149,13 +142,19 @@ type Server struct {
 }
 
 func Open(pub Host, runtime *session.Session, opts Options, logger log.Logger) (*Server, error) {
-	if pub.MCPPath == "" {
-		pub.MCPPath = "/mcp"
-	}
-	pub = pub.withBase()
 	if len(opts.HMACKey) < hmacMinBytes {
 		return nil, ErrHMACTooShort
 	}
+	if pub.PublicURL == "" || pub.MCPPath == "" || pub.CallbackURL == "" {
+		return nil, errHostRequired
+	}
+	if runtime == nil {
+		return nil, errRuntimeRequired
+	}
+	if logger == nil {
+		return nil, errLoggerRequired
+	}
+	pub = pub.withBase()
 
 	return &Server{
 		pub:               pub,
@@ -340,7 +339,7 @@ func (s *Server) ServeToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) writeOAuthError(w http.ResponseWriter, err error) {
-	if err != nil && s.logger != nil {
+	if err != nil {
 		s.logger.Error("oauth: server_error", "err", err)
 	}
 	http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)

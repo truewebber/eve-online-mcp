@@ -19,18 +19,19 @@ const (
 	dotEnvFile        = ".env"
 	hmacMinBytes      = 32
 	schemeHTTPS       = "https"
-	schemeHTTP        = "http"
 )
 
 var (
 	errListen            = errors.New("LISTEN_HOST_PORT must be host:port")
+	errListenRequired    = errors.New("LISTEN_HOST_PORT is required")
 	errInternalListen    = errors.New("INTERNAL_LISTEN_HOST_PORT must be host:port")
+	errInternalRequired  = errors.New("INTERNAL_LISTEN_HOST_PORT is required")
 	errDatabase          = errors.New("DATABASE_URL is required (Postgres DSN; run make postgres)")
 	errHMACRequired      = errors.New("HMAC_KEY is required (openssl rand -hex 32)")
 	errHMACTooShort      = errors.New("HMAC_KEY must decode to at least 32 bytes (openssl rand -hex 32)")
 	errHMACHex           = errors.New("HMAC_KEY must be hex (openssl rand -hex 32)")
 	errPublicURL         = errors.New("PUBLIC_URL must be an absolute URL")
-	errPublicURLRequired = errors.New("PUBLIC_URL is required when LISTEN_HOST_PORT is not loopback")
+	errPublicURLRequired = errors.New("PUBLIC_URL is required")
 	errPublicURLScheme   = errors.New("PUBLIC_URL must be https unless the host is loopback")
 	errRedirectAbsolute  = errors.New("EXTRA_REDIRECT_URIS entries must be absolute URLs")
 	errRedirectWildcard  = errors.New("EXTRA_REDIRECT_URIS entries must not contain a wildcard")
@@ -72,10 +73,7 @@ func loadConfig() (config, error) {
 }
 
 func readEnv() (config, error) {
-	c := config{
-		Listen:         "127.0.0.1:8765",
-		InternalListen: "127.0.0.1:8766",
-	}
+	c := config{}
 	_, err := os.Stat(dotEnvFile)
 	if err == nil {
 		m, err := godotenv.Read(dotEnvFile)
@@ -150,8 +148,14 @@ func (c *config) checkHMAC() error {
 }
 
 func (c *config) checkListeners() error {
+	if c.Listen == "" {
+		return errListenRequired
+	}
 	if _, _, err := net.SplitHostPort(c.Listen); err != nil {
 		return fmt.Errorf("%w: %w", errListen, err)
+	}
+	if c.InternalListen == "" {
+		return errInternalRequired
 	}
 	if _, _, err := net.SplitHostPort(c.InternalListen); err != nil {
 		return fmt.Errorf("%w: %w", errInternalListen, err)
@@ -161,16 +165,8 @@ func (c *config) checkListeners() error {
 }
 
 func (c *config) checkPublicURL() error {
-	host, _, err := net.SplitHostPort(c.Listen)
-	if err != nil {
-		return fmt.Errorf("%w: %w", errListen, err)
-	}
 	if c.PublicURL == "" {
-		if !loopbackHost(host) {
-			return errPublicURLRequired
-		}
-
-		return nil
+		return errPublicURLRequired
 	}
 	u, err := url.Parse(c.PublicURL)
 	if err != nil {
@@ -220,27 +216,20 @@ func extraRedirectOK(raw string) error {
 
 func (c *config) derive() {
 	c.TrustConnectingIP = loopbackBind(c.Listen)
-	c.CallbackURL = callbackURL(c.PublicURL, c.Listen)
+	c.CallbackURL = callbackURL(c.PublicURL)
 	c.UserAgent = "github.com/truewebber/eve-online-mcp/" + version
 	if c.Contact != "" {
 		c.UserAgent += " " + c.Contact
 	}
 }
 
-func callbackURL(publicURL, listen string) string {
-	if publicURL != "" {
-		u, err := url.Parse(publicURL)
-		if err == nil && u.Host != "" {
-			return u.JoinPath("auth", "callback").String()
-		}
-	}
-	_, port, err := net.SplitHostPort(listen)
-	if err != nil {
-		port = "8765"
+func callbackURL(publicURL string) string {
+	u, err := url.Parse(publicURL)
+	if err != nil || u.Host == "" {
+		return ""
 	}
 
-	return (&url.URL{Scheme: schemeHTTP, Host: net.JoinHostPort("127.0.0.1", port)}).
-		JoinPath("auth", "callback").String()
+	return u.JoinPath("auth", "callback").String()
 }
 
 func loopbackBind(hostPort string) bool {

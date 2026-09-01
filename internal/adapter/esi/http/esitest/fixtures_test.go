@@ -14,6 +14,7 @@ import (
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
 	esihttp "github.com/truewebber/eve-online-mcp/internal/adapter/esi/http"
 	"github.com/truewebber/eve-online-mcp/internal/mocks"
+	"github.com/truewebber/eve-online-mcp/internal/observe"
 )
 
 var update = flag.Bool("update", false, "record fixtures from live ESI") //nolint:gochecknoglobals // golden-file -update flag
@@ -70,11 +71,15 @@ func assertStatusRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := esihttp.New(esi.Options{
+	c, err := esihttp.New(esi.Options{
 		BaseURL:    esi.DefaultBaseURL,
 		CompatDate: CompatDate,
 		UserAgent:  userAgent,
+		Observe:    observe.New(),
 	}, &nhttp.Client{Transport: tr}, mocks.QuietLogger(gomock.NewController(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
 	res, err := c.Get(t.Context(), "/status", nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)

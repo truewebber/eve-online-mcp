@@ -51,22 +51,31 @@ func openRunner(t *testing.T) (*Runner, *postgres.DB, *mocks.MockSSOClient) {
 	sso := mocks.NewMockSSOClient(ctrl)
 	pool := db.Pool()
 
-	return New(Options{
-		Lock:      NewPoolLock(pool),
+	lock, err := NewPoolLock(pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := New(Options{
+		Lock:      lock,
 		Logins:    loginstatepgx.New(pool),
 		Codes:     authcodepgx.New(pool),
 		Confirms:  confirmpgx.New(pool),
-		Sessions:  sessionpgx.New(pool, logger),
+		Sessions:  sessionpgx.New(pool),
 		Mutations: mutationpgx.New(pool),
 		Clients:   oauthclientpgx.New(pool),
 		SSO:       sso,
 		Logger:    logger,
-	}), db, sso
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return r, db, sso
 }
 
 func seedCharacter(t *testing.T, db *postgres.DB, id int64) {
 	t.Helper()
-	if err := characterpgx.New(db.Pool(), mocks.QuietLogger(gomock.NewController(t))).Upsert(
+	if err := characterpgx.New(db.Pool()).Upsert(
 		context.Background(), character.Character{ID: id, Name: "P", OwnerHash: "h"},
 	); err != nil {
 		t.Fatal(err)
@@ -337,17 +346,24 @@ func TestTwoSweepersDoTheWorkOnce(t *testing.T) {
 	r1, db, sso := openRunner(t)
 	logger := mocks.QuietLogger(gomock.NewController(t))
 	pool := db.Pool()
-	r2 := New(Options{
-		Lock:      NewPoolLock(pool),
+	lock, err := NewPoolLock(pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2, err := New(Options{
+		Lock:      lock,
 		Logins:    loginstatepgx.New(pool),
 		Codes:     authcodepgx.New(pool),
 		Confirms:  confirmpgx.New(pool),
-		Sessions:  sessionpgx.New(pool, logger),
+		Sessions:  sessionpgx.New(pool),
 		Mutations: mutationpgx.New(pool),
 		Clients:   oauthclientpgx.New(pool),
 		SSO:       sso,
 		Logger:    logger,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx := t.Context()
 	seedCharacter(t, db, 36)
 	row, err := r1.sessions.Create(ctx, dbsession.Session{

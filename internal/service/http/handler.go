@@ -17,8 +17,18 @@ type API struct {
 	Logger log.Logger
 }
 
-func New(oauthServer *oauth.Server, host oauth.Host, logger log.Logger) *API {
-	return &API{OAuth: oauthServer, Host: host, Logger: logger}
+func New(oauthServer *oauth.Server, host oauth.Host, logger log.Logger) (*API, error) {
+	if oauthServer == nil {
+		return nil, errOAuthRequired
+	}
+	if host.PublicURL == "" || host.MCPPath == "" || host.CallbackURL == "" {
+		return nil, errHostRequired
+	}
+	if logger == nil {
+		return nil, errLoggerRequired
+	}
+
+	return &API{OAuth: oauthServer, Host: host, Logger: logger}, nil
 }
 
 func (h *API) Mount(mux ServeMux) {
@@ -120,9 +130,6 @@ func (h *API) writeErr(w http.ResponseWriter, err error) {
 }
 
 func (h *API) logPage(entry pageErr, err error, extra ...any) {
-	if h.Logger == nil {
-		return
-	}
 	args := append([]any{"err", err, "title", entry.title}, extra...)
 	if entry.status >= http.StatusInternalServerError {
 		h.Logger.Error("http: callback", args...)

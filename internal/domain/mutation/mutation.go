@@ -5,7 +5,7 @@ import (
 	"errors"
 )
 
-var errNoHold = errors.New("mutation: no mail-cap hold")
+var errHoldRequired = errors.New("mutation: hold funcs are required")
 
 const (
 	OutcomeOK    = "ok"
@@ -33,22 +33,19 @@ type Hold struct {
 	end   func(error) error
 }
 
-func NewHold(n int, do func(func(context.Context) error) error, end func(error) error) *Hold {
-	return &Hold{Count: n, do: do, end: end}
+func NewHold(n int, do func(func(context.Context) error) error, end func(error) error) (*Hold, error) {
+	if do == nil || end == nil {
+		return nil, errHoldRequired
+	}
+
+	return &Hold{Count: n, do: do, end: end}, nil
 }
 
 func (h *Hold) Do(fn func(context.Context) error) error {
-	if h == nil || h.do == nil {
-		return errNoHold
-	}
-
 	return h.do(fn)
 }
 
 func (h *Hold) Release(err error) error {
-	if h == nil || h.end == nil {
-		return nil
-	}
 	fn := h.end
 	h.end = nil
 

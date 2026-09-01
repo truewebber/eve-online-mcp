@@ -60,8 +60,13 @@ const (
 )
 
 var (
-	errKidNotInJWKS = errors.New("kid not in JWKS")
-	errNotRSA       = errors.New("not rsa")
+	errKidNotInJWKS      = errors.New("kid not in JWKS")
+	errNotRSA            = errors.New("not rsa")
+	errClientIDRequired  = errors.New("sso: client id is required")
+	errCallbackRequired  = errors.New("sso: callback URL is required")
+	errUserAgentRequired = errors.New("sso: user agent is required")
+	errHTTPRequired      = errors.New("sso: http client is required")
+	errLoggerRequired    = errors.New("sso: logger is required")
 )
 
 type jwksState struct {
@@ -80,7 +85,23 @@ type Client struct {
 	logger       log.Logger
 }
 
-func New(opts sso.Options, httpClient *nhttp.Client, logger log.Logger) *Client {
+func New(opts sso.Options, httpClient *nhttp.Client, logger log.Logger) (*Client, error) {
+	if opts.ClientID == "" {
+		return nil, errClientIDRequired
+	}
+	if opts.CallbackURL == "" {
+		return nil, errCallbackRequired
+	}
+	if opts.UserAgent == "" {
+		return nil, errUserAgentRequired
+	}
+	if httpClient == nil {
+		return nil, errHTTPRequired
+	}
+	if logger == nil {
+		return nil, errLoggerRequired
+	}
+
 	return &Client{
 		opts:   opts,
 		base:   url.URL{Scheme: "https", Host: ssoHost},
@@ -88,13 +109,10 @@ func New(opts sso.Options, httpClient *nhttp.Client, logger log.Logger) *Client 
 		access: newAccessCache(),
 		jwks:   &jwksState{},
 		logger: logger,
-	}
+	}, nil
 }
 
 func (c *Client) PrepareLogin(scopes []string) (*sso.PreparedLogin, error) {
-	if c.opts.ClientID == "" {
-		return nil, fail("EVE CLIENT_ID is not configured on this server.")
-	}
 	if scopes == nil {
 		scopes = append([]string{}, c.opts.Scopes...)
 	}

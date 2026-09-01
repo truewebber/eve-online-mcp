@@ -19,7 +19,7 @@ type grantState struct {
 }
 
 func (g *grantState) live() string {
-	if g == nil || g.access == "" {
+	if g.access == "" {
 		return ""
 	}
 	if time.Now().After(g.expiry.Add(-refreshMargin)) {
@@ -30,7 +30,7 @@ func (g *grantState) live() string {
 }
 
 func (g *grantState) set(tok *sso.CharacterToken) {
-	if g == nil || tok == nil {
+	if tok == nil {
 		return
 	}
 	g.refresh = tok.RefreshToken
@@ -59,9 +59,6 @@ type LoggedOut struct {
 }
 
 func (s *Session) Redeem(ctx context.Context, parked ParkedGrant) (Exchanged, error) {
-	if s.WithinTx == nil {
-		return Exchanged{}, wrap("Redeem", dbsession.ErrNeedTx)
-	}
 	var out Exchanged
 	err := s.WithinTx(ctx, func(ctx context.Context) error {
 		if err := s.Sessions.LockCharacter(ctx, parked.CharacterID); err != nil {
@@ -97,9 +94,6 @@ func (s *Session) Redeem(ctx context.Context, parked ParkedGrant) (Exchanged, er
 }
 
 func (s *Session) Logout(ctx context.Context) (LoggedOut, error) {
-	if s.WithinTx == nil {
-		return LoggedOut{}, wrap("Logout", dbsession.ErrNeedTx)
-	}
 	row, err := s.Characters.Get(ctx, int64(s.CharacterID))
 	if err != nil {
 		return LoggedOut{}, wrap("Logout", err)
@@ -139,12 +133,14 @@ func (s *Session) RebuildGrant(sessionID int64) {
 	defer s.grantMu.Unlock()
 	s.SessionID = sessionID
 	s.grant = &grantState{}
-	if s.Mutations != nil && s.Confirms != nil {
-		s.Guard = write.NewGuard(
-			guardPersist{mutations: s.Mutations, confirms: s.Confirms},
-			int64(s.CharacterID), sessionID, s.Logger,
-		)
+	guard, err := write.NewGuard(
+		guardPersist{mutations: s.Mutations, confirms: s.Confirms},
+		int64(s.CharacterID), sessionID, s.Logger,
+	)
+	if err != nil {
+		panic(err)
 	}
+	s.Guard = guard
 }
 
 func (s *Session) eveAccess(ctx context.Context) (string, error) {

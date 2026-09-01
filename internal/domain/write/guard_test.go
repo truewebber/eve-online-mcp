@@ -3,6 +3,7 @@ package write_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -36,7 +37,10 @@ func testGuard(t *testing.T) (*write.Guard, *confirmBox) {
 	persist.EXPECT().CountMailCap(gomock.Any(), gomock.Any()).DoAndReturn(box.countMail).AnyTimes()
 	persist.EXPECT().AppendMutation(gomock.Any(), gomock.Any()).DoAndReturn(box.append).AnyTimes()
 	persist.EXPECT().HoldMailCap(gomock.Any(), gomock.Any()).DoAndReturn(box.hold).AnyTimes()
-	g := write.NewGuard(persist, 1, 1, mocks.QuietLogger(ctrl))
+	g, err := write.NewGuard(persist, 1, 1, mocks.QuietLogger(ctrl))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	return g, box
 }
@@ -93,10 +97,18 @@ func (b *confirmBox) append(_ context.Context, m write.Mutation) error {
 
 func (b *confirmBox) hold(ctx context.Context, characterID int64) (*write.MailCapHold, error) {
 	n, err := b.countMail(ctx, characterID)
+	if err != nil {
+		return nil, err
+	}
 
-	return write.NewMailCapHold(n, func(fn func(context.Context) error) error {
+	hold, err := write.NewMailCapHold(n, func(fn func(context.Context) error) error {
 		return fn(ctx)
-	}, func(error) error { return nil }), err
+	}, func(error) error { return nil })
+	if err != nil {
+		return nil, fmt.Errorf("hold: %w", err)
+	}
+
+	return hold, nil
 }
 
 func recordMail(t *testing.T, g *write.Guard, args map[string]any) {

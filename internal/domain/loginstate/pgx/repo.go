@@ -43,6 +43,10 @@ type Repo struct {
 }
 
 func New(pool *pgxpool.Pool) *Repo {
+	if pool == nil {
+		panic("loginstate/pgx: pool is required")
+	}
+
 	return &Repo{pool: pool}
 }
 

@@ -19,7 +19,7 @@ func openRepo(t *testing.T) *Repo {
 	logger := mocks.QuietLogger(gomock.NewController(t))
 	db := pgtest.Open(t, logger)
 
-	return New(db.Pool(), logger)
+	return New(db.Pool())
 }
 
 func TestUpsertAndOwnerHash(t *testing.T) {

@@ -1,24 +1,22 @@
 package http
 
 import (
+	nhttp "net/http"
 	"net/url"
 	"testing"
-
-	"go.uber.org/mock/gomock"
-
-	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
-	"github.com/truewebber/eve-online-mcp/internal/mocks"
 )
 
-const testClientID = "cid"
+const (
+	testClientID    = "cid"
+	testCallbackURL = "http://127.0.0.1/auth/callback"
+	testUserAgent   = "eve-mcp-test"
+)
 
 func TestPrepareLoginAssemblesAuthorizeURL(t *testing.T) {
 	t.Parallel()
-	c := New(sso.Options{
-		ClientID:    testClientID,
-		CallbackURL: "http://127.0.0.1/auth/callback",
-		Scopes:      []string{"esi-wallet.read_character_wallet.v1"},
-	}, nil, mocks.QuietLogger(gomock.NewController(t)))
+	opts := testSSOOptions()
+	opts.Scopes = []string{"esi-wallet.read_character_wallet.v1"}
+	c := mustSSO(t, opts, &nhttp.Client{})
 	prep, err := c.PrepareLogin(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -34,7 +32,7 @@ func TestPrepareLoginAssemblesAuthorizeURL(t *testing.T) {
 	if q.Get(formClientID) != testClientID {
 		t.Fatalf("client_id %q", q.Get(formClientID))
 	}
-	if q.Get("redirect_uri") != "http://127.0.0.1/auth/callback" {
+	if q.Get("redirect_uri") != testCallbackURL {
 		t.Fatalf("redirect_uri %q", q.Get("redirect_uri"))
 	}
 	if q.Get("response_type") != "code" {
@@ -47,10 +45,9 @@ func TestPrepareLoginAssemblesAuthorizeURL(t *testing.T) {
 
 func TestPrepareLoginEncodesCallback(t *testing.T) {
 	t.Parallel()
-	c := New(sso.Options{
-		ClientID:    testClientID,
-		CallbackURL: "http://127.0.0.1/cb?x=a&b=c d",
-	}, nil, mocks.QuietLogger(gomock.NewController(t)))
+	opts := testSSOOptions()
+	opts.CallbackURL = "http://127.0.0.1/cb?x=a&b=c d"
+	c := mustSSO(t, opts, &nhttp.Client{})
 	prep, err := c.PrepareLogin(nil)
 	if err != nil {
 		t.Fatal(err)

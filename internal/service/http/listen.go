@@ -39,11 +39,14 @@ type ListenOptions struct {
 
 // The internal listener (healthz, readyz, metrics) must never be exposed.
 func ListenAndServe(h *API, opts ListenOptions) error {
+	if err := checkListen(opts); err != nil {
+		return err
+	}
 	errs := make(chan error, httpServers)
 	go func() { errs <- serve(opts.InternalListen, internalMux(opts.Ready, opts.Metrics)) }()
 
 	base := h.Host.BaseURL()
-	path := mcpPath(opts.MCPPath)
+	path := opts.MCPPath
 	opts.Logger.Info("writes: confirm, mail cap 5/hour")
 	opts.Logger.Info("MCP endpoint (OAuth — clients show Authentication required)", "base", base, "path", path)
 	opts.Logger.Info("EVE callback must be exactly this URL", "url", h.Host.CallbackURL)
@@ -85,19 +88,28 @@ func mountMCP(mux *http.ServeMux, h *API, opts ListenOptions) {
 		DisableLocalhostProtection: true,
 	})
 	protected := h.OAuth.ProtectMCP(stream)
-	path := mcpPath(opts.MCPPath)
+	path := opts.MCPPath
 	mux.Handle(path, protected)
 	if !strings.HasSuffix(path, "/") {
 		mux.Handle(path+"/", protected)
 	}
 }
 
-func mcpPath(path string) string {
-	if path == "" {
-		return "/mcp"
+func checkListen(opts ListenOptions) error {
+	switch {
+	case opts.Listen == "" || opts.InternalListen == "" || opts.MCPPath == "":
+		return errListenRequired
+	case opts.Logger == nil:
+		return errLoggerRequired
+	case opts.Metrics == nil:
+		return errMetricsRequired
+	case opts.Observe == nil:
+		return errObserveRequired
+	case opts.Ready == nil:
+		return errReadyRequired
+	default:
+		return nil
 	}
-
-	return path
 }
 
 func serve(addr string, h http.Handler) error {
@@ -120,10 +132,7 @@ func internalMux(ready func(context.Context) error, metrics http.Handler) *http.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", serveHealthz)
 	mux.HandleFunc("/readyz", serveReadyz(ready))
-	if metrics != nil {
-		// RED series are per pod and must be summed across replicas.
-		mux.Handle("/metrics", metrics)
-	}
+	mux.Handle("/metrics", metrics)
 
 	return mux
 }
@@ -134,14 +143,12 @@ func serveHealthz(w http.ResponseWriter, _ *http.Request) {
 
 func serveReadyz(ready func(context.Context) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if ready != nil {
-			ctx, cancel := context.WithTimeout(r.Context(), readyTimeout)
-			defer cancel()
-			if err := ready(ctx); err != nil {
-				writeJSON(w, http.StatusServiceUnavailable, readyDown)
+		ctx, cancel := context.WithTimeout(r.Context(), readyTimeout)
+		defer cancel()
+		if err := ready(ctx); err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, readyDown)
 
-				return
-			}
+			return
 		}
 		writeJSON(w, http.StatusOK, readyOK)
 	}

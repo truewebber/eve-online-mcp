@@ -22,7 +22,7 @@ func openRepo(t *testing.T) (*Repo, character.Repository, *postgres.DB) {
 	logger := mocks.QuietLogger(gomock.NewController(t))
 	db := pgtest.Open(t, logger)
 
-	return New(db.Pool(), logger), characterpgx.New(db.Pool(), logger), db
+	return New(db.Pool()), characterpgx.New(db.Pool()), db
 }
 
 func seedCharacter(t *testing.T, chars character.Repository, id int64) {

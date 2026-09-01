@@ -72,5 +72,10 @@ func (p guardPersist) HoldMailCap(ctx context.Context, characterID int64) (*writ
 		return nil, wrap("HoldMailCap", err)
 	}
 
-	return write.NewMailCapHold(h.Count, h.Do, h.Release), nil
+	hold, err := write.NewMailCapHold(h.Count, h.Do, h.Release)
+	if err != nil {
+		return nil, wrap("HoldMailCap", err)
+	}
+
+	return hold, nil
 }

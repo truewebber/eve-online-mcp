@@ -61,14 +61,14 @@ duplication stops paying for itself.
 
 Each pod runs two HTTP listeners:
 
-| Listener | Env | Default | Serves | Exposure |
-|---|---|---|---|---|
-| Public | `LISTEN_HOST_PORT` | `127.0.0.1:8765` | `/mcp`, OAuth endpoints, human pages | Ingress / Cloudflare tunnel |
-| Internal | `INTERNAL_LISTEN_HOST_PORT` | `127.0.0.1:8766` | `/healthz`, `/readyz`, `/metrics` | Cluster-only. Never routed publicly |
+| Listener | Env | Serves | Exposure |
+|---|---|---|---|
+| Public | `LISTEN_HOST_PORT` | `/mcp`, OAuth endpoints, human pages | Ingress / Cloudflare tunnel |
+| Internal | `INTERNAL_LISTEN_HOST_PORT` | `/healthz`, `/readyz`, `/metrics` | Cluster-only. Never routed publicly |
 
-Defaults bind loopback because the common local case is a laptop. Under
-Kubernetes both must be set to `0.0.0.0:<port>` or the kubelet cannot
-reach `/healthz` and the Service cannot reach `/mcp` (§10).
+Both binds are required env. A laptop `.env` sets loopback; Kubernetes
+must set `0.0.0.0:<port>` or the kubelet cannot reach `/healthz` and the
+Service cannot reach `/mcp` (§10). The binary does not invent a host.
 
 ## 2. Configuration
 
@@ -78,36 +78,33 @@ nothing written back at runtime. Config lives in `cmd/eve-mcp/config.go`
 (`package main`) and is never imported by inner layers; `main` maps it
 into per-module `Options`.
 
-| Env | Required | Default | Meaning |
-|---|---|---|---|
-| `CLIENT_ID` | **yes** | — | The instance EVE application (developers.eveonline.com). Its registration must carry **every** scope in `RequestedScopes()` (§4.2): a scope the application does not list is a scope EVE will never grant, and §3.2 refuses such a login at the callback |
-| `CLIENT_SECRET` | no | empty | Only for confidential applications; PKCE is used either way |
-| `CONTACT` | no | empty | Operator email for the User-Agent; strongly recommended |
-| `LISTEN_HOST_PORT` | no | `127.0.0.1:8765` | Public bind (host and port) |
-| `INTERNAL_LISTEN_HOST_PORT` | no | `127.0.0.1:8766` | Internal bind (host and port) |
-| `PUBLIC_URL` | when `LISTEN_HOST_PORT` is not loopback | empty | Public base URL; also fixes the EVE callback to `{PUBLIC_URL}/auth/callback` |
-| `EXTRA_REDIRECT_URIS` | no | empty | Comma-separated exact redirect URIs added to the built-in allowlist (§3.1), for an MCP client we do not ship support for |
-| `DATABASE_URL` | **yes** | — | PostgreSQL DSN; sole durable store (see DB.md) |
-| `HMAC_KEY` | **yes** | — | MCP JWT signing key, min 32 bytes (`openssl rand -hex 32`). Rotation = new secret + restart → all clients re-authenticate |
+| Env | Required | Meaning |
+|---|---|---|
+| `CLIENT_ID` | **yes** | The instance EVE application (developers.eveonline.com). Its registration must carry **every** scope in `RequestedScopes()` (§4.2): a scope the application does not list is a scope EVE will never grant, and §3.2 refuses such a login at the callback |
+| `CLIENT_SECRET` | no | Only for confidential applications; empty means PKCE without a secret |
+| `CONTACT` | no | Operator email for the User-Agent; empty means no extra contact in the UA |
+| `LISTEN_HOST_PORT` | **yes** | Public bind (host and port) |
+| `INTERNAL_LISTEN_HOST_PORT` | **yes** | Internal bind (host and port) |
+| `PUBLIC_URL` | **yes** | Public base URL; also fixes the EVE callback to `{PUBLIC_URL}/auth/callback` |
+| `EXTRA_REDIRECT_URIS` | no | Comma-separated exact redirect URIs added to the built-in allowlist (§3.1); empty means the built-in list only |
+| `DATABASE_URL` | **yes** | PostgreSQL DSN; sole durable store (see DB.md) |
+| `HMAC_KEY` | **yes** | MCP JWT signing key, min 32 bytes (`openssl rand -hex 32`). Rotation = new secret + restart → all clients re-authenticate |
 
 Validation at boot, fatal on failure:
 
-- listeners are `host:port`;
-- `PUBLIC_URL`, when set, is an absolute URL and its scheme is `https`
+- listeners are `host:port` and both are set;
+- `PUBLIC_URL` is set, is an absolute URL, and its scheme is `https`
   unless the host is loopback — authorization codes travel in browser
-  URLs (AUTH.md, standing requirement 1);
-- `PUBLIC_URL` is **set** whenever `LISTEN_HOST_PORT` does not bind a
-  loopback address. It is the `iss` of every token we sign, the
-  `resource` of the PRM document and the EVE callback, and none of the
-  three may vary between requests;
+  URLs (AUTH.md, standing requirement 1). It is the `iss` of every token
+  we sign, the `resource` of the PRM document and the EVE callback, and
+  none of the three may vary between requests;
 - every entry of `EXTRA_REDIRECT_URIS` is an absolute URL with no
   wildcard and no fragment;
 - `HMAC_KEY` decodes to at least 32 bytes.
 
-The base URL is `PUBLIC_URL` when set and the loopback bind otherwise —
-**never** the request's `Host` header, which is attacker-controlled and
-would let a caller mint metadata pointing anywhere. The callback URL
-therefore defaults to `http://127.0.0.1:{port}/auth/callback`.
+The base URL is `PUBLIC_URL` — **never** the request's `Host` header,
+which is attacker-controlled and would let a caller mint metadata
+pointing anywhere. The callback URL is `{PUBLIC_URL}/auth/callback`.
 User-Agent is `eve-mcp/{version} {CONTACT}`.
 
 **Deliberately not configurable** (constants in code, per PRD "clean
@@ -212,7 +209,7 @@ that is the one piece of per-client setup the product keeps (PRD §5).
 
 Authorization-code + PKCE against `login.eveonline.com/v2/oauth/…` with
 the instance `CLIENT_ID`. Callback is exactly
-`{PUBLIC_URL|http://127.0.0.1:port}/auth/callback` and must match the CCP
+`{PUBLIC_URL}/auth/callback` and must match the CCP
 application registration. Access JWTs are verified against CCP JWKS
 (RS256/ES256, issuer + audience `EVE Online`); refresh is handled per
 **session** with a 60 s expiry margin — the grant belongs to the sign-in
@@ -810,7 +807,7 @@ the mail cap counts from (§5.4). It stores no message bodies.
   updates, no volumes; env (`DATABASE_URL`, `CLIENT_ID`, `HMAC_KEY`, …)
   from a Secret; `LISTEN_HOST_PORT` and `INTERNAL_LISTEN_HOST_PORT` set
   to `0.0.0.0:{port}` so the kubelet and the Service can reach them;
-  `PUBLIC_URL` set, because the binds are not loopback (§2); liveness →
+  `PUBLIC_URL` set (§2); liveness →
   `GET /healthz` and readiness → `GET /readyz` on the internal port;
   internal port has no Ingress exposure. Postgres is a cluster service,
   provisioned separately.
@@ -923,7 +920,7 @@ Remaining, in dependency order:
    grant in the database forever and the 30-day lifetime is a claim
    about our JWTs only.
 10. **Config and edges** (§2, §5.5, §6, §10): `EXTRA_REDIRECT_URIS`;
-    `PUBLIC_URL` required off loopback, HTTPS-validated, and the base
+    `PUBLIC_URL` required, HTTPS-validated, and the base
     URL never taken from `Host`; `HMAC_KEY` length check; the per-IP
     limit widened to every unauthenticated public route, `GET /`
     included; the `CF-Connecting-IP` trust rule; `/readyz` with its

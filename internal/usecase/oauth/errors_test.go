@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -100,16 +101,22 @@ func mockServer(t *testing.T, ctrl *gomock.Controller, ssoC sso.Client) *Server 
 	clients := mocks.NewMockOauthclientRepository(ctrl)
 	clients.EXPECT().Get(gomock.Any(), gomock.Any()).Return(nil, errNoClient).AnyTimes()
 	runtime, err := session.Open(session.Options{
-		Mutations: mocks.NewMockMutationRepository(ctrl),
-		ESI:       esiC,
-		SSO:       ssoC,
-		Clients:   clients,
-		Logger:    mocks.QuietLogger(ctrl),
+		Mutations:  mocks.NewMockMutationRepository(ctrl),
+		ESI:        esiC,
+		SSO:        ssoC,
+		Clients:    clients,
+		Characters: mocks.NewMockCharacterRepository(ctrl),
+		Sessions:   mocks.NewMockSessionRepository(ctrl),
+		Logins:     mocks.NewMockLoginstateRepository(ctrl),
+		Codes:      mocks.NewMockAuthcodeRepository(ctrl),
+		Confirms:   mocks.NewMockConfirmRepository(ctrl),
+		WithinTx:   func(ctx context.Context, fn func(context.Context) error) error { return fn(ctx) },
+		Logger:     mocks.QuietLogger(ctrl),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := Open(Host{Listen: testListen}, runtime, Options{HMACKey: []byte(testHMACKey)}, mocks.QuietLogger(ctrl))
+	s, err := Open(testHost(), runtime, Options{HMACKey: []byte(testHMACKey)}, mocks.QuietLogger(ctrl))
 	if err != nil {
 		t.Fatal(err)
 	}

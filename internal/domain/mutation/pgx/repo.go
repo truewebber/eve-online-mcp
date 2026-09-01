@@ -37,6 +37,10 @@ type Repo struct {
 }
 
 func New(pool *pgxpool.Pool) *Repo {
+	if pool == nil {
+		panic("mutation/pgx: pool is required")
+	}
+
 	return &Repo{pool: pool}
 }
 
@@ -92,9 +96,14 @@ func (r *Repo) HoldMailCap(ctx context.Context, characterID int64) (*mutation.Ho
 			return nil, err
 		}
 
-		return mutation.NewHold(n, func(fn func(context.Context) error) error {
+		hold, herr := mutation.NewHold(n, func(fn func(context.Context) error) error {
 			return fn(ctx)
-		}, func(error) error { return nil }), nil
+		}, func(error) error { return nil })
+		if herr != nil {
+			return nil, wrap("HoldMailCap", herr)
+		}
+
+		return hold, nil
 	}
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -112,7 +121,7 @@ func (r *Repo) HoldMailCap(ctx context.Context, characterID int64) (*mutation.Ho
 	var once sync.Once
 	var endErr error
 
-	return mutation.NewHold(n, func(fn func(context.Context) error) error {
+	hold, herr := mutation.NewHold(n, func(fn func(context.Context) error) error {
 		return fn(holdCtx)
 	}, func(execErr error) error {
 		once.Do(func() {
@@ -128,7 +137,12 @@ func (r *Repo) HoldMailCap(ctx context.Context, characterID int64) (*mutation.Ho
 		})
 
 		return wrap("HoldMailCap", endErr)
-	}), nil
+	})
+	if herr != nil {
+		return nil, wrap("HoldMailCap", herr)
+	}
+
+	return hold, nil
 }
 
 func (r *Repo) withMailCap(ctx context.Context, characterID int64, fn func(context.Context) error) error {

@@ -26,9 +26,19 @@ const (
 	backoffCap         = 8 * time.Second
 	throttleRetryCap   = 2 * time.Second
 	jitterFloor        = 0.5
+	maxConcurrency     = 8
 )
 
-var errNoTokenSource = errors.New("authenticated ESI call without a token source")
+var (
+	errNoTokenSource     = errors.New("authenticated ESI call without a token source")
+	errBaseURLRequired   = errors.New("esi: base URL is required")
+	errUserAgentRequired = errors.New("esi: user agent is required")
+	errCompatRequired    = errors.New("esi: compatibility date is required")
+	errHTTPRequired      = errors.New("esi: http client is required")
+	errLoggerRequired    = errors.New("esi: logger is required")
+	errObserveRequired   = errors.New("esi: observer is required")
+	errClientRequired    = errors.New("esi: client is required")
+)
 
 type Client struct {
 	opts         esi.Options
@@ -46,32 +56,42 @@ type Client struct {
 	observe      esi.Observer
 }
 
-func New(opts esi.Options, httpClient *nhttp.Client, logger log.Logger) *Client {
-	if opts.BaseURL == "" {
-		opts.BaseURL = esi.DefaultBaseURL
+func New(opts esi.Options, httpClient *nhttp.Client, logger log.Logger) (*Client, error) {
+	base, err := parseBase(opts.BaseURL)
+	if err != nil {
+		return nil, err
 	}
-	if opts.MaxConcurrency < 1 {
-		opts.MaxConcurrency = 8
+	if opts.UserAgent == "" {
+		return nil, errUserAgentRequired
+	}
+	if opts.CompatDate == "" {
+		return nil, errCompatRequired
+	}
+	if httpClient == nil {
+		return nil, errHTTPRequired
+	}
+	if logger == nil {
+		return nil, errLoggerRequired
+	}
+	if opts.Observe == nil {
+		return nil, errObserveRequired
 	}
 
 	return &Client{
 		opts:        opts,
-		base:        esiBase(opts.BaseURL),
+		base:        base,
 		http:        ownHTTP(httpClient),
 		cache:       newResponseCache(),
-		sem:         make(chan struct{}, opts.MaxConcurrency),
+		sem:         make(chan struct{}, maxConcurrency),
 		errorRemain: errorLimitBudget,
 		bucket:      newUserBucket(),
 		budget:      newErrorBudget(),
 		logger:      logger,
 		observe:     opts.Observe,
-	}
+	}, nil
 }
 
 func ownHTTP(c *nhttp.Client) *nhttp.Client {
-	if c == nil {
-		return &nhttp.Client{}
-	}
 	cp := *c
 
 	return &cp
@@ -84,7 +104,7 @@ func (c *Client) ForUser(auth esi.TokenSource) esi.Client {
 		http:        c.http,
 		auth:        auth,
 		cache:       c.cache,
-		sem:         make(chan struct{}, c.opts.MaxConcurrency),
+		sem:         make(chan struct{}, maxConcurrency),
 		errorRemain: errorLimitBudget,
 		bucket:      newUserBucket(),
 		budget:      newErrorBudget(),

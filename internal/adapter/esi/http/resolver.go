@@ -47,14 +47,21 @@ type Resolver struct {
 	logger log.Logger
 }
 
-func NewResolver(c esi.Client, logger log.Logger) *Resolver {
+func NewResolver(c esi.Client, logger log.Logger) (*Resolver, error) {
+	if c == nil {
+		return nil, errClientRequired
+	}
+	if logger == nil {
+		return nil, errLoggerRequired
+	}
+
 	return &Resolver{
 		esi:    c,
 		names:  newNameCache(),
 		blobs:  &blobCache{m: map[string]blobEntry{}},
 		prices: &priceCache{},
 		logger: logger,
-	}
+	}, nil
 }
 
 func (r *Resolver) ForUser(c esi.Client) *Resolver {

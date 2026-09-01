@@ -15,7 +15,16 @@ type pageErr struct {
 	status   int
 }
 
-var errCCPRefused = errors.New("http: ccp refused")
+var (
+	errCCPRefused      = errors.New("http: ccp refused")
+	errOAuthRequired   = errors.New("http: oauth server is required")
+	errHostRequired    = errors.New("http: host public URL, MCP path and callback URL are required")
+	errLoggerRequired  = errors.New("http: logger is required")
+	errMetricsRequired = errors.New("http: metrics handler is required")
+	errObserveRequired = errors.New("http: observer is required")
+	errReadyRequired   = errors.New("http: ready check is required")
+	errListenRequired  = errors.New("http: listen addresses and MCP path are required")
+)
 
 //nolint:gochecknoglobals // RULES §9: the human-page catalog is a closed set of values, not process state.
 var (

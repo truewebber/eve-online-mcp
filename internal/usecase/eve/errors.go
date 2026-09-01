@@ -145,9 +145,7 @@ func unresolvedResult(names ...string) map[string]any {
 }
 
 func sectionNote(a *session.Session, section string, err error) string {
-	if a != nil && a.Logger != nil {
-		a.Logger.Error("eve: "+section, "err", err, "character", a.CharacterID)
-	}
+	a.Logger.Error("eve: "+section, "err", err, "character", a.CharacterID)
 
 	return noteSectionFailed
 }

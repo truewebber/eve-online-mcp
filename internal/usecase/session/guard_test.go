@@ -3,23 +3,14 @@ package session
 import (
 	"context"
 	"errors"
-	nhttp "net/http"
 	"strings"
 	"sync"
 	"testing"
 
 	"go.uber.org/mock/gomock"
 
-	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
-	esihttp "github.com/truewebber/eve-online-mcp/internal/adapter/esi/http"
-	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
-	ssohttp "github.com/truewebber/eve-online-mcp/internal/adapter/sso/http"
 	"github.com/truewebber/eve-online-mcp/internal/domain/character"
-	characterpgx "github.com/truewebber/eve-online-mcp/internal/domain/character/pgx"
-	confirmpgx "github.com/truewebber/eve-online-mcp/internal/domain/confirm/pgx"
-	mutationpgx "github.com/truewebber/eve-online-mcp/internal/domain/mutation/pgx"
 	dbsession "github.com/truewebber/eve-online-mcp/internal/domain/session"
-	sessionpgx "github.com/truewebber/eve-online-mcp/internal/domain/session/pgx"
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 	"github.com/truewebber/eve-online-mcp/internal/mocks"
 	"github.com/truewebber/eve-online-mcp/internal/postgres/pgtest"
@@ -34,15 +25,7 @@ func openGuardRuntime(t *testing.T) (*Session, *Session) {
 	ctx := context.Background()
 	logger := mocks.QuietLogger(gomock.NewController(t))
 	db := pgtest.Open(t, logger)
-	runtime, err := Open(Options{
-		Characters: characterpgx.New(db.Pool(), logger),
-		Sessions:   sessionpgx.New(db.Pool(), logger),
-		Confirms:   confirmpgx.New(db.Pool()),
-		Mutations:  mutationpgx.New(db.Pool()),
-		ESI:        esihttp.New(esi.Options{}, nhttp.DefaultClient, logger),
-		SSO:        ssohttp.New(sso.Options{}, nhttp.DefaultClient, logger),
-		Logger:     logger,
-	})
+	runtime, err := Open(pgxOptions(db.Pool(), testESIClient(t, logger), testSSOClient(t, logger), logger))
 	if err != nil {
 		t.Fatal(err)
 	}

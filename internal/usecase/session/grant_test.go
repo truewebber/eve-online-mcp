@@ -10,12 +10,9 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
-	esihttp "github.com/truewebber/eve-online-mcp/internal/adapter/esi/http"
 	"github.com/truewebber/eve-online-mcp/internal/adapter/sso"
 	"github.com/truewebber/eve-online-mcp/internal/domain/character"
 	characterpgx "github.com/truewebber/eve-online-mcp/internal/domain/character/pgx"
-	confirmpgx "github.com/truewebber/eve-online-mcp/internal/domain/confirm/pgx"
-	mutationpgx "github.com/truewebber/eve-online-mcp/internal/domain/mutation/pgx"
 	dbsession "github.com/truewebber/eve-online-mcp/internal/domain/session"
 	sessionpgx "github.com/truewebber/eve-online-mcp/internal/domain/session/pgx"
 	"github.com/truewebber/eve-online-mcp/internal/mocks"
@@ -27,18 +24,7 @@ func testRuntime(t *testing.T, db *postgres.DB, ssoClient sso.Client) *Session {
 	t.Helper()
 	logger := mocks.QuietLogger(gomock.NewController(t))
 	pool := db.Pool()
-	runtime, err := Open(Options{
-		Characters: characterpgx.New(pool, logger),
-		Sessions:   sessionpgx.New(pool, logger),
-		Confirms:   confirmpgx.New(pool),
-		Mutations:  mutationpgx.New(pool),
-		ESI:        esihttp.New(esi.Options{}, nil, logger),
-		SSO:        ssoClient,
-		WithinTx: func(ctx context.Context, fn func(context.Context) error) error {
-			return postgres.WithinTx(ctx, pool, fn)
-		},
-		Logger: logger,
-	})
+	runtime, err := Open(pgxOptions(pool, testESIClient(t, logger), ssoClient, logger))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,12 +38,12 @@ func TestConcurrentRefreshOneCCPCall(t *testing.T) {
 	db := pgtest.Open(t, logger)
 	ctx := context.Background()
 	const characterID int64 = 701
-	if err := characterpgx.New(db.Pool(), logger).Upsert(ctx, character.Character{
+	if err := characterpgx.New(db.Pool()).Upsert(ctx, character.Character{
 		ID: characterID, Name: "P", OwnerHash: "h",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	row, err := sessionpgx.New(db.Pool(), logger).Create(ctx, dbsession.Session{
+	row, err := sessionpgx.New(db.Pool()).Create(ctx, dbsession.Session{
 		CharacterID: characterID, RefreshToken: "R", Scopes: []string{},
 		MCPClientID: "c",
 	})
@@ -105,12 +91,12 @@ func TestRebuildGrantClearsAccess(t *testing.T) {
 	db := pgtest.Open(t, logger)
 	ctx := context.Background()
 	const characterID int64 = 702
-	if err := characterpgx.New(db.Pool(), logger).Upsert(ctx, character.Character{
+	if err := characterpgx.New(db.Pool()).Upsert(ctx, character.Character{
 		ID: characterID, Name: "P", OwnerHash: "h",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	repo := sessionpgx.New(db.Pool(), logger)
+	repo := sessionpgx.New(db.Pool())
 	a, err := repo.Create(ctx, dbsession.Session{
 		CharacterID: characterID, RefreshToken: "ra", Scopes: []string{},
 		MCPClientID: "c",
@@ -157,12 +143,12 @@ func TestInvalidGrantRevokesRequestingSID(t *testing.T) {
 	db := pgtest.Open(t, logger)
 	ctx := context.Background()
 	const characterID int64 = 703
-	if err := characterpgx.New(db.Pool(), logger).Upsert(ctx, character.Character{
+	if err := characterpgx.New(db.Pool()).Upsert(ctx, character.Character{
 		ID: characterID, Name: "P", OwnerHash: "h",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	row, err := sessionpgx.New(db.Pool(), logger).Create(ctx, dbsession.Session{
+	row, err := sessionpgx.New(db.Pool()).Create(ctx, dbsession.Session{
 		CharacterID: characterID, RefreshToken: "dead", Scopes: []string{},
 		MCPClientID: "c",
 	})
@@ -187,8 +173,8 @@ func TestInvalidGrantLeavesSiblingLive(t *testing.T) {
 	logger := mocks.QuietLogger(gomock.NewController(t))
 	db := pgtest.Open(t, logger)
 	ctx := context.Background()
-	chars := characterpgx.New(db.Pool(), logger)
-	repo := sessionpgx.New(db.Pool(), logger)
+	chars := characterpgx.New(db.Pool())
+	repo := sessionpgx.New(db.Pool())
 	if err := chars.Upsert(ctx, character.Character{ID: 705, Name: "A", OwnerHash: "h"}); err != nil {
 		t.Fatal(err)
 	}
@@ -228,12 +214,12 @@ func TestCharacterRevokesOnScopeDrift(t *testing.T) {
 	db := pgtest.Open(t, logger)
 	ctx := context.Background()
 	const characterID int64 = 708
-	if err := characterpgx.New(db.Pool(), logger).Upsert(ctx, character.Character{
+	if err := characterpgx.New(db.Pool()).Upsert(ctx, character.Character{
 		ID: characterID, Name: "P", OwnerHash: "h",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	row, err := sessionpgx.New(db.Pool(), logger).Create(ctx, dbsession.Session{
+	row, err := sessionpgx.New(db.Pool()).Create(ctx, dbsession.Session{
 		CharacterID: characterID, RefreshToken: "rt", Scopes: []string{"publicData"},
 		MCPClientID: "c",
 	})
@@ -260,12 +246,12 @@ func TestTransientESIDoesNotRevoke(t *testing.T) {
 	db := pgtest.Open(t, logger)
 	ctx := context.Background()
 	const characterID int64 = 707
-	if err := characterpgx.New(db.Pool(), logger).Upsert(ctx, character.Character{
+	if err := characterpgx.New(db.Pool()).Upsert(ctx, character.Character{
 		ID: characterID, Name: "P", OwnerHash: "h",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	row, err := sessionpgx.New(db.Pool(), logger).Create(ctx, dbsession.Session{
+	row, err := sessionpgx.New(db.Pool()).Create(ctx, dbsession.Session{
 		CharacterID: characterID, RefreshToken: "rt", Scopes: []string{}, MCPClientID: "c",
 	})
 	if err != nil {
@@ -276,15 +262,7 @@ func TestTransientESIDoesNotRevoke(t *testing.T) {
 	esiMock.EXPECT().ForUser(gomock.Any()).Return(esiMock).AnyTimes()
 	esiMock.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(esi.Result{}, esi.Error{Msg: "esi unavailable", Status: 500})
-	runtime, err := Open(Options{
-		Characters: characterpgx.New(db.Pool(), logger),
-		Sessions:   sessionpgx.New(db.Pool(), logger),
-		Confirms:   confirmpgx.New(db.Pool()),
-		Mutations:  mutationpgx.New(db.Pool()),
-		ESI:        esiMock,
-		SSO:        mocks.NewMockSSOClient(ctrl),
-		Logger:     logger,
-	})
+	runtime, err := Open(pgxOptions(db.Pool(), esiMock, mocks.NewMockSSOClient(ctrl), logger))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -74,7 +74,11 @@ func start(logger log.Logger) error {
 	if err != nil {
 		return fmt.Errorf("open oauth: %w", err)
 	}
-	go sweep.New(runtime.sweep).Start(context.Background())
+	runner, err := sweep.New(runtime.sweep)
+	if err != nil {
+		return fmt.Errorf("open sweep: %w", err)
+	}
+	go runner.Start(context.Background())
 
 	return listen(serveIn{
 		cfg: cfg, db: db, host: host, oauth: oauthServer, logger: logger,
@@ -100,14 +104,21 @@ type runtime struct {
 }
 
 func openRuntime(cfg config, db *postgres.DB, logger log.Logger, obs *observe.Registry) (runtime, error) {
-	opts := sessionOptions(cfg, db, logger, obs)
+	opts, err := sessionOptions(cfg, db, logger, obs)
+	if err != nil {
+		return runtime{}, err
+	}
 	opened, err := session.Open(opts)
 	if err != nil {
 		return runtime{}, fmt.Errorf("open session: %w", err)
 	}
+	lock, err := sweep.NewPoolLock(db.Pool())
+	if err != nil {
+		return runtime{}, fmt.Errorf("open sweep lock: %w", err)
+	}
 
 	return runtime{session: opened, sweep: sweep.Options{
-		Lock:      sweep.NewPoolLock(db.Pool()),
+		Lock:      lock,
 		Logins:    opts.Logins,
 		Codes:     opts.Codes,
 		Confirms:  opts.Confirms,
@@ -119,12 +130,32 @@ func openRuntime(cfg config, db *postgres.DB, logger log.Logger, obs *observe.Re
 	}}, nil
 }
 
-func sessionOptions(cfg config, db *postgres.DB, logger log.Logger, obs *observe.Registry) session.Options {
+func sessionOptions(cfg config, db *postgres.DB, logger log.Logger, obs *observe.Registry) (session.Options, error) {
 	pool := db.Pool()
-	opts := session.Options{
+	httpClient := session.NewHTTPClient()
+	esiClient, err := esihttp.New(esi.Options{
+		BaseURL:    esi.DefaultBaseURL,
 		UserAgent:  cfg.UserAgent,
-		Characters: characterpgx.New(pool, logger),
-		Sessions:   sessionpgx.New(pool, logger),
+		CompatDate: defaultCompatDate,
+		Observe:    obs,
+	}, httpClient, logger)
+	if err != nil {
+		return session.Options{}, fmt.Errorf("open esi: %w", err)
+	}
+	ssoClient, err := ssohttp.New(sso.Options{
+		ClientID:     cfg.ClientID,
+		ClientSecret: cfg.ClientSecret,
+		CallbackURL:  cfg.CallbackURL,
+		UserAgent:    cfg.UserAgent,
+		Scopes:       write.RequestedScopes(),
+	}, httpClient, logger)
+	if err != nil {
+		return session.Options{}, fmt.Errorf("open sso: %w", err)
+	}
+
+	return session.Options{
+		Characters: characterpgx.New(pool),
+		Sessions:   sessionpgx.New(pool),
 		Clients:    oauthclientpgx.New(pool),
 		Logins:     loginstatepgx.New(pool),
 		Codes:      authcodepgx.New(pool),
@@ -133,28 +164,14 @@ func sessionOptions(cfg config, db *postgres.DB, logger log.Logger, obs *observe
 		WithinTx: func(ctx context.Context, fn func(context.Context) error) error {
 			return postgres.WithinTx(ctx, pool, fn)
 		},
+		ESI:    esiClient,
+		SSO:    ssoClient,
 		Logger: logger,
-	}
-	opts.HTTP = session.NewHTTPClient(opts)
-	opts.ESI = esihttp.New(esi.Options{
-		UserAgent:  cfg.UserAgent,
-		CompatDate: defaultCompatDate,
-		Observe:    obs,
-	}, opts.HTTP, logger)
-	opts.SSO = ssohttp.New(sso.Options{
-		ClientID:     cfg.ClientID,
-		ClientSecret: cfg.ClientSecret,
-		CallbackURL:  cfg.CallbackURL,
-		UserAgent:    cfg.UserAgent,
-		Scopes:       write.RequestedScopes(),
-	}, opts.HTTP, logger)
-
-	return opts
+	}, nil
 }
 
 func oauthHost(cfg config) oauth.Host {
 	return oauth.Host{
-		Listen:      cfg.Listen,
 		PublicURL:   cfg.PublicURL,
 		MCPPath:     "/mcp",
 		CallbackURL: cfg.CallbackURL,
@@ -172,7 +189,10 @@ type serveIn struct {
 }
 
 func listen(in serveIn) error {
-	h := httpsvc.New(in.oauth, in.host, in.logger)
+	h, err := httpsvc.New(in.oauth, in.host, in.logger)
+	if err != nil {
+		return fmt.Errorf("open http: %w", err)
+	}
 	if err := httpsvc.ListenAndServe(h, httpsvc.ListenOptions{
 		Listen:            in.cfg.Listen,
 		InternalListen:    in.cfg.InternalListen,
@@ -197,12 +217,8 @@ const (
 Usage:
   eve-mcp                  run the server (config from env / ./.env)
 
-Required env: CLIENT_ID — the EVE application from developers.eveonline.com.
-DATABASE_URL — Postgres DSN (make postgres). HMAC_KEY — MCP JWT signing
-key, min 32 bytes (openssl rand -hex 32). See .env.example.
-LISTEN_HOST_PORT / INTERNAL_LISTEN_HOST_PORT default to loopback.
-PUBLIC_URL is required when the public bind is not loopback.
-See .env.example for the full list. Clients connect to http://127.0.0.1:8765/mcp
-and sign in with their EVE account in the browser.
+Required env: CLIENT_ID, DATABASE_URL, HMAC_KEY, LISTEN_HOST_PORT,
+INTERNAL_LISTEN_HOST_PORT, PUBLIC_URL. See .env.example.
+Clients connect to {PUBLIC_URL}/mcp and sign in with their EVE account.
 `
 )

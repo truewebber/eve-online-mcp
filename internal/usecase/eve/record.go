@@ -22,7 +22,7 @@ func recordWrite(ctx context.Context, a *session.Session, rec writeLog) {
 		fail := esiWriteOutcome(rec.err)
 		out.ESIStatus, out.Error = fail.status, fail.msg
 	}
-	if recErr := a.Guard.Record(ctx, out); recErr != nil && a.Logger != nil {
+	if recErr := a.Guard.Record(ctx, out); recErr != nil {
 		a.Logger.Error("eve: record mutation", "tool", rec.tool, "err", recErr)
 	}
 }
