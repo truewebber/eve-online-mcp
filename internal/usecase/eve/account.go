@@ -33,7 +33,7 @@ func registerAccount(s *mcp.Server) {
 }
 
 func eveServerStatus(ctx context.Context, a *session.Session, _ empty) (any, error) {
-	result, err := a.ESI.Get(ctx, "/status", nil, nil, nil)
+	result, err := a.ESI.Get(ctx, esi.Path("/status"), nil, nil, nil)
 	if err != nil {
 		return nil, wrap("eveServerStatus", err)
 	}
@@ -131,7 +131,7 @@ type overviewFetch struct {
 }
 
 func fetchOverview(ctx context.Context, a *session.Session, cid int) overviewFetch {
-	get := func(path string, auth bool) overviewBox {
+	get := func(path esi.Route, auth bool) overviewBox {
 		var id *int
 		if auth {
 			id = &cid
@@ -141,7 +141,7 @@ func fetchOverview(ctx context.Context, a *session.Session, cid int) overviewFet
 		return overviewBox{r, err}
 	}
 	ch := make(chan func(*overviewFetch), overviewFetches)
-	launch := func(path string, auth bool, set func(*overviewFetch, overviewBox)) {
+	launch := func(path esi.Route, auth bool, set func(*overviewFetch, overviewBox)) {
 		go func() {
 			box := get(path, auth)
 			ch <- func(out *overviewFetch) { set(out, box) }

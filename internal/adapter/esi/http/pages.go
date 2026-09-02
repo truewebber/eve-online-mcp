@@ -7,7 +7,7 @@ import (
 	"github.com/truewebber/eve-online-mcp/internal/j"
 )
 
-func (c *Client) GetAllPages(ctx context.Context, path string, characterID *int, params map[string]any, maxPages int) (esi.Result, error) {
+func (c *Client) GetAllPages(ctx context.Context, path esi.Route, characterID *int, params map[string]any, maxPages int) (esi.Result, error) {
 	if params == nil {
 		params = map[string]any{}
 	}
@@ -24,7 +24,7 @@ func (c *Client) GetAllPages(ctx context.Context, path string, characterID *int,
 	}
 	capped := min(total, maxPages)
 	if capped < total {
-		c.logger.Info("esi: capping pages", "path", path, "total", total, "capped", capped)
+		c.logger.Info("esi: capping pages", "path", path.String(), "total", total, "capped", capped)
 	}
 	type box struct {
 		r   esi.Result
@@ -62,20 +62,21 @@ func (c *Client) GetAllPages(ctx context.Context, path string, characterID *int,
 }
 
 type cursorWalk struct {
-	path, cursorParam, cursorKey string
-	characterID                  *int
-	batchSize, maxPages          int
-	cursor                       any
-	base                         map[string]any
-	data                         []any
-	seen                         map[any]struct{}
-	oldest, expiresAt            float64
-	allCached                    bool
-	fetched                      int
-	truncated                    bool
+	path                   esi.Route
+	cursorParam, cursorKey string
+	characterID            *int
+	batchSize, maxPages    int
+	cursor                 any
+	base                   map[string]any
+	data                   []any
+	seen                   map[any]struct{}
+	oldest, expiresAt      float64
+	allCached              bool
+	fetched                int
+	truncated              bool
 }
 
-func (c *Client) GetCursorPages(ctx context.Context, path string, q esi.CursorQuery) (esi.Result, error) {
+func (c *Client) GetCursorPages(ctx context.Context, path esi.Route, q esi.CursorQuery) (esi.Result, error) {
 	params := q.Params
 	if params == nil {
 		params = map[string]any{}
@@ -138,7 +139,7 @@ func (c *Client) stepCursor(ctx context.Context, w *cursorWalk, index int) (bool
 		return false, nil
 	}
 	if nextCursor == nil || (w.cursor != nil && !lessAny(nextCursor, w.cursor)) {
-		c.logger.Info("esi: cursor did not advance", "path", w.path, "cursor", w.cursorParam, "at", w.cursor)
+		c.logger.Info("esi: cursor did not advance", "path", w.path.String(), "cursor", w.cursorParam, "at", w.cursor)
 
 		return false, nil
 	}

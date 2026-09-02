@@ -5,6 +5,7 @@ import (
 	"errors"
 	nhttp "net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -81,11 +82,11 @@ func TestFreshCacheHitDoesNotTakeToken(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	c := mustClient(t, testOptions(srv.URL), srv.Client())
-	if _, err := c.Get(t.Context(), "/status", nil, nil, nil); err != nil {
+	if _, err := c.Get(t.Context(), esi.Path("/status"), nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	afterWarm := c.bucket.remaining()
-	res, err := c.Get(t.Context(), "/status", nil, nil, nil)
+	res, err := c.Get(t.Context(), esi.Path("/status"), nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +111,7 @@ func TestNetworkGetTakesToken(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	c := mustClient(t, testOptions(srv.URL), srv.Client())
-	if _, err := c.Get(t.Context(), "/status", nil, nil, nil); err != nil {
+	if _, err := c.Get(t.Context(), esi.Path("/status"), nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := c.bucket.remaining(); got >= UserBucketCapacity {
@@ -123,7 +124,7 @@ func TestNetworkGetTakesToken(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	_, err := c2.Get(t.Context(), "/other", nil, nil, nil)
+	_, err := c2.Get(t.Context(), esi.Path("/other"), nil, nil, nil)
 	if !errors.As(err, new(esi.UserLimitedError)) {
 		t.Fatalf("empty bucket Get: %v", err)
 	}
@@ -148,11 +149,11 @@ func TestNotModifiedRefundsToken(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	c := mustClient(t, testOptions(srv.URL), srv.Client())
-	if _, err := c.Get(t.Context(), "/status", nil, nil, nil); err != nil {
+	if _, err := c.Get(t.Context(), esi.Path("/status"), nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	afterWarm := c.bucket.remaining()
-	res, err := c.Get(t.Context(), "/status", nil, nil, nil)
+	res, err := c.Get(t.Context(), esi.Path("/status"), nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,6 +165,44 @@ func TestNotModifiedRefundsToken(t *testing.T) {
 	}
 	if got := c.bucket.remaining(); got < afterWarm {
 		t.Fatalf("304 spent a token: %v → %v", afterWarm, got)
+	}
+}
+
+func TestSameTemplateDifferentValuesDoNotShareCache(t *testing.T) {
+	t.Parallel()
+	var hits int
+	srv := httptest.NewServer(nhttp.HandlerFunc(func(w nhttp.ResponseWriter, r *nhttp.Request) {
+		hits++
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "max-age=3600")
+		body := `{"hash":"aaa"}`
+		if strings.Contains(r.URL.Path, "bbb") {
+			body = `{"hash":"bbb"}`
+		}
+		if _, err := w.Write([]byte(body)); err != nil {
+			t.Fatal(err)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	c := mustClient(t, testOptions(srv.URL), srv.Client())
+	first, err := c.Get(t.Context(), esi.Path("killmails", esi.ID(1), esi.Param("aaa")), nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := c.Get(t.Context(), esi.Path("killmails", esi.ID(1), esi.Param("bbb")), nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hits != 2 {
+		t.Fatalf("ESI hits %d", hits)
+	}
+	a, ok := first.Data.(map[string]any)
+	if !ok || a["hash"] != "aaa" {
+		t.Fatalf("first %+v", first.Data)
+	}
+	b, ok := second.Data.(map[string]any)
+	if !ok || b["hash"] != "bbb" {
+		t.Fatalf("second %+v", second.Data)
 	}
 }
 
@@ -182,10 +221,10 @@ func TestCacheSharedAcrossForUser(t *testing.T) {
 	base := mustClient(t, testOptions(srv.URL), srv.Client())
 	a := base.ForUser(nil)
 	b := base.ForUser(nil)
-	if _, err := a.Get(t.Context(), "/status", nil, nil, nil); err != nil {
+	if _, err := a.Get(t.Context(), esi.Path("/status"), nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	res, err := b.Get(t.Context(), "/status", nil, nil, nil)
+	res, err := b.Get(t.Context(), esi.Path("/status"), nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,14 +257,14 @@ func TestOversizedBodyIsServedAndNotStored(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	c := mustClient(t, testOptions(srv.URL), srv.Client())
-	res, err := c.Get(t.Context(), "/status", nil, nil, nil)
+	res, err := c.Get(t.Context(), esi.Path("/status"), nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if res.FromCache || res.Data == nil {
 		t.Fatalf("want served body, got %+v", res)
 	}
-	if _, err := c.Get(t.Context(), "/status", nil, nil, nil); err != nil {
+	if _, err := c.Get(t.Context(), esi.Path("/status"), nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if hits != 2 {

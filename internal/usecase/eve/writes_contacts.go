@@ -294,13 +294,13 @@ func applyContactOps(ctx context.Context, a *session.Session, in contactApplyIn)
 
 type contactOpRun struct {
 	characterID int
-	path        string
+	path        esi.Route
 	standing    float64
 	op          contactOp
 }
 
 func runContactOp(ctx context.Context, a *session.Session, in contactOpRun) error {
-	var call func(context.Context, string, *int, map[string]any, any) (any, error)
+	var call func(context.Context, esi.Route, *int, map[string]any, any) (any, error)
 	if in.op.verb == vUpdate {
 		call = a.ESI.Put
 	} else {

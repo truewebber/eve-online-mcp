@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
 	"github.com/truewebber/eve-online-mcp/internal/j"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
 )
@@ -48,7 +49,7 @@ type killmailSummary struct {
 type killmailView struct {
 	character           string
 	characterID, corpID int
-	path                string
+	path                esi.Route
 	page, limit         int
 	conciseMode         bool
 }
@@ -95,7 +96,7 @@ func fetchKillmailBodies(ctx context.Context, a *session.Session, refs []map[str
 	ch := make(chan box, len(refs))
 	for _, ref := range refs {
 		go func(ref map[string]any) {
-			r, err := a.ESI.Get(ctx, esiPath("killmails", esiID(j.Int(ref["killmail_id"])), j.Str(ref["killmail_hash"])), nil, nil, nil)
+			r, err := a.ESI.Get(ctx, esiPath("killmails", esiID(j.Int(ref["killmail_id"])), esi.Param(j.Str(ref["killmail_hash"]))), nil, nil, nil)
 			if err != nil {
 				ch <- box{ref["killmail_id"], nil, err}
 

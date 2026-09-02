@@ -123,7 +123,7 @@ func (r *Resolver) IDsFromNames(ctx context.Context, names []string) (map[string
 	out := map[string]any{}
 	for start := 0; start < len(unique); start += idsBatch {
 		end := min(start+idsBatch, len(unique))
-		part, err := r.esi.Post(ctx, "/universe/ids", nil, nil, unique[start:end])
+		part, err := r.esi.Post(ctx, esi.Path("/universe/ids"), nil, nil, unique[start:end])
 		if err != nil {
 			return nil, wrap("IDsFromNames", err)
 		}
@@ -227,7 +227,7 @@ func (r *Resolver) ReferencePrices(ctx context.Context) (map[int]map[string]floa
 	if r.prices.prices != nil && time.Since(r.prices.at) < time.Duration(priceTTL*float64(time.Second)) {
 		return r.prices.prices, nil
 	}
-	result, err := r.esi.Get(ctx, "/markets/prices", nil, nil, nil)
+	result, err := r.esi.Get(ctx, esi.Path("/markets/prices"), nil, nil, nil)
 	if err != nil {
 		return nil, wrap("ReferencePrices", err)
 	}
@@ -346,7 +346,7 @@ func (r *Resolver) fillUniverseNames(ctx context.Context, out map[int]string, un
 	for start := 0; start < len(universal); start += nameBatch {
 		end := min(start+nameBatch, len(universal))
 		chunk := universal[start:end]
-		result, err := r.esi.Post(ctx, "/universe/names", nil, nil, chunk)
+		result, err := r.esi.Post(ctx, esi.Path("/universe/names"), nil, nil, chunk)
 		if err != nil {
 			r.logger.Error("esi: bulk name lookup", "ids", len(chunk), "err", err)
 

@@ -266,7 +266,7 @@ func TestTransientESIDoesNotRevoke(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runtime.ForCharacter(int(characterID), row.ID).ESI.Get(ctx, "/status", nil, nil, nil); err == nil {
+	if _, err := runtime.ForCharacter(int(characterID), row.ID).ESI.Get(ctx, esi.Path("/status"), nil, nil, nil); err == nil {
 		t.Fatal("want esi error")
 	}
 	if _, err := runtime.Sessions.LiveByID(ctx, row.ID); err != nil {

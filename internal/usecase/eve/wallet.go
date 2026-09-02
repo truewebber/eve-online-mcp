@@ -242,7 +242,7 @@ func journalRows(entries []map[string]any) []map[string]any {
 }
 
 type txQuery struct {
-	path          string
+	path          esi.Route
 	cid           int
 	offset, limit int
 	conciseMode   bool

@@ -56,8 +56,8 @@ func cachedResult(cached *cachedResponse, fromCache bool, age float64) esi.Resul
 	}
 }
 
-func (c *Client) cachedGet(ctx context.Context, path string, characterID *int, params map[string]any, cacheTTL *float64) (esi.Result, error) {
-	key, err := c.cacheKey(path, characterID, params)
+func (c *Client) cachedGet(ctx context.Context, path esi.Route, characterID *int, params map[string]any, cacheTTL *float64) (esi.Result, error) {
+	key, err := c.cacheKey(path.String(), characterID, params)
 	if err != nil {
 		return esi.Result{}, err
 	}
@@ -75,7 +75,7 @@ func (c *Client) cachedGet(ctx context.Context, path string, characterID *int, p
 	if cached != nil && cached.ETag != "" {
 		h.Set("If-None-Match", cached.ETag)
 	}
-	resp, err := c.request(ctx, httpCall{method: nhttp.MethodGet, path: path, params: params, headers: h})
+	resp, err := c.request(ctx, httpCall{method: nhttp.MethodGet, route: path, params: params, headers: h})
 	if err != nil {
 		return esi.Result{}, err
 	}
@@ -85,7 +85,7 @@ func (c *Client) cachedGet(ctx context.Context, path string, characterID *int, p
 		return esi.Result{}, wrap("cachedGet", err)
 	}
 
-	return c.finishGet(resp, bodyBytes, key, cached, path, cacheTTL)
+	return c.finishGet(resp, bodyBytes, key, cached, path.String(), cacheTTL)
 }
 
 func (c *Client) finishGet(resp *nhttp.Response, body []byte, key string, cached *cachedResponse, path string, cacheTTL *float64) (esi.Result, error) {
@@ -120,10 +120,11 @@ func (c *Client) finishGet(resp *nhttp.Response, body []byte, key string, cached
 }
 
 type writeCall struct {
-	method, path string
-	characterID  *int
-	params       map[string]any
-	jsonBody     any
+	method      string
+	route       esi.Route
+	characterID *int
+	params      map[string]any
+	jsonBody    any
 }
 
 func (c *Client) write(ctx context.Context, in writeCall) (any, error) {
@@ -140,7 +141,7 @@ func (c *Client) write(ctx context.Context, in writeCall) (any, error) {
 	if in.jsonBody != nil {
 		h.Set("Content-Type", "application/json")
 	}
-	resp, err := c.request(ctx, httpCall{method: in.method, path: in.path, params: in.params, headers: h, jsonBody: in.jsonBody})
+	resp, err := c.request(ctx, httpCall{method: in.method, route: in.route, params: in.params, headers: h, jsonBody: in.jsonBody})
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +151,7 @@ func (c *Client) write(ctx context.Context, in writeCall) (any, error) {
 		return nil, wrap("write", err)
 	}
 	if resp.StatusCode >= nhttp.StatusBadRequest {
-		return nil, httpError(resp.StatusCode, bodyBytes, in.path)
+		return nil, httpError(resp.StatusCode, bodyBytes, in.route.String())
 	}
 
 	return decode(resp.StatusCode, bodyBytes), nil
@@ -167,11 +168,12 @@ func (c *Client) endpoint(esiPath string, params map[string]any) *url.URL {
 }
 
 type httpCall struct {
-	method, path string
-	params       map[string]any
-	headers      nhttp.Header
-	jsonBody     any
-	attempt      int
+	method   string
+	route    esi.Route
+	params   map[string]any
+	headers  nhttp.Header
+	jsonBody any
+	attempt  int
 }
 
 func (c *Client) request(ctx context.Context, in httpCall) (*nhttp.Response, error) {
@@ -181,7 +183,7 @@ func (c *Client) request(ctx context.Context, in httpCall) (*nhttp.Response, err
 	if err := c.bucket.take(); err != nil {
 		return nil, err
 	}
-	u := c.endpoint(in.path, in.params)
+	u := c.endpoint(in.route.String(), in.params)
 	var body io.Reader
 	if in.jsonBody != nil {
 		raw, err := json.Marshal(in.jsonBody)
@@ -195,17 +197,18 @@ func (c *Client) request(ctx context.Context, in httpCall) (*nhttp.Response, err
 		return nil, wrap("request", err)
 	}
 	req.Header = in.headers.Clone()
+	req.Pattern = in.route.Pattern()
 	c.sem <- struct{}{}
 	start := time.Now()
 	resp, err := c.http.Do(req)
 	<-c.sem
 	if err != nil {
-		c.observeRequest(in.method, 0, in.path, time.Since(start))
+		c.observeRequest(in.method, 0, req, time.Since(start))
 
 		return c.retryOrNetErr(ctx, in, err)
 	}
 	c.noteErrorHeaders(resp)
-	c.observeRequest(in.method, resp.StatusCode, in.path, time.Since(start))
+	c.observeRequest(in.method, resp.StatusCode, req, time.Since(start))
 	if retry, err := c.throttleOrLimit(&in, resp); retry {
 		return c.request(ctx, in)
 	} else if err != nil {
@@ -232,10 +235,10 @@ func (c *Client) retryOrNetErr(ctx context.Context, in httpCall, err error) (*nh
 		return c.request(ctx, in)
 	}
 	if in.method != nhttp.MethodGet {
-		return nil, esi.Error{Msg: fmt.Sprintf("Network error calling %s: %v. The request may or may not have reached EVE — check the current state with the matching read tool before trying again, because repeating it could apply the change twice.", in.path, err)}
+		return nil, esi.Error{Msg: fmt.Sprintf("Network error calling %s: %v. The request may or may not have reached EVE — check the current state with the matching read tool before trying again, because repeating it could apply the change twice.", in.route.String(), err)}
 	}
 
-	return nil, esi.Error{Msg: fmt.Sprintf("Network error calling %s: %v", in.path, err)}
+	return nil, esi.Error{Msg: fmt.Sprintf("Network error calling %s: %v", in.route.String(), err)}
 }
 
 func (c *Client) throttleOrLimit(in *httpCall, resp *nhttp.Response) (bool, error) {
@@ -244,7 +247,7 @@ func (c *Client) throttleOrLimit(in *httpCall, resp *nhttp.Response) (bool, erro
 	}
 	if resp.StatusCode == nhttp.StatusTooManyRequests && in.attempt < 1 {
 		wait := min(retryAfter(resp), throttleRetryCap)
-		c.logger.Info("esi: throttled, retrying", "path", in.path, "status", resp.StatusCode, "wait", wait)
+		c.logger.Info("esi: throttled, retrying", "path", in.route.String(), "status", resp.StatusCode, "wait", wait)
 		if err := discardBody(resp); err != nil {
 			return false, err
 		}
@@ -253,7 +256,7 @@ func (c *Client) throttleOrLimit(in *httpCall, resp *nhttp.Response) (bool, erro
 
 		return true, nil
 	}
-	err := limitError(resp, in.path)
+	err := limitError(resp, in.route.String())
 	if discErr := discardBody(resp); discErr != nil {
 		return false, discErr
 	}

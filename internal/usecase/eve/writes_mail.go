@@ -233,7 +233,7 @@ func eveMailCompose(ctx context.Context, a *session.Session, in mailComposeIn) (
 	if blocked.Required != nil {
 		return blocked.Required, nil
 	}
-	_, err = a.ESI.Post(ctx, "/ui/openwindow/newmail", &token.CharacterID, nil, body)
+	_, err = a.ESI.Post(ctx, esi.Path("/ui/openwindow/newmail"), &token.CharacterID, nil, body)
 	recordWrite(ctx, a, writeLog{tool: write.ToolMailCompose, capability: write.CapOpenWindow, args: args, err: err})
 	if err != nil {
 		return nil, wrap("eveMailCompose", err)

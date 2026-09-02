@@ -113,7 +113,7 @@ func (c *Client) ForUser(auth esi.TokenSource) esi.Client {
 	}
 }
 
-func (c *Client) Get(ctx context.Context, path string, characterID *int, params map[string]any, cacheTTL *float64) (esi.Result, error) {
+func (c *Client) Get(ctx context.Context, path esi.Route, characterID *int, params map[string]any, cacheTTL *float64) (esi.Result, error) {
 	if params == nil {
 		params = map[string]any{}
 	}
@@ -121,14 +121,14 @@ func (c *Client) Get(ctx context.Context, path string, characterID *int, params 
 	return c.cachedGet(ctx, path, characterID, params, cacheTTL)
 }
 
-func (c *Client) Post(ctx context.Context, path string, characterID *int, params map[string]any, jsonBody any) (any, error) {
-	return c.write(ctx, writeCall{method: nhttp.MethodPost, path: path, characterID: characterID, params: params, jsonBody: jsonBody})
+func (c *Client) Post(ctx context.Context, path esi.Route, characterID *int, params map[string]any, jsonBody any) (any, error) {
+	return c.write(ctx, writeCall{method: nhttp.MethodPost, route: path, characterID: characterID, params: params, jsonBody: jsonBody})
 }
 
-func (c *Client) Put(ctx context.Context, path string, characterID *int, params map[string]any, jsonBody any) (any, error) {
-	return c.write(ctx, writeCall{method: nhttp.MethodPut, path: path, characterID: characterID, params: params, jsonBody: jsonBody})
+func (c *Client) Put(ctx context.Context, path esi.Route, characterID *int, params map[string]any, jsonBody any) (any, error) {
+	return c.write(ctx, writeCall{method: nhttp.MethodPut, route: path, characterID: characterID, params: params, jsonBody: jsonBody})
 }
 
-func (c *Client) Delete(ctx context.Context, path string, characterID *int, params map[string]any, jsonBody any) (any, error) {
-	return c.write(ctx, writeCall{method: nhttp.MethodDelete, path: path, characterID: characterID, params: params, jsonBody: jsonBody})
+func (c *Client) Delete(ctx context.Context, path esi.Route, characterID *int, params map[string]any, jsonBody any) (any, error) {
+	return c.write(ctx, writeCall{method: nhttp.MethodDelete, route: path, characterID: characterID, params: params, jsonBody: jsonBody})
 }

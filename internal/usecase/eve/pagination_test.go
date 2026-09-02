@@ -18,8 +18,8 @@ func TestMailListCursorRoundTrip(t *testing.T) {
 	client := mocks.NewMockESIClient(ctrl)
 	var lastParams map[string]any
 	client.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, path string, _ *int, params map[string]any, _ *float64) (esi.Result, error) {
-			if !strings.HasSuffix(path, "/mail") {
+		func(_ context.Context, path esi.Route, _ *int, params map[string]any, _ *float64) (esi.Result, error) {
+			if !strings.HasSuffix(path.String(), "/mail") {
 				return esi.Result{Data: []any{}}, nil
 			}
 			lastParams = params
@@ -66,8 +66,8 @@ func TestAssetsBlueprintsPageIsOneGet(t *testing.T) {
 	var asked any
 	pages := 3
 	client.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, path string, _ *int, params map[string]any, _ *float64) (esi.Result, error) {
-			if !strings.Contains(path, "blueprints") {
+		func(_ context.Context, path esi.Route, _ *int, params map[string]any, _ *float64) (esi.Result, error) {
+			if !strings.Contains(path.String(), "blueprints") {
 				return esi.Result{Data: []any{}}, nil
 			}
 			gets++

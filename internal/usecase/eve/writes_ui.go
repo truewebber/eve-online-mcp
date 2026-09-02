@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/truewebber/eve-online-mcp/internal/adapter/esi"
 	"github.com/truewebber/eve-online-mcp/internal/domain/write"
 	"github.com/truewebber/eve-online-mcp/internal/j"
 	"github.com/truewebber/eve-online-mcp/internal/usecase/session"
@@ -68,7 +69,7 @@ func eveUISetWaypoint(ctx context.Context, a *session.Session, in waypointIn) (a
 	if blocked.Required != nil {
 		return blocked.Required, nil
 	}
-	_, err = a.ESI.Post(ctx, "/ui/autopilot/waypoint", &token.CharacterID, map[string]any{
+	_, err = a.ESI.Post(ctx, esi.Path("/ui/autopilot/waypoint"), &token.CharacterID, map[string]any{
 		"destination_id": target["id"], "clear_other_waypoints": clearOthers, "add_to_beginning": add,
 	}, nil)
 	recordWrite(ctx, a, writeLog{tool: write.ToolUISetWaypoint, capability: write.CapWaypoint, args: args, err: err})
@@ -207,7 +208,7 @@ func resolveEntity(ctx context.Context, a *session.Session, name string, charact
 }
 
 type windowPlan struct {
-	path     string
+	path     esi.Route
 	params   map[string]any
 	label    string
 	resolved map[string]any
@@ -219,9 +220,9 @@ func planOpenWindow(ctx context.Context, a *session.Session, kind, target string
 	case windowContract:
 		return planContractWindow(target)
 	case windowMarket:
-		return planNamedWindow(ctx, a, namedWindowIn{kind: kind, target: target, characterID: characterID, path: "/ui/openwindow/marketdetails", idKey: fTypeID})
+		return planNamedWindow(ctx, a, namedWindowIn{kind: kind, target: target, characterID: characterID, path: esi.Path("/ui/openwindow/marketdetails"), idKey: fTypeID})
 	case windowInfo:
-		return planNamedWindow(ctx, a, namedWindowIn{kind: kind, target: target, characterID: characterID, path: "/ui/openwindow/information", idKey: "target_id"})
+		return planNamedWindow(ctx, a, namedWindowIn{kind: kind, target: target, characterID: characterID, path: esi.Path("/ui/openwindow/information"), idKey: "target_id"})
 	default:
 		return windowPlan{}, ValidationError{Field: fWindow, Invariant: enumInvariant(windowMarket, windowInfo, windowContract)}
 	}
@@ -234,15 +235,16 @@ func planContractWindow(target string) (windowPlan, error) {
 	}
 
 	return windowPlan{
-		path:   "/ui/openwindow/contract",
+		path:   esi.Path("/ui/openwindow/contract"),
 		params: map[string]any{"contract_id": id},
 		label:  "contract #" + strings.TrimSpace(target),
 	}, nil
 }
 
 type namedWindowIn struct {
-	kind, target, path, idKey string
-	characterID               int
+	kind, target, idKey string
+	path                esi.Route
+	characterID         int
 }
 
 func planNamedWindow(ctx context.Context, a *session.Session, in namedWindowIn) (windowPlan, error) {

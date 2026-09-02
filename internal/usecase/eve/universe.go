@@ -275,11 +275,11 @@ func universeSystemLookups(ctx context.Context, a *session.Session, sid int) (un
 	if err != nil {
 		return universeSystemESI{}, wrap("universeSystemLookups", err)
 	}
-	killsRes, err := a.ESI.Get(ctx, "/universe/system_kills", nil, nil, nil)
+	killsRes, err := a.ESI.Get(ctx, esi.Path("/universe/system_kills"), nil, nil, nil)
 	if err != nil {
 		return universeSystemESI{}, wrap("universeSystemLookups", err)
 	}
-	jumpsRes, err := a.ESI.Get(ctx, "/universe/system_jumps", nil, nil, nil)
+	jumpsRes, err := a.ESI.Get(ctx, esi.Path("/universe/system_jumps"), nil, nil, nil)
 	if err != nil {
 		return universeSystemESI{}, wrap("universeSystemLookups", err)
 	}
@@ -508,7 +508,7 @@ func universeDangerousHops(steps []map[string]any) []string {
 }
 
 func eveUniverseHotspots(ctx context.Context, a *session.Session, in universeHotspotsIn) (any, error) {
-	result, err := a.ESI.Get(ctx, "/universe/system_kills", nil, nil, nil)
+	result, err := a.ESI.Get(ctx, esi.Path("/universe/system_kills"), nil, nil, nil)
 	if err != nil {
 		return nil, wrap("eveUniverseHotspots", err)
 	}

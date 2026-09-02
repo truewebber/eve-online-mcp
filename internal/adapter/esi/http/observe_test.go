@@ -11,22 +11,12 @@ import (
 	"github.com/truewebber/eve-online-mcp/internal/mocks"
 )
 
-func TestTemplatePathHidesIDs(t *testing.T) {
+func TestObserverSeesHashParamPattern(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
-		in, want string
-	}{
-		{"/characters/2112345678/assets", "/characters/{id}/assets"},
-		{"/characters/1/mail/99", "/characters/{id}/mail/{id}"},
-		{"/markets/10000002/orders", "/markets/{id}/orders"},
-		{"/status", "/status"},
-		{"/fw/stats", "/fw/stats"},
-		{"", ""},
-	}
-	for _, tc := range cases {
-		if got := templatePath(tc.in); got != tc.want {
-			t.Fatalf("%s: got %s want %s", tc.in, got, tc.want)
-		}
+	c, obs := observedClient(t, nhttp.StatusOK, `{"ok":true}`)
+	obs.EXPECT().Request(nhttp.MethodGet, nhttp.StatusOK, "/killmails/{id}/{id}", gomock.Any())
+	if _, err := c.Get(t.Context(), esi.Path("killmails", esi.ID(1), esi.Param("deadbeef")), nil, nil, nil); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -66,10 +56,10 @@ func TestCacheHitDoesNotObserve(t *testing.T) {
 	opts := testOptions(srv.URL)
 	opts.Observe = obs
 	c := mustClient(t, opts, srv.Client())
-	if _, err := c.Get(t.Context(), "/fw/stats", nil, nil, nil); err != nil {
+	if _, err := c.Get(t.Context(), esi.Path("/fw/stats"), nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.Get(t.Context(), "/fw/stats", nil, nil, nil); err != nil {
+	if _, err := c.Get(t.Context(), esi.Path("/fw/stats"), nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if hits != 1 {
@@ -88,7 +78,7 @@ func TestObserverSeesNetworkFailure(t *testing.T) {
 	opts := testOptions(srv.URL)
 	opts.Observe = obs
 	c := mustClient(t, opts, client)
-	if _, err := c.Get(t.Context(), "/fw/stats", nil, nil, nil); err == nil {
+	if _, err := c.Get(t.Context(), esi.Path("/fw/stats"), nil, nil, nil); err == nil {
 		t.Fatal("want network error")
 	}
 }

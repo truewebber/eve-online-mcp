@@ -43,7 +43,7 @@ func (m *MockESIClient) EXPECT() *MockESIClientMockRecorder {
 }
 
 // Delete mocks base method.
-func (m *MockESIClient) Delete(ctx context.Context, path string, characterID *int, params map[string]any, jsonBody any) (any, error) {
+func (m *MockESIClient) Delete(ctx context.Context, path esi.Route, characterID *int, params map[string]any, jsonBody any) (any, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Delete", ctx, path, characterID, params, jsonBody)
 	ret0, _ := ret[0].(any)
@@ -72,7 +72,7 @@ func (mr *MockESIClientMockRecorder) ForUser(auth any) *gomock.Call {
 }
 
 // Get mocks base method.
-func (m *MockESIClient) Get(ctx context.Context, path string, characterID *int, params map[string]any, cacheTTL *float64) (esi.Result, error) {
+func (m *MockESIClient) Get(ctx context.Context, path esi.Route, characterID *int, params map[string]any, cacheTTL *float64) (esi.Result, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Get", ctx, path, characterID, params, cacheTTL)
 	ret0, _ := ret[0].(esi.Result)
@@ -87,7 +87,7 @@ func (mr *MockESIClientMockRecorder) Get(ctx, path, characterID, params, cacheTT
 }
 
 // GetAllPages mocks base method.
-func (m *MockESIClient) GetAllPages(ctx context.Context, path string, characterID *int, params map[string]any, maxPages int) (esi.Result, error) {
+func (m *MockESIClient) GetAllPages(ctx context.Context, path esi.Route, characterID *int, params map[string]any, maxPages int) (esi.Result, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAllPages", ctx, path, characterID, params, maxPages)
 	ret0, _ := ret[0].(esi.Result)
@@ -102,7 +102,7 @@ func (mr *MockESIClientMockRecorder) GetAllPages(ctx, path, characterID, params,
 }
 
 // GetCursorPages mocks base method.
-func (m *MockESIClient) GetCursorPages(ctx context.Context, path string, q esi.CursorQuery) (esi.Result, error) {
+func (m *MockESIClient) GetCursorPages(ctx context.Context, path esi.Route, q esi.CursorQuery) (esi.Result, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetCursorPages", ctx, path, q)
 	ret0, _ := ret[0].(esi.Result)
@@ -117,7 +117,7 @@ func (mr *MockESIClientMockRecorder) GetCursorPages(ctx, path, q any) *gomock.Ca
 }
 
 // Post mocks base method.
-func (m *MockESIClient) Post(ctx context.Context, path string, characterID *int, params map[string]any, jsonBody any) (any, error) {
+func (m *MockESIClient) Post(ctx context.Context, path esi.Route, characterID *int, params map[string]any, jsonBody any) (any, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Post", ctx, path, characterID, params, jsonBody)
 	ret0, _ := ret[0].(any)
@@ -132,7 +132,7 @@ func (mr *MockESIClientMockRecorder) Post(ctx, path, characterID, params, jsonBo
 }
 
 // Put mocks base method.
-func (m *MockESIClient) Put(ctx context.Context, path string, characterID *int, params map[string]any, jsonBody any) (any, error) {
+func (m *MockESIClient) Put(ctx context.Context, path esi.Route, characterID *int, params map[string]any, jsonBody any) (any, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Put", ctx, path, characterID, params, jsonBody)
 	ret0, _ := ret[0].(any)

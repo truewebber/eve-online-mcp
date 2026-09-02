@@ -108,11 +108,11 @@ type CursorQuery struct {
 }
 
 type Client interface {
-	Get(ctx context.Context, path string, characterID *int, params map[string]any, cacheTTL *float64) (Result, error)
-	GetAllPages(ctx context.Context, path string, characterID *int, params map[string]any, maxPages int) (Result, error)
-	GetCursorPages(ctx context.Context, path string, q CursorQuery) (Result, error)
-	Post(ctx context.Context, path string, characterID *int, params map[string]any, jsonBody any) (any, error)
-	Put(ctx context.Context, path string, characterID *int, params map[string]any, jsonBody any) (any, error)
-	Delete(ctx context.Context, path string, characterID *int, params map[string]any, jsonBody any) (any, error)
+	Get(ctx context.Context, path Route, characterID *int, params map[string]any, cacheTTL *float64) (Result, error)
+	GetAllPages(ctx context.Context, path Route, characterID *int, params map[string]any, maxPages int) (Result, error)
+	GetCursorPages(ctx context.Context, path Route, q CursorQuery) (Result, error)
+	Post(ctx context.Context, path Route, characterID *int, params map[string]any, jsonBody any) (any, error)
+	Put(ctx context.Context, path Route, characterID *int, params map[string]any, jsonBody any) (any, error)
+	Delete(ctx context.Context, path Route, characterID *int, params map[string]any, jsonBody any) (any, error)
 	ForUser(auth TokenSource) Client
 }

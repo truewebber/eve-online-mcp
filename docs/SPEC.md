@@ -852,9 +852,10 @@ the mail cap counts from (§5.4). It stores no message bodies.
   the only durable record of in-game changes, and Prometheus `/metrics`
   on the internal listener — RED for the ESI client and for the public
   HTTP listener (request count and duration by method, status, and a
-  path *template*). ESI path labels replace numeric segments with
-  `{id}`; public path labels are the mux pattern, or `other`. Never a
-  raw id or an unmatched URL. Series are per pod and must be summed
+  path *template*). ESI path labels are the route pattern set on the
+  outbound request (`http.Request.Pattern`) when `esi.Path` is
+  assembled; parameters become `{id}`. Public path labels are the mux
+  pattern, or `other`. Never a raw id or an unmatched URL. Series are per pod and must be summed
   across replicas. The internal listener itself is not counted.
 - Allowance, error-budget and mail-cap refusals are still incremented
   next to the refusal that produces them (§5.2–§5.4). They are not

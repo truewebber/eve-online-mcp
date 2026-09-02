@@ -8,7 +8,6 @@ import (
 	"maps"
 	"math"
 	"net/url"
-	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -112,16 +111,16 @@ func Handle(err error) (*mcp.CallToolResult, any, error) {
 	return Result(out)
 }
 
-func esiPath(elem ...string) string {
-	return path.Join("/", path.Join(elem...))
+func esiPath(elem ...any) esi.Route {
+	return esi.Path(elem...)
 }
 
-func esiID(id int) string {
-	return strconv.Itoa(id)
+func esiID(id int) esi.Arg {
+	return esi.ID(id)
 }
 
 func zkillURL(killmailID int) string {
-	return (&url.URL{Scheme: "https", Host: "zkillboard.com"}).JoinPath("kill", esiID(killmailID)).String()
+	return (&url.URL{Scheme: "https", Host: "zkillboard.com"}).JoinPath("kill", strconv.Itoa(killmailID)).String()
 }
 
 func limitOr(v, def int) int {

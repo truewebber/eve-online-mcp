@@ -53,7 +53,7 @@ func TestRequestKeepsHostWhenPathHasDotDot(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	c := mustClient(t, testOptions(srv.URL), srv.Client())
-	_, err := c.Get(t.Context(), "/characters/1/../../../evil", nil, nil, nil)
+	_, err := c.Get(t.Context(), esi.Path("/characters/1/../../../evil"), nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestRequestEncodesQuery(t *testing.T) {
 			}))
 			t.Cleanup(srv.Close)
 			c := mustClient(t, testOptions(srv.URL), srv.Client())
-			_, err := c.Get(t.Context(), "/search", nil, map[string]any{"search": search}, nil)
+			_, err := c.Get(t.Context(), esi.Path("/search"), nil, map[string]any{"search": search}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

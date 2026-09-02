@@ -80,7 +80,7 @@ func assertStatusRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := c.Get(t.Context(), "/status", nil, nil, nil)
+	res, err := c.Get(t.Context(), esi.Path("/status"), nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

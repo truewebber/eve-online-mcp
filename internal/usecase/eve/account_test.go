@@ -485,13 +485,13 @@ func fixtureOverviewPaths() overviewPaths {
 	cid := esitest.FixtureCharacterID
 
 	return overviewPaths{
-		public:     esiPath("characters", esiID(cid)),
-		wallet:     esiPath("characters", esiID(cid), fWallet),
-		location:   esiPath("characters", esiID(cid), fLocation),
-		ship:       esiPath("characters", esiID(cid), fShip),
-		online:     esiPath("characters", esiID(cid), "online"),
-		queue:      esiPath("characters", esiID(cid), "skillqueue"),
-		attributes: esiPath("characters", esiID(cid), "attributes"),
+		public:     esiPath("characters", esiID(cid)).String(),
+		wallet:     esiPath("characters", esiID(cid), fWallet).String(),
+		location:   esiPath("characters", esiID(cid), fLocation).String(),
+		ship:       esiPath("characters", esiID(cid), fShip).String(),
+		online:     esiPath("characters", esiID(cid), "online").String(),
+		queue:      esiPath("characters", esiID(cid), "skillqueue").String(),
+		attributes: esiPath("characters", esiID(cid), "attributes").String(),
 	}
 }
 
@@ -602,18 +602,19 @@ func overviewBoxes(data overviewESIData) map[string]overviewBox {
 	}
 }
 
-func (e *overviewESI) Get(ctx context.Context, path string, _ *int, _ map[string]any, _ *float64) (esi.Result, error) {
+func (e *overviewESI) Get(ctx context.Context, path esi.Route, _ *int, _ map[string]any, _ *float64) (esi.Result, error) {
+	key := path.String()
 	e.mu.Lock()
-	e.calls = append(e.calls, path)
+	e.calls = append(e.calls, key)
 	e.mu.Unlock()
 	if e.started != nil {
 		select {
-		case e.started <- path:
+		case e.started <- key:
 		case <-ctx.Done():
 			return esi.Result{}, wrap("overviewESI.Get", ctx.Err())
 		}
 	}
-	if ch := e.release[path]; ch != nil {
+	if ch := e.release[key]; ch != nil {
 		select {
 		case <-ch:
 		case <-ctx.Done():
@@ -622,18 +623,18 @@ func (e *overviewESI) Get(ctx context.Context, path string, _ *int, _ map[string
 	}
 	if e.jitter != nil {
 		select {
-		case <-time.After(e.jitter(path)):
+		case <-time.After(e.jitter(key)):
 		case <-ctx.Done():
 			return esi.Result{}, wrap("overviewESI.Get", ctx.Err())
 		}
 	}
-	box, ok := e.byPath[path]
+	box, ok := e.byPath[key]
 	if !ok {
 		return esi.Result{}, errUnexpectedESI
 	}
 	if e.finished != nil {
 		select {
-		case e.finished <- path:
+		case e.finished <- key:
 		case <-ctx.Done():
 			return esi.Result{}, wrap("overviewESI.Get", ctx.Err())
 		}
@@ -642,8 +643,8 @@ func (e *overviewESI) Get(ctx context.Context, path string, _ *int, _ map[string
 	return box.r, box.err
 }
 
-func (e *overviewESI) Post(_ context.Context, path string, _ *int, _ map[string]any, jsonBody any) (any, error) {
-	if path != "/universe/names" {
+func (e *overviewESI) Post(_ context.Context, path esi.Route, _ *int, _ map[string]any, jsonBody any) (any, error) {
+	if path.String() != "/universe/names" {
 		return nil, errUnexpectedESI
 	}
 	var rows []any
@@ -658,19 +659,19 @@ func (e *overviewESI) Post(_ context.Context, path string, _ *int, _ map[string]
 
 func (e *overviewESI) ForUser(esi.TokenSource) esi.Client { return e }
 
-func (e *overviewESI) GetAllPages(context.Context, string, *int, map[string]any, int) (esi.Result, error) {
+func (e *overviewESI) GetAllPages(context.Context, esi.Route, *int, map[string]any, int) (esi.Result, error) {
 	return esi.Result{}, errUnexpectedESI
 }
 
-func (e *overviewESI) GetCursorPages(context.Context, string, esi.CursorQuery) (esi.Result, error) {
+func (e *overviewESI) GetCursorPages(context.Context, esi.Route, esi.CursorQuery) (esi.Result, error) {
 	return esi.Result{}, errUnexpectedESI
 }
 
-func (e *overviewESI) Put(context.Context, string, *int, map[string]any, any) (any, error) {
+func (e *overviewESI) Put(context.Context, esi.Route, *int, map[string]any, any) (any, error) {
 	return nil, errUnexpectedESI
 }
 
-func (e *overviewESI) Delete(context.Context, string, *int, map[string]any, any) (any, error) {
+func (e *overviewESI) Delete(context.Context, esi.Route, *int, map[string]any, any) (any, error) {
 	return nil, errUnexpectedESI
 }
 

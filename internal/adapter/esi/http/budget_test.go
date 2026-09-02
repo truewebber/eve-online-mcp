@@ -122,13 +122,13 @@ func TestErrorBudgetClientCharges4xxNot2xx(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	c := mustClient(t, testOptions(srv.URL), srv.Client())
-	if _, err := c.Get(t.Context(), "/ok", nil, nil, nil); err != nil {
+	if _, err := c.Get(t.Context(), esi.Path("/ok"), nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if c.budget.count() != 0 {
 		t.Fatalf("200 charged %d", c.budget.count())
 	}
-	if _, err := c.Get(t.Context(), "/ok", nil, nil, nil); err != nil {
+	if _, err := c.Get(t.Context(), esi.Path("/ok"), nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if hits != 1 {
@@ -137,7 +137,7 @@ func TestErrorBudgetClientCharges4xxNot2xx(t *testing.T) {
 	if c.budget.count() != 0 {
 		t.Fatalf("cache hit charged %d", c.budget.count())
 	}
-	if _, err := c.Get(t.Context(), "/deny", nil, nil, nil); err == nil {
+	if _, err := c.Get(t.Context(), esi.Path("/deny"), nil, nil, nil); err == nil {
 		t.Fatal("want 403")
 	}
 	if c.budget.count() != 1 {
@@ -178,10 +178,10 @@ func TestErrorBudgetClientNotModifiedNotCharged(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	c := mustClient(t, testOptions(srv.URL), srv.Client())
-	if _, err := c.Get(t.Context(), "/status", nil, nil, nil); err != nil {
+	if _, err := c.Get(t.Context(), esi.Path("/status"), nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.Get(t.Context(), "/status", nil, nil, nil); err != nil {
+	if _, err := c.Get(t.Context(), esi.Path("/status"), nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if c.budget.count() != 0 {
@@ -200,11 +200,11 @@ func TestErrorBudgetClientRefusesBeforeNetwork(t *testing.T) {
 	t.Cleanup(srv.Close)
 	c := mustClient(t, testOptions(srv.URL), srv.Client())
 	for range errorBudgetCap {
-		if _, err := c.Get(t.Context(), "/deny", nil, nil, nil); err == nil {
+		if _, err := c.Get(t.Context(), esi.Path("/deny"), nil, nil, nil); err == nil {
 			t.Fatal("want 403")
 		}
 	}
-	_, err := c.Get(t.Context(), "/deny", nil, nil, nil)
+	_, err := c.Get(t.Context(), esi.Path("/deny"), nil, nil, nil)
 	if !errors.As(err, new(esi.UserLimitedError)) {
 		t.Fatalf("over budget: %v", err)
 	}
@@ -230,14 +230,14 @@ func TestErrorBudgetClientCharactersIsolated(t *testing.T) {
 		t.Fatal("ForUser")
 	}
 	for range errorBudgetCap {
-		if _, err := a.Get(t.Context(), "/deny", nil, nil, nil); err == nil {
+		if _, err := a.Get(t.Context(), esi.Path("/deny"), nil, nil, nil); err == nil {
 			t.Fatal("want 403")
 		}
 	}
-	if _, err := a.Get(t.Context(), "/deny", nil, nil, nil); !errors.As(err, new(esi.UserLimitedError)) {
+	if _, err := a.Get(t.Context(), esi.Path("/deny"), nil, nil, nil); !errors.As(err, new(esi.UserLimitedError)) {
 		t.Fatalf("a over: %v", err)
 	}
-	if _, err := b.Get(t.Context(), "/deny", nil, nil, nil); err == nil {
+	if _, err := b.Get(t.Context(), esi.Path("/deny"), nil, nil, nil); err == nil {
 		t.Fatal("b should still reach ESI")
 	}
 	if b.budget.count() != 1 {
@@ -256,7 +256,7 @@ func TestGlobalFailFastStillWorks(t *testing.T) {
 	c := mustClient(t, testOptions(srv.URL), srv.Client())
 	c.errorRemain = 10
 	c.errorResetAt = time.Now().Add(30 * time.Second)
-	_, err := c.Get(t.Context(), "/status", nil, nil, nil)
+	_, err := c.Get(t.Context(), esi.Path("/status"), nil, nil, nil)
 	if !errors.As(err, new(esi.RateLimitedError)) {
 		t.Fatalf("fail-fast: %v", err)
 	}

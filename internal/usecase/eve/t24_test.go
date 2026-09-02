@@ -50,9 +50,9 @@ func TestCalendarListAttendeesOneGetPerEvent(t *testing.T) {
 	client := mocks.NewMockESIClient(ctrl)
 	var paths []string
 	client.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, path string, _ *int, _ map[string]any, _ *float64) (esi.Result, error) {
-			paths = append(paths, path)
-			if strings.HasSuffix(path, "/calendar") {
+		func(_ context.Context, path esi.Route, _ *int, _ map[string]any, _ *float64) (esi.Result, error) {
+			paths = append(paths, path.String())
+			if strings.HasSuffix(path.String(), "/calendar") {
 				return esi.Result{Data: []any{
 					map[string]any{fEventID: 1, fTitle: "A", fEventDate: "2026-09-01T00:00:00Z", "event_response": vAccepted, "importance": 0},
 					map[string]any{fEventID: 2, fTitle: "B", fEventDate: "2026-09-02T00:00:00Z", "event_response": vNotResponded, "importance": 0},
@@ -84,11 +84,11 @@ func TestMailComposePostsNewmailNotMail(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := mocks.NewMockESIClient(ctrl)
 	var newmail any
-	client.EXPECT().Post(gomock.Any(), "/universe/ids", gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]any{
+	client.EXPECT().Post(gomock.Any(), esi.Path("/universe/ids"), gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]any{
 		fCharacters: []any{map[string]any{"id": 243070982, fName: testRecipient}},
 	}, nil).AnyTimes()
-	client.EXPECT().Post(gomock.Any(), "/ui/openwindow/newmail", gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ *int, _ map[string]any, body any) (any, error) {
+	client.EXPECT().Post(gomock.Any(), esi.Path("/ui/openwindow/newmail"), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ esi.Route, _ *int, _ map[string]any, body any) (any, error) {
 			newmail = body
 
 			return true, nil
@@ -149,12 +149,12 @@ func TestMailSendCSPAExceedsMintsNoToken(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
 	client := mocks.NewMockESIClient(ctrl)
-	client.EXPECT().Post(gomock.Any(), "/universe/ids", gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]any{
+	client.EXPECT().Post(gomock.Any(), esi.Path("/universe/ids"), gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]any{
 		fCharacters: []any{map[string]any{"id": 243070982, fName: testRecipient}},
 	}, nil)
 	client.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, path string, _ *int, _ map[string]any, _ any) (any, error) {
-			if strings.HasSuffix(path, "/cspa") {
+		func(_ context.Context, path esi.Route, _ *int, _ map[string]any, _ any) (any, error) {
+			if strings.HasSuffix(path.String(), "/cspa") {
 				return 10000.0, nil
 			}
 			t.Fatalf("unexpected post %s", path)
@@ -174,12 +174,12 @@ func TestMailSendCSPAUnpricedMintsNoToken(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
 	client := mocks.NewMockESIClient(ctrl)
-	client.EXPECT().Post(gomock.Any(), "/universe/ids", gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]any{
+	client.EXPECT().Post(gomock.Any(), esi.Path("/universe/ids"), gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]any{
 		fCharacters: []any{map[string]any{"id": 243070982, fName: testRecipient}},
 	}, nil)
 	client.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, path string, _ *int, _ map[string]any, _ any) (any, error) {
-			if strings.HasSuffix(path, "/cspa") {
+		func(_ context.Context, path esi.Route, _ *int, _ map[string]any, _ any) (any, error) {
+			if strings.HasSuffix(path.String(), "/cspa") {
 				return []any{}, nil
 			}
 			t.Fatalf("unexpected post %s", path)
