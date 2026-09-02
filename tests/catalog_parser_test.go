@@ -191,6 +191,7 @@ func TestCatalogParserExtractLiteralAndCtor(t *testing.T) {
 	}
 	for _, want := range []string{
 		esiKey(methodGET, "/status"),
+		esiKey(methodGET, "/universe/system_kills"),
 		esiKey(methodPOST, "/characters/{}/cspa"),
 		esiKey(methodPUT, "/characters/{}/mail/{}"),
 	} {

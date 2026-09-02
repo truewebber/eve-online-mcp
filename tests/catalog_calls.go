@@ -511,6 +511,11 @@ func paramIndex(sc *fnScope, name string) int {
 }
 
 func buildPath(pkg *pkgIndex, args []ast.Expr) string {
+	if len(args) == 1 {
+		if s, ok := pathSegment(pkg, args[0]); ok && strings.HasPrefix(s, "/") {
+			return normalizePath(s)
+		}
+	}
 	var parts []string
 	for _, a := range args {
 		s, ok := pathSegment(pkg, a)
