@@ -31,6 +31,7 @@ const (
 	overviewAgeOnline    = 5.0
 	overviewAgeQueue     = 6.0
 	overviewAgeAttrs     = 7.0
+	overviewAgeSkills    = 8.0
 	overviewJitterRuns   = 40
 	overviewKeySystem    = "solar_system_id"
 	overviewKeyLevel     = "finished_level"
@@ -142,6 +143,57 @@ func TestApplyOverviewQueueSkipsPausedEntries(t *testing.T) {
 	}
 }
 
+func TestApplyOverviewSubscriptionReportsAlpha(t *testing.T) {
+	t.Parallel()
+	out := map[string]any{}
+	applyOverviewSubscription(overviewBox{r: esi.Result{Data: overviewSkillsPayload(5, 4)}}, out)
+	if out[fSubscription] != vAlpha {
+		t.Fatalf("subscription %v", out[fSubscription])
+	}
+}
+
+func TestApplyOverviewSubscriptionReportsOmega(t *testing.T) {
+	t.Parallel()
+	out := map[string]any{}
+	applyOverviewSubscription(overviewBox{r: esi.Result{Data: overviewSkillsPayload(4, 4)}}, out)
+	if out[fSubscription] != vOmega {
+		t.Fatalf("subscription %v", out[fSubscription])
+	}
+}
+
+func TestApplyOverviewSubscriptionOmitsFailedFetch(t *testing.T) {
+	t.Parallel()
+	out := map[string]any{"keep": true}
+	applyOverviewSubscription(overviewBox{err: errInner}, out)
+	if out[fSubscription] != nil {
+		t.Fatalf("subscription on error: %+v", out)
+	}
+	if out["keep"] != true {
+		t.Fatal("existing fields must stay")
+	}
+}
+
+func TestApplyOverviewSubscriptionOmitsEmptySkills(t *testing.T) {
+	t.Parallel()
+	out := map[string]any{}
+	applyOverviewSubscription(overviewBox{r: esi.Result{Data: map[string]any{esiSkills: []any{}, "total_sp": 0}}}, out)
+	if out[fSubscription] != nil {
+		t.Fatalf("subscription from empty skills: %+v", out)
+	}
+}
+
+func TestCharacterOverviewReportsAlphaSubscription(t *testing.T) {
+	t.Parallel()
+	data := sampleOverviewData()
+	data.skills = overviewSkillsPayload(5, 2)
+	body := asMap(t, mustCall(t, func() (any, error) {
+		return eveCharacterOverview(t.Context(), toolSession(t, newOverviewESI(data), false), empty{})
+	}))
+	if body[fSubscription] != vAlpha {
+		t.Fatalf("subscription %v", body[fSubscription])
+	}
+}
+
 func TestApplyOverviewOnlineAndShipAndLocation(t *testing.T) {
 	t.Parallel()
 	a := toolSession(t, newOverviewESI(sampleOverviewData()), false)
@@ -223,7 +275,7 @@ func TestFetchOverviewRequestsEachEndpointOnce(t *testing.T) {
 	client := newOverviewESI(sampleOverviewData())
 	_ = fetchOverview(t.Context(), &session.Session{ESI: client}, esitest.FixtureCharacterID)
 	paths := fixtureOverviewPaths()
-	want := []string{paths.public, paths.wallet, paths.location, paths.ship, paths.online, paths.queue, paths.attributes}
+	want := []string{paths.public, paths.wallet, paths.location, paths.ship, paths.online, paths.queue, paths.attributes, paths.skills}
 	got := client.callsSnapshot()
 	if len(got) != overviewFetches {
 		t.Fatalf("calls %d: %v", len(got), got)
@@ -254,6 +306,9 @@ func TestFetchOverviewKeepsPerEndpointErrors(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got.attributes.r.Data, data.attributes) {
 		t.Fatalf("attributes slot polluted after wallet error: %v", got.attributes.r.Data)
+	}
+	if !reflect.DeepEqual(got.skills.r.Data, data.skills) {
+		t.Fatalf("skills slot polluted after wallet error: %v", got.skills.r.Data)
 	}
 }
 
@@ -286,6 +341,9 @@ func TestCharacterOverviewPartialWalletErrorKeepsQueue(t *testing.T) {
 	if body["remaps_available"] != float64(overviewRemaps) {
 		t.Fatalf("remaps %v", body["remaps_available"])
 	}
+	if body[fSubscription] != vOmega {
+		t.Fatalf("subscription %v", body[fSubscription])
+	}
 }
 
 func TestCharacterOverviewHTTPFixturesKeepWalletBalance(t *testing.T) {
@@ -310,11 +368,11 @@ func TestCharacterOverviewHTTPFixturesKeepWalletBalance(t *testing.T) {
 type overviewOrder func(overviewPaths) []string
 
 func overviewLaunchOrder(p overviewPaths) []string {
-	return []string{p.public, p.wallet, p.location, p.ship, p.online, p.queue, p.attributes}
+	return []string{p.public, p.wallet, p.location, p.ship, p.online, p.queue, p.attributes, p.skills}
 }
 
 func overviewReverseOrder(p overviewPaths) []string {
-	return []string{p.attributes, p.queue, p.online, p.ship, p.location, p.wallet, p.public}
+	return []string{p.skills, p.attributes, p.queue, p.online, p.ship, p.location, p.wallet, p.public}
 }
 
 func runGatedOverview(t *testing.T, order overviewOrder) overviewFetch {
@@ -388,6 +446,7 @@ func assertOverviewSlots(t *testing.T, got overviewFetch) {
 		{"online", got.online, data.online, overviewAgeOnline},
 		{fQueue, got.queue, data.queue, overviewAgeQueue},
 		{"attributes", got.attributes, data.attributes, overviewAgeAttrs},
+		{esiSkills, got.skills, data.skills, overviewAgeSkills},
 	}
 	for _, tc := range cases {
 		if tc.box.err != nil {
@@ -469,6 +528,9 @@ func assertOverviewTraining(t *testing.T, body map[string]any) {
 	if body["remaps_available"] != float64(overviewRemaps) {
 		t.Fatalf("remaps_available %v", body["remaps_available"])
 	}
+	if body[fSubscription] != vOmega {
+		t.Fatalf("subscription %v", body[fSubscription])
+	}
 	if body["warning"] != nil {
 		t.Fatalf("invented empty queue: %v", body["warning"])
 	}
@@ -478,7 +540,7 @@ func assertOverviewTraining(t *testing.T, body map[string]any) {
 }
 
 type overviewPaths struct {
-	public, wallet, location, ship, online, queue, attributes string
+	public, wallet, location, ship, online, queue, attributes, skills string
 }
 
 func fixtureOverviewPaths() overviewPaths {
@@ -492,11 +554,12 @@ func fixtureOverviewPaths() overviewPaths {
 		online:     esiPath("characters", esiID(cid), "online").String(),
 		queue:      esiPath("characters", esiID(cid), "skillqueue").String(),
 		attributes: esiPath("characters", esiID(cid), "attributes").String(),
+		skills:     esiPath("characters", esiID(cid), esiSkills).String(),
 	}
 }
 
 type overviewESIData struct {
-	public, wallet, location, ship, online, queue, attributes any
+	public, wallet, location, ship, online, queue, attributes, skills any
 }
 
 func sampleOverviewData() overviewESIData {
@@ -528,6 +591,19 @@ func sampleOverviewData() overviewESIData {
 		},
 		attributes: map[string]any{
 			"bonus_remaps": overviewRemaps, "intelligence": 20, "memory": 22,
+		},
+		skills: overviewSkillsPayload(4, 4),
+	}
+}
+
+func overviewSkillsPayload(trained, active int) map[string]any {
+	return map[string]any{
+		"total_sp": 1000,
+		esiSkills: []any{
+			map[string]any{
+				"skill_id": overviewSkillID, esiTrainedLevel: trained,
+				esiActiveLevel: active,
+			},
 		},
 	}
 }
@@ -599,6 +675,7 @@ func overviewBoxes(data overviewESIData) map[string]overviewBox {
 		p.online:     {r: esi.Result{Data: data.online, AgeSeconds: overviewAgeOnline}},
 		p.queue:      {r: esi.Result{Data: data.queue, AgeSeconds: overviewAgeQueue}},
 		p.attributes: {r: esi.Result{Data: data.attributes, AgeSeconds: overviewAgeAttrs}},
+		p.skills:     {r: esi.Result{Data: data.skills, AgeSeconds: overviewAgeSkills}},
 	}
 }
 

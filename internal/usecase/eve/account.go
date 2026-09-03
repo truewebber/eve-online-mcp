@@ -28,7 +28,7 @@ func registerAccount(s *mcp.Server) {
 	}, sessionTool(eveAuthLogout))
 	addTool(s, &mcp.Tool{
 		Name:        "eve_character_overview",
-		Description: "Everything you would glance at on logging in: corp, ISK, location, ship, training.\n\nThe best first call for almost any question about how the character is doing — it fuses seven ESI endpoints into roughly 200 tokens and tells you what to drill into next. It already includes the wallet balance and what is training, so there is no need to ask for those separately.\n\nPartial results are normal: if one underlying endpoint fails, the rest still come back rather than the whole call erroring.\n\nReturns: name, corporation, alliance, security_status, wallet_isk, online, solar_system, docked_at, ship_type, training_now, queue_ends, remaps_available.",
+		Description: "Everything you would glance at on logging in: corp, ISK, location, ship, training, Alpha/Omega.\n\nThe best first call for almost any question about how the character is doing — it fuses eight ESI endpoints into roughly 200 tokens and tells you what to drill into next. It already includes the wallet balance, what is training, and subscription. ESI has no account-level flag: Alpha means at least one skill's active level is below its trained level; otherwise Omega. A new Alpha who never trained past the free caps looks like Omega.\n\nPartial results are normal: if one underlying endpoint fails, the rest still come back rather than the whole call erroring.\n\nReturns: name, corporation, alliance, security_status, wallet_isk, online, solar_system, docked_at, ship_type, training_now, queue_ends, remaps_available, subscription.",
 	}, sessionTool(eveCharacterOverview))
 }
 
@@ -101,11 +101,12 @@ func eveCharacterOverview(ctx context.Context, a *session.Session, _ empty) (any
 	applyOverviewLocation(ctx, a, cid, got.location, out)
 	applyOverviewShip(ctx, a, got.ship, out)
 	applyOverviewQueue(ctx, a, got.queue, out)
+	applyOverviewSubscription(got.skills, out)
 	if got.attributes.err == nil {
 		out["remaps_available"] = j.Map(got.attributes.r.Data)["bonus_remaps"]
 	}
 
-	if age := staleOf(got.public, got.wallet, got.location, got.ship, got.online, got.queue, got.attributes); age != "" {
+	if age := staleOf(got.public, got.wallet, got.location, got.ship, got.online, got.queue, got.attributes, got.skills); age != "" {
 		out[fDataAge] = age
 	}
 
@@ -127,7 +128,7 @@ func staleOf(boxes ...overviewBox) string {
 }
 
 type overviewFetch struct {
-	public, wallet, location, ship, online, queue, attributes overviewBox
+	public, wallet, location, ship, online, queue, attributes, skills overviewBox
 }
 
 func fetchOverview(ctx context.Context, a *session.Session, cid int) overviewFetch {
@@ -154,6 +155,7 @@ func fetchOverview(ctx context.Context, a *session.Session, cid int) overviewFet
 	launch(esiPath("characters", esiID(cid), "online"), true, func(o *overviewFetch, b overviewBox) { o.online = b })
 	launch(esiPath("characters", esiID(cid), "skillqueue"), true, func(o *overviewFetch, b overviewBox) { o.queue = b })
 	launch(esiPath("characters", esiID(cid), "attributes"), true, func(o *overviewFetch, b overviewBox) { o.attributes = b })
+	launch(esiPath("characters", esiID(cid), esiSkills), true, func(o *overviewFetch, b overviewBox) { o.skills = b })
 
 	var out overviewFetch
 	for range overviewFetches {
@@ -272,6 +274,13 @@ func applyOverviewQueue(ctx context.Context, a *session.Session, queue overviewB
 	out["training_finishes"] = first["finish_date"]
 	out["queue_length"] = len(entries)
 	out["queue_ends"] = entries[len(entries)-1]["finish_date"]
+}
+
+func applyOverviewSubscription(skills overviewBox, out map[string]any) {
+	if skills.err != nil {
+		return
+	}
+	applySkillSubscription(out, skills.r.Data)
 }
 
 func sortStrings(in []string) []string {

@@ -13,9 +13,10 @@ Where to start
     changes it is allowed to make. Call it first when unsure. There is exactly
     one character here and no way to switch: another character is another
     server entry in the client, signed in separately.
-  * eve_character_overview — corp, ISK, location, ship and training in one
-    ~200-token call. The right opening move for almost any "how am I doing"
-    question; it already includes the wallet balance and what is training.
+  * eve_character_overview — corp, ISK, location, ship, training and
+    Alpha/Omega in one ~200-token call. The right opening move for almost
+    any "how am I doing" question; it already includes the wallet balance,
+    what is training, and subscription.
 
 Reading data
   * Every result carries data_age. ESI caches hard — assets for 1 hour,

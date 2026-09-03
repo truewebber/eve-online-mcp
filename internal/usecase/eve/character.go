@@ -28,11 +28,11 @@ type characterStandingsIn struct {
 func registerCharacter(s *mcp.Server) {
 	addTool(s, &mcp.Tool{
 		Name:        "eve_character_skills",
-		Description: "Trained skills with levels and skill points.\n\nPrefer `search` over dumping everything: to answer \"can I fly a Drake\" you want the handful of relevant skills, not all 118.\n\nOne subtlety worth surfacing to the user: `active_level` can be lower than `level`. That means the account is on an Alpha (free) clone.\n\nReturns: total_sp, unallocated_sp, skills_known, at_level_5, skills[].",
+		Description: "Trained skills with levels and skill points.\n\nPrefer `search` over dumping everything: to answer \"can I fly a Drake\" you want the handful of relevant skills, not all 118.\n\nOne subtlety worth surfacing to the user: `active_level` can be lower than `level`. That means the account is on an Alpha (free) clone. The result also carries `subscription` (`alpha` or `omega`) from that same signal.\n\nReturns: total_sp, unallocated_sp, skills_known, at_level_5, subscription, skills[].",
 	}, sessionTool(eveCharacterSkills))
 	addTool(s, &mcp.Tool{
 		Name:        "eve_character_skill_queue",
-		Description: "The training queue: what is training now, what follows, and when it runs dry.\n\nAn empty queue means the character is accruing nothing — always worth telling the user.\n\nReturns: queued_skills, training_now, queue_empty_in, queue_ends, queue[].",
+		Description: "The training queue: what is training now, what follows, and when it runs dry.\n\nAn empty queue means the character is accruing nothing — always worth telling the user.\n\nAlso carries `subscription` (`alpha` or `omega`), inferred from skill caps. Alpha does not train while offline; Omega does.\n\nReturns: queued_skills, training_now, queue_empty_in, queue_ends, subscription, queue[].",
 	}, sessionTool(eveCharacterSkillQueue))
 	addTool(s, &mcp.Tool{
 		Name:        "eve_character_clones",
@@ -52,16 +52,16 @@ func eveCharacterSkills(ctx context.Context, a *session.Session, in characterSki
 	if err != nil {
 		return nil, wrap("eveCharacterSkills", err)
 	}
-	if err := a.RequireScope(token, "esi-skills.read_skills.v1", "skills"); err != nil {
+	if err := a.RequireScope(token, "esi-skills.read_skills.v1", esiSkills); err != nil {
 		return nil, wrap("eveCharacterSkills", err)
 	}
 	cid := token.CharacterID
-	result, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), "skills"), &cid, nil, nil)
+	result, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), esiSkills), &cid, nil, nil)
 	if err != nil {
 		return nil, wrap("eveCharacterSkills", err)
 	}
 	payload := j.Map(result.Data)
-	skills := j.Maps(payload["skills"])
+	skills := j.Maps(payload[esiSkills])
 	var ids []int
 	for _, s := range skills {
 		ids = append(ids, j.Int(s["skill_id"]))
@@ -75,7 +75,7 @@ func eveCharacterSkills(ctx context.Context, a *session.Session, in characterSki
 	paged := applyLimit(view.rows, limitOr(in.Limit, limitMedium), "Narrow with `search`, or raise `limit`.")
 	at5 := 0
 	for _, s := range skills {
-		if j.Int(s["trained_skill_level"]) == skillLevelV {
+		if j.Int(s[esiTrainedLevel]) == skillLevelV {
 			at5++
 		}
 	}
@@ -83,8 +83,9 @@ func eveCharacterSkills(ctx context.Context, a *session.Session, in characterSki
 		fCharacter: token.CharacterName, "total_sp": payload["total_sp"],
 		"unallocated_sp": payload["unallocated_sp"], "skills_known": len(skills),
 		"at_level_5": at5, "matching": len(view.rows), fDataAge: result.StaleNote(),
-		"skills": project(paged.Rows, []string{fSkill, "level"}, concise(in.ResponseFormat)),
+		esiSkills: project(paged.Rows, []string{fSkill, "level"}, concise(in.ResponseFormat)),
 	}, paged.fields)
+	applySkillSubscription(out, payload)
 	if view.capped > 0 {
 		out["alpha_clone_warning"] = fmt.Sprintf("%d skills have active_level below trained level — this account looks like it is on an Alpha clone, so trained levels are capped.", view.capped)
 	}
@@ -106,11 +107,7 @@ func filterCharacterSkills(skills []map[string]any, names map[int]string, search
 		if name == "" {
 			name = fmt.Sprintf("#%d", j.Int(skill["skill_id"]))
 		}
-		level := j.Int(skill["trained_skill_level"])
-		active := j.Int(skill["active_skill_level"])
-		if active == 0 && skill["active_skill_level"] == nil {
-			active = level
-		}
+		level, active := skillLevels(skill)
 		if active < level {
 			capped++
 		}
@@ -151,12 +148,15 @@ func eveCharacterSkillQueue(ctx context.Context, a *session.Session, _ empty) (a
 		return nil, wrap("eveCharacterSkillQueue", err)
 	}
 	entries := j.Maps(result.Data)
+	out := map[string]any{
+		fCharacter: token.CharacterName, fDataAge: result.StaleNote(),
+	}
+	attachSkillSubscription(ctx, a, cid, a.HasScope(token, "esi-skills.read_skills.v1"), out)
 	if len(entries) == 0 {
-		return map[string]any{
-			fCharacter: token.CharacterName, fQueue: []any{},
-			"warning": "The skill queue is empty. This character is accruing no skill points at all until something is queued.",
-			fDataAge:  result.StaleNote(),
-		}, nil
+		out[fQueue] = []any{}
+		out["warning"] = "The skill queue is empty. This character is accruing no skill points at all until something is queued."
+
+		return out, nil
 	}
 	var ids []int
 	for _, e := range entries {
@@ -173,13 +173,58 @@ func eveCharacterSkillQueue(ctx context.Context, a *session.Session, _ empty) (a
 	if last := parseTime(j.Str(rows[len(rows)-1]["finish_date"])); last != nil {
 		emptyIn = humanDelta(last.Sub(now))
 	}
+	out["queued_skills"] = len(rows)
+	out["training_now"] = strings.TrimSpace(j.Str(rows[0][fSkill]) + " " + j.Str(rows[0]["to_level"]))
+	out["queue_empty_in"] = emptyIn
+	out["queue_ends"] = rows[len(rows)-1]["finish_date"]
+	out[fQueue] = rows
 
-	return map[string]any{
-		fCharacter: token.CharacterName, "queued_skills": len(rows),
-		"training_now":   strings.TrimSpace(j.Str(rows[0][fSkill]) + " " + j.Str(rows[0]["to_level"])),
-		"queue_empty_in": emptyIn, "queue_ends": rows[len(rows)-1]["finish_date"],
-		fDataAge: result.StaleNote(), fQueue: rows,
-	}, nil
+	return out, nil
+}
+
+func skillLevels(skill map[string]any) (int, int) {
+	trained := j.Int(skill[esiTrainedLevel])
+	if skill[esiActiveLevel] == nil {
+		return trained, trained
+	}
+
+	return trained, j.Int(skill[esiActiveLevel])
+}
+
+func skillSubscription(skills []map[string]any) (string, int, bool) {
+	if len(skills) == 0 {
+		return "", 0, false
+	}
+	capped := 0
+	for _, skill := range skills {
+		trained, active := skillLevels(skill)
+		if active < trained {
+			capped++
+		}
+	}
+	if capped > 0 {
+		return vAlpha, capped, true
+	}
+
+	return vOmega, 0, true
+}
+
+func applySkillSubscription(out map[string]any, data any) {
+	kind, _, ok := skillSubscription(j.Maps(j.Map(data)[esiSkills]))
+	if ok {
+		out[fSubscription] = kind
+	}
+}
+
+func attachSkillSubscription(ctx context.Context, a *session.Session, cid int, granted bool, out map[string]any) {
+	if !granted {
+		return
+	}
+	result, err := a.ESI.Get(ctx, esiPath("characters", esiID(cid), esiSkills), &cid, nil, nil)
+	if err != nil {
+		return
+	}
+	applySkillSubscription(out, result.Data)
 }
 
 func formatSkillQueue(entries []map[string]any, names map[int]string, now time.Time) []map[string]any {

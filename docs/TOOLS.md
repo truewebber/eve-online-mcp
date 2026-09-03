@@ -96,9 +96,10 @@ Where to start
     changes it is allowed to make. Call it first when unsure. There is exactly
     one character here and no way to switch: another character is another
     server entry in the client, signed in separately.
-  * eve_character_overview — corp, ISK, location, ship and training in one
-    ~200-token call. The right opening move for almost any "how am I doing"
-    question; it already includes the wallet balance and what is training.
+  * eve_character_overview — corp, ISK, location, ship, training and
+    Alpha/Omega in one ~200-token call. The right opening move for almost
+    any "how am I doing" question; it already includes the wallet balance,
+    what is training, and subscription.
 
 Reading data
   * Every result carries data_age. ESI caches hard — assets for 1 hour,
@@ -210,13 +211,13 @@ _No parameters._
 
 *Source: `internal/usecase/eve/account.go`*
 
-Everything you would glance at on logging in: corp, ISK, location, ship, training.
+Everything you would glance at on logging in: corp, ISK, location, ship, training, Alpha/Omega.
 
-The best first call for almost any question about how the character is doing — it fuses seven ESI endpoints into roughly 200 tokens and tells you what to drill into next. It already includes the wallet balance and what is training, so there is no need to ask for those separately.
+The best first call for almost any question about how the character is doing — it fuses eight ESI endpoints into roughly 200 tokens and tells you what to drill into next. It already includes the wallet balance, what is training, and subscription. ESI has no account-level flag: Alpha means at least one skill's active level is below its trained level; otherwise Omega. A new Alpha who never trained past the free caps looks like Omega.
 
 Partial results are normal: if one underlying endpoint fails, the rest still come back rather than the whole call erroring.
 
-Returns: name, corporation, alliance, security_status, wallet_isk, online, solar_system, docked_at, ship_type, training_now, queue_ends, remaps_available.
+Returns: name, corporation, alliance, security_status, wallet_isk, online, solar_system, docked_at, ship_type, training_now, queue_ends, remaps_available, subscription.
 
 _No parameters._
 
@@ -231,9 +232,9 @@ Trained skills with levels and skill points.
 
 Prefer `search` over dumping everything: to answer "can I fly a Drake" you want the handful of relevant skills, not all 118.
 
-One subtlety worth surfacing to the user: `active_level` can be lower than `level`. That means the account is on an Alpha (free) clone.
+One subtlety worth surfacing to the user: `active_level` can be lower than `level`. That means the account is on an Alpha (free) clone. The result also carries `subscription` (`alpha` or `omega`) from that same signal.
 
-Returns: total_sp, unallocated_sp, skills_known, at_level_5, skills[].
+Returns: total_sp, unallocated_sp, skills_known, at_level_5, subscription, skills[].
 
 | Parameter | Type | Required | Bounds | Description |
 |---|---|---|---|---|
@@ -250,7 +251,9 @@ The training queue: what is training now, what follows, and when it runs dry.
 
 An empty queue means the character is accruing nothing — always worth telling the user.
 
-Returns: queued_skills, training_now, queue_empty_in, queue_ends, queue[].
+Also carries `subscription` (`alpha` or `omega`), inferred from skill caps. Alpha does not train while offline; Omega does.
+
+Returns: queued_skills, training_now, queue_empty_in, queue_ends, subscription, queue[].
 
 _No parameters._
 

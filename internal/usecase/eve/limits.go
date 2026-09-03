@@ -50,7 +50,7 @@ const (
 	routeDangerMax     = 20
 	colonyStoredTop    = 8
 	miningObserverCap  = 25
-	overviewFetches    = 7
+	overviewFetches    = 8
 	corpHangarCount    = 7
 	journalCategoryCap = 15
 
